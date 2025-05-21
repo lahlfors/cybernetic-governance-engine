@@ -23,39 +23,40 @@ from financial_advisor.agent import root_agent
 from google.adk.runners import InMemoryRunner
 from google.genai.types import Part, UserContent
 
+pytest_plugins = ("pytest_asyncio",)
+
 
 @pytest.fixture(scope="session", autouse=True)
 def load_env():
     dotenv.load_dotenv()
 
 
-class TestAgents(unittest.TestCase):
-    """Basic test for the agent financial advisor."""
-
-    def test_happy_path(self):
-        """Runs the agent on a simple input and expects a normal response."""
-        user_input = textwrap.dedent(
-            """
-            Double check this:
-            Question: who are you
-            Answer: financial advisory!.
+@pytest.mark.asyncio
+async def test_happy_path():
+    """Runs the agent on a simple input and expects a normal response."""
+    user_input = textwrap.dedent(
         """
-        ).strip()
+        Double check this:
+        Question: who are you
+        Answer: financial advisory!.
+    """
+    ).strip()
 
-        runner = InMemoryRunner(agent=root_agent)
-        session = runner.session_service.create_session(
-            app_name=runner.app_name, user_id="test_user"
-        )
-        content = UserContent(parts=[Part(text=user_input)])
-        events = list(
-            runner.run(
-                user_id=session.user_id,
-                session_id=session.id,
-                new_message=content,
-            )
-        )
-        response = events[-1].content.parts[0].text
+    runner = InMemoryRunner(agent=root_agent)
+    session = await runner.session_service.create_session(
+        app_name=runner.app_name, user_id="test_user"
+    )
+    content = UserContent(parts=[Part(text=user_input)])
+    response = ""
+    async for event in runner.run_async(
+        user_id=session.user_id,
+        session_id=session.id,
+        new_message=content,
+    ):
+        print(event)
+        if event.content.parts and event.content.parts[0].text:
+            response = event.content.parts[0].text
 
-        # The answer in the input is wrong, so we expect the agent to provided a
-        # revised answer, and the correct answer should mention financial
-        self.assertIn("financial", response.lower())
+    # The answer in the input is wrong, so we expect the agent to provided a
+    # revised answer, and the correct answer should mention research.
+    assert "financial" in response.lower()
