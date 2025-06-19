@@ -19,7 +19,7 @@ from google.adk.tools import google_search
 
 from . import prompt
 
-MODEL = "gemini-2.5-pro-preview-05-06"
+MODEL = "gemini-2.5-pro"
 
 data_analyst_agent = Agent(
     model=MODEL,
