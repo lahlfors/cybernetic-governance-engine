@@ -1,0 +1,54 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: governed-financial-advisor
+  annotations:
+    run.googleapis.com/launch-stage: BETA
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/execution-environment: gen2
+    spec:
+      serviceAccountName: financial-advisor-sa
+      containers:
+        # --- CONTAINER 1: The Agent (Ingress) ---
+        - name: ingress-agent
+          image: gcr.io/PROJECT_ID/financial-advisor:latest
+          ports:
+            - containerPort: 8080
+          env:
+            # Point to local sidecar
+            - name: OPA_URL
+              value: "http://localhost:8181/v1/data/finance/allow"
+          # Wait for OPA to be ready
+          dependencies:
+            - governance-sidecar
+
+        # --- CONTAINER 2: OPA Sidecar ---
+        - name: governance-sidecar
+          image: openpolicyagent/opa:latest-static
+          args:
+            - "run"
+            - "--server"
+            - "--addr=localhost:8181"
+            - "/policies/finance_policy.rego"
+          # Health check for dependency
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8181
+          # Mount the policy
+          volumeMounts:
+            - name: policy-volume
+              mountPath: /policies
+              readOnly: true
+
+      # --- Volumes ---
+      volumes:
+        - name: policy-volume
+          secret:
+            secretName: finance-policy-rego
+            items:
+              - key: latest
+                path: finance_policy.rego
