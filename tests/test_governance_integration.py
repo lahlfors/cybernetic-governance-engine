@@ -26,7 +26,7 @@ class TestGovernanceIntegration(unittest.TestCase):
         result = execute_trade(order)
         print(f"\n[High Value Trade] Result: {result}")
         self.assertIn("BLOCKED", result)
-        self.assertIn("OPA Policy Violation", result)
+        self.assertIn("Governance Policy Violation", result)
 
 if __name__ == '__main__':
     unittest.main()

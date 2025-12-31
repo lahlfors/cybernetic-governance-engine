@@ -16,9 +16,10 @@ class TradeOrder(BaseModel):
             raise ValueError("Amount must be positive")
         return v
 
-@governed_tool
+@governed_tool(action_name="execute_trade")
 def execute_trade(order: TradeOrder) -> str:
     """
-    Executes a trade after passing governance checks.
+    Executes a trade on the exchange.
+    Requires Governance Approval (OPA) before running.
     """
     return f"SUCCESS: Executed trade for {order.amount} {order.currency} of {order.symbol}."
