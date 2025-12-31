@@ -1,5 +1,6 @@
 import functools
 import logging
+import os
 import requests
 from pydantic import BaseModel
 
@@ -10,8 +11,8 @@ class OPAClient:
     """
     Connects to a real running OPA server.
     """
-    def __init__(self, url: str = "http://localhost:8181/v1/data/finance/allow"):
-        self.url = url
+    def __init__(self, url: str = None):
+        self.url = url or os.environ.get("OPA_URL", "http://localhost:8181/v1/data/finance/allow")
 
     def check_policy(self, input_data: dict) -> bool:
         """

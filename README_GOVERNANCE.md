@@ -14,9 +14,9 @@ The system enforces "Variety Attenuation" through three layers of governance:
 
 To run the standalone proof-of-concept:
 
-1.  Start the OPA server:
+1.  Start the OPA server (with production config):
     ```bash
-    ./opa run --server ./governance_poc/finance_policy.rego
+    ./opa run --server --config-file=deployment/opa_config.yaml ./governance_poc/finance_policy.rego
     ```
 
 2.  Run the demo script:
@@ -35,10 +35,11 @@ This project is designed to run on Google Cloud Run using the multi-container (s
 
 ### Deployment Steps
 
-1.  **Create the Policy Secret:**
-    Upload the Rego policy to Secret Manager.
+1.  **Create Secrets:**
+    Upload the Rego policy and OPA configuration to Secret Manager.
     ```bash
     gcloud secrets create finance-policy-rego --data-file=governance_poc/finance_policy.rego
+    gcloud secrets create opa-configuration --data-file=deployment/opa_config.yaml
     ```
 
 2.  **Build the Agent Container:**

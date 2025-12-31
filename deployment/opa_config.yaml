@@ -1,0 +1,33 @@
+# OPA Configuration for Cloud Run Sidecar
+
+# 1. Decision Logs
+# Emit structured JSON logs to stdout.
+# Cloud Run captures stdout/stderr and sends it to Cloud Logging.
+decision_logs:
+  console: true
+  service: google_cloud_logging
+
+# 2. Status / Monitoring
+# Report status updates to the console (useful for startup debugging).
+status:
+  console: true
+
+# 3. Services (Optional Placeholder)
+# If we were using a remote bundle server (like Styra DAS or a GCS bucket),
+# we would define it here. For this sidecar setup, policies are mounted locally.
+# services:
+#   - name: bundle_server
+#     url: https://bundles.example.com
+#     credentials:
+#       bearer:
+#         token: "${OPA_BUNDLE_TOKEN}"
+
+# 4. Default Decision
+# Set the default decision path if not specified in the query.
+default_decision: /finance/allow
+
+# 5. Caching (Optional)
+# Optimize for frequent policy evaluations.
+caching:
+  inter_query_builtin_cache:
+    max_size_bytes: 1000000

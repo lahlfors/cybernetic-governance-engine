@@ -32,6 +32,7 @@ spec:
             - "run"
             - "--server"
             - "--addr=localhost:8181"
+            - "--config-file=/config/opa_config.yaml"
             - "/policies/finance_policy.rego"
           # Health check for dependency
           startupProbe:
@@ -43,6 +44,9 @@ spec:
             - name: policy-volume
               mountPath: /policies
               readOnly: true
+            - name: opa-config-vol
+              mountPath: /config
+              readOnly: true
 
       # --- Volumes ---
       volumes:
@@ -52,3 +56,9 @@ spec:
             items:
               - key: latest
                 path: finance_policy.rego
+        - name: opa-config-vol
+          secret:
+            secretName: opa-configuration
+            items:
+              - key: latest
+                path: opa_config.yaml
