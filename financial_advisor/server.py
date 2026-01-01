@@ -3,8 +3,12 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from financial_advisor.agent import financial_coordinator
+from financial_advisor.telemetry import setup_telemetry
 
 app = FastAPI(title="Governed Financial Advisor")
+
+# Initialize Observability
+setup_telemetry(app)
 
 class QueryRequest(BaseModel):
     prompt: str

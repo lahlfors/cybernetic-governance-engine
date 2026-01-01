@@ -4,9 +4,11 @@ import os
 import requests
 from typing import Any, Dict
 from pydantic import BaseModel
+from opentelemetry import trace
 
 # Configure logging
 logger = logging.getLogger("GovernanceLayer")
+tracer = trace.get_tracer("financial_advisor.governance")
 
 class OPAClient:
     """
@@ -19,23 +21,30 @@ class OPAClient:
         self.url = os.environ.get("OPA_URL", "http://localhost:8181/v1/data/finance/allow")
 
     def check_policy(self, input_data: Dict[str, Any]) -> bool:
-        try:
-            # We add a timeout to ensure governance doesn't hang the agent
-            response = requests.post(self.url, json={"input": input_data}, timeout=1.0)
-            response.raise_for_status()
+        with tracer.start_as_current_span("governance.check") as span:
+            span.set_attribute("governance.opa_url", self.url)
+            span.set_attribute("governance.action", input_data.get("action", "unknown"))
 
-            result = response.json().get("result", False)
+            try:
+                # We add a timeout to ensure governance doesn't hang the agent
+                response = requests.post(self.url, json={"input": input_data}, timeout=1.0)
+                response.raise_for_status()
 
-            if result:
-                logger.info(f"✅ OPA ALLOWED | Action: {input_data.get('action')}")
-            else:
-                logger.warning(f"⛔ OPA DENIED | Action: {input_data.get('action')} | Input: {input_data}")
+                result = response.json().get("result", False)
+                span.set_attribute("governance.decision", "ALLOW" if result else "DENY")
 
-            return result
-        except Exception as e:
-            # FAIL CLOSED: If security is down, nothing happens.
-            logger.critical(f"🔥 OPA FAILURE: Could not connect to policy engine at {self.url}. Error: {e}")
-            return False
+                if result:
+                    logger.info(f"✅ OPA ALLOWED | Action: {input_data.get('action')}")
+                else:
+                    logger.warning(f"⛔ OPA DENIED | Action: {input_data.get('action')} | Input: {input_data}")
+
+                return result
+            except Exception as e:
+                # FAIL CLOSED: If security is down, nothing happens.
+                logger.critical(f"🔥 OPA FAILURE: Could not connect to policy engine at {self.url}. Error: {e}")
+                span.record_exception(e)
+                span.set_status(trace.Status(trace.StatusCode.ERROR))
+                return False
 
 # Instantiate the real client
 opa_client = OPAClient()
