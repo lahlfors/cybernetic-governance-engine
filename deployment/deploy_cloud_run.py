@@ -18,6 +18,7 @@ Cloud Run Deployment Script for Governed Financial Advisor
 Handles secret creation, image building, and service deployment.
 """
 
+import yaml
 import argparse
 import os
 import secrets
@@ -76,7 +77,6 @@ def create_secret(project_id, secret_name, file_path=None, literal_value=None):
         ])
     elif literal_value:
         # Use piping to avoid exposing secret in process list
-        # Note: subprocess.run input argument is safer
         subprocess.run(
             [
                 "gcloud", "secrets", "versions", "add", secret_name,
@@ -109,12 +109,11 @@ def main():
     # System Authz Policy
     create_secret(project_id, "system-authz-policy", file_path="deployment/system_authz.rego")
 
-    # Finance Policy (Placeholder/Real)
-    # Check if a specific finance policy exists, else use a default dummy one if not present
+    # Finance Policy
     if os.path.exists("deployment/finance_policy.rego"):
         policy_path = "deployment/finance_policy.rego"
     else:
-        # Create a dummy policy if it doesn't exist to allow deployment to succeed
+        # Create a dummy policy if it doesn't exist
         policy_path = "deployment/finance_policy.rego"
         with open(policy_path, "w") as f:
             f.write("package finance\nallow := true")
@@ -138,17 +137,29 @@ def main():
         print(f"\n--- ⏭️ Skipping Build (Image: {image_uri}) ---")
 
     # 3. Prepare Service YAML
-    print("\n--- 📝 preparing Service Configuration ---")
-    with open("deployment/service.yaml", "r") as f:
-        service_yaml = f.read()
+    print("\n--- 📝 Preparing Service Configuration ---")
 
-    # Replace placeholders
-    # In strict YAML, image fields shouldn't have variables, but we used PROJECT_ID in the file
-    service_yaml = service_yaml.replace("gcr.io/PROJECT_ID/financial-advisor:latest", image_uri)
+    with open("deployment/service.yaml", "r") as f:
+        service_config = yaml.safe_load(f)
+
+    # Update Ingress Image
+    containers = service_config["spec"]["template"]["spec"]["containers"]
+    for container in containers:
+        if container["name"] == "ingress-agent":
+            container["image"] = image_uri
+            break
+
+    # Guarantee Secret Name Consistency
+    volumes = service_config["spec"]["template"]["spec"]["volumes"]
+    for volume in volumes:
+        if volume["name"] == "policy-volume":
+            volume["secret"]["secretName"] = "finance-policy-rego"
+            print("✅ Enforced secretName: finance-policy-rego for policy-volume")
+            break
 
     # Write to temp file
     with tempfile.NamedTemporaryFile(mode='w', suffix=".yaml", delete=False) as temp:
-        temp.write(service_yaml)
+        yaml.dump(service_config, temp)
         temp_path = temp.name
 
     try:
@@ -160,8 +171,6 @@ def main():
             "--project", project_id
         ])
 
-        # 5. Grant Access (Optional - currently public/private based on policy)
-        # Assuming private by default as per design docs, but user can invoke
         print("\n--- ✅ Deployment Complete ---")
         print(f"Service URL: gcloud run services describe {args.service_name} --region {region} --format 'value(status.url)'")
 
