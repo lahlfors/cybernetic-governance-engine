@@ -1,13 +1,40 @@
 package finance
 
-# Default decision is to BLOCK
-default allow = false
+import rego.v1
 
-# Rule 1: Allow if amount is safe and currency is valid
-allow if {
-    # Condition: Amount must be less than or equal to 1,000,000
+# Default output: Deny
+default decision = "DENY"
+
+# Rule: JUNIOR ALLOW
+# Junior bankers can trade up to $5,000 without review.
+decision = "ALLOW" if {
+    input.trader_role == "junior"
+    input.amount <= 5000
+    input.currency != "BTC"
+}
+
+# Rule: SENIOR ALLOW
+# Senior bankers can trade up to $500,000 without review.
+decision = "ALLOW" if {
+    input.trader_role == "senior"
+    input.amount <= 500000
+    input.currency != "BTC"
+}
+
+# Rule: JUNIOR MANUAL REVIEW
+# Junior bankers trigger review between $5,001 and $10,000.
+decision = "MANUAL_REVIEW" if {
+    input.trader_role == "junior"
+    input.amount > 5000
+    input.amount <= 10000
+    input.currency != "BTC"
+}
+
+# Rule: SENIOR MANUAL REVIEW
+# Senior bankers trigger review between $500,001 and $1,000,000.
+decision = "MANUAL_REVIEW" if {
+    input.trader_role == "senior"
+    input.amount > 500000
     input.amount <= 1000000
-
-    # Condition: Currency must NOT be BTC
     input.currency != "BTC"
 }

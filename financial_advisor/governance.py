@@ -2,7 +2,7 @@ import functools
 import logging
 import os
 import requests
-from typing import Any, Dict
+from typing import Any, Dict, Union
 from pydantic import BaseModel
 from opentelemetry import trace
 
@@ -18,11 +18,15 @@ class OPAClient:
     """
     def __init__(self):
         # Default to localhost for standalone testing, but allow override for Docker/Cloud
-        self.url = os.environ.get("OPA_URL", "http://localhost:8181/v1/data/finance/allow")
+        # Pointing to 'decision' rule instead of 'allow'
+        self.url = os.environ.get("OPA_URL", "http://localhost:8181/v1/data/finance/decision")
         # Fetch authentication token if available
         self.auth_token = os.environ.get("OPA_AUTH_TOKEN")
 
-    def check_policy(self, input_data: Dict[str, Any]) -> bool:
+    def evaluate_policy(self, input_data: Dict[str, Any]) -> str:
+        """
+        Evaluates the policy and returns the decision: ALLOW, DENY, or MANUAL_REVIEW.
+        """
         with tracer.start_as_current_span("governance.check") as span:
             span.set_attribute("governance.opa_url", self.url)
             span.set_attribute("governance.action", input_data.get("action", "unknown"))
@@ -41,11 +45,14 @@ class OPAClient:
                 )
                 response.raise_for_status()
 
-                result = response.json().get("result", False)
-                span.set_attribute("governance.decision", "ALLOW" if result else "DENY")
+                # OPA returns {"result": "ALLOW"} or "DENY" etc.
+                result = response.json().get("result", "DENY")
+                span.set_attribute("governance.decision", result)
 
-                if result:
+                if result == "ALLOW":
                     logger.info(f"✅ OPA ALLOWED | Action: {input_data.get('action')}")
+                elif result == "MANUAL_REVIEW":
+                     logger.warning(f"⚠️ OPA MANUAL REVIEW | Action: {input_data.get('action')}")
                 else:
                     logger.warning(f"⛔ OPA DENIED | Action: {input_data.get('action')} | Input: {input_data}")
 
@@ -55,7 +62,12 @@ class OPAClient:
                 logger.critical(f"🔥 OPA FAILURE: Could not connect to policy engine at {self.url}. Error: {e}")
                 span.record_exception(e)
                 span.set_status(trace.Status(trace.StatusCode.ERROR))
-                return False
+                return "DENY"
+
+    # Backward compatibility wrapper if needed (returns bool), but we are refactoring usage.
+    def check_policy(self, input_data: Dict[str, Any]) -> bool:
+         decision = self.evaluate_policy(input_data)
+         return decision == "ALLOW"
 
 # Instantiate the real client
 opa_client = OPAClient()
@@ -83,10 +95,15 @@ def governed_tool(action_name: str):
             payload = model_instance.model_dump()
             payload['action'] = action_name
 
-            if not opa_client.check_policy(payload):
+            decision = opa_client.evaluate_policy(payload)
+
+            if decision == "DENY":
                 return f"BLOCKED: Governance Policy Violation. {model_instance.model_dump()}"
 
-            # 3. Execution
+            if decision == "MANUAL_REVIEW":
+                return "PENDING_HUMAN_REVIEW: Policy triggered Manual Intervention."
+
+            # 3. Execution (ALLOW)
             return func(*args, **kwargs)
         return wrapper
     return decorator
