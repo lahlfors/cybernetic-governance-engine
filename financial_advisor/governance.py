@@ -19,15 +19,26 @@ class OPAClient:
     def __init__(self):
         # Default to localhost for standalone testing, but allow override for Docker/Cloud
         self.url = os.environ.get("OPA_URL", "http://localhost:8181/v1/data/finance/allow")
+        # Fetch authentication token if available
+        self.auth_token = os.environ.get("OPA_AUTH_TOKEN")
 
     def check_policy(self, input_data: Dict[str, Any]) -> bool:
         with tracer.start_as_current_span("governance.check") as span:
             span.set_attribute("governance.opa_url", self.url)
             span.set_attribute("governance.action", input_data.get("action", "unknown"))
 
+            headers = {}
+            if self.auth_token:
+                headers["Authorization"] = f"Bearer {self.auth_token}"
+
             try:
                 # We add a timeout to ensure governance doesn't hang the agent
-                response = requests.post(self.url, json={"input": input_data}, timeout=1.0)
+                response = requests.post(
+                    self.url,
+                    json={"input": input_data},
+                    headers=headers,
+                    timeout=1.0
+                )
                 response.raise_for_status()
 
                 result = response.json().get("result", False)

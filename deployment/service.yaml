@@ -9,6 +9,7 @@ spec:
     metadata:
       annotations:
         run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/startup-cpu-boost: "true"
     spec:
       serviceAccountName: financial-advisor-sa
       containers:
@@ -21,19 +22,29 @@ spec:
             # Point to local sidecar
             - name: OPA_URL
               value: "http://localhost:8181/v1/data/finance/allow"
+            # Auth token for OPA sidecar
+            - name: OPA_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: opa-auth-token
+                  key: latest
           # Wait for OPA to be ready
           dependencies:
             - governance-sidecar
 
         # --- CONTAINER 2: OPA Sidecar ---
         - name: governance-sidecar
-          image: openpolicyagent/opa:latest-static
+          image: openpolicyagent/opa:0.68.0-static
           args:
             - "run"
             - "--server"
             - "--addr=localhost:8181"
+            - "--authentication=token"
+            - "--authorization=basic"
+            - "--set-file=auth_token=/secrets/auth/token"
             - "--config-file=/config/opa_config.yaml"
             - "/policies/finance_policy.rego"
+            - "/policies/system/system_authz.rego"
           # Health check for dependency
           startupProbe:
             httpGet:
@@ -44,8 +55,14 @@ spec:
             - name: policy-volume
               mountPath: /policies
               readOnly: true
+            - name: system-authz-vol
+              mountPath: /policies/system
+              readOnly: true
             - name: opa-config-vol
               mountPath: /config
+              readOnly: true
+            - name: auth-token-vol
+              mountPath: /secrets/auth
               readOnly: true
 
       # --- Volumes ---
@@ -56,9 +73,21 @@ spec:
             items:
               - key: latest
                 path: finance_policy.rego
+        - name: system-authz-vol
+          secret:
+            secretName: system-authz-policy
+            items:
+              - key: latest
+                path: system_authz.rego
         - name: opa-config-vol
           secret:
             secretName: opa-configuration
             items:
               - key: latest
                 path: opa_config.yaml
+        - name: auth-token-vol
+          secret:
+            secretName: opa-auth-token
+            items:
+              - key: latest
+                path: token
