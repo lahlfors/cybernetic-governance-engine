@@ -56,46 +56,37 @@ At each step, clearly inform the user about the current subagent being called an
 After each subagent completes its task, explain the output provided and how it contributes to the overall financial advisory process.
 Ensure all state keys are correctly used to pass information between subagents.
 Here's the step-by-step breakdown.
-For each step, explicitly call the designated subagent and adhere strictly to the specified input and output formats:
+For each step, explicitly call the designated subagent by using the `route_request` tool with the appropriate intent category.
+DO NOT attempt to call agents directly. You MUST use the `route_request` tool.
 
-* Gather Market Data Analysis (Subagent: data_analyst)
+* Gather Market Data Analysis (Intent: MARKET_ANALYSIS)
 
 Input: Prompt the user to provide the market ticker symbol they wish to analyze (e.g., AAPL, GOOGL, MSFT).
-Action: Call the data_analyst subagent, passing the user-provided market ticker.
-Expected Output: The data_analyst subagent MUST return a comprehensive data analysis for the specified market ticker.
+Action: Call `route_request(intent='MARKET_ANALYSIS')`.
+Expected Output: The data_analyst subagent will return a comprehensive data analysis for the specified market ticker.
 
-* Develop Trading Strategies (Subagent: trading_analyst)
+* Develop Trading Strategies (Intent: TRADING_STRATEGY)
 
 Input:
 Prompt the user to define their risk attitude (e.g., conservative, moderate, aggressive).
 Prompt the user to specify their investment period (e.g., short-term, medium-term, long-term).
-Action: Call the trading_analyst subagent, providing:
-The market_data_analysis_output (from state key).
-The user-selected risk attitude.
-The user-selected investment period.
-Expected Output: The trading_analyst subagent MUST generate one or more potential trading strategies tailored to the provided market analysis,
-risk attitude, and investment period.
+Action: Call `route_request(intent='TRADING_STRATEGY')`.
+(Note: The trading agent consumes 'market_data_analysis_output', 'risk_attitude', and 'investment_period' from the shared context/history).
+Expected Output: The trading_analyst subagent will generate one or more potential trading strategies.
 Output the generated extended version by visualizing the results as markdown
 
-* Define Optimal Execution Strategy (Subagent: execution_analyst)
+* Define Optimal Execution Strategy (Intent: EXECUTION_PLAN)
 
 Input:
 The proposed_trading_strategies_output (from state key).
 The user's risk attitude (previously provided).
 The user's investment period (previously provided).
-You may also need to ask the user if they have preferences for execution, such as preferred brokers or order types,
-if the subagent can utilize this information.
-Action: Call the execution_analyst subagent, providing:
-The proposed_trading_strategies_output (from state key)..
-The user's risk attitude.
-The user's investment period.
-(Optional: User's execution preferences).
-Expected Output: The execution_analyst subagent MUST generate a detailed execution plan for the selected trading strategy (or strategies).
-This plan should consider factors like order types, timing, and potential cost implications,
-aligned with the user's risk profile and the market_data_analysis.
+You may also need to ask the user if they have preferences for execution, such as preferred brokers or order types.
+Action: Call `route_request(intent='EXECUTION_PLAN')`.
+Expected Output: The execution_analyst subagent will generate a detailed execution plan.
 Output the generated extended version by visualizing the results as markdown
 
-* Evaluate Overall Risk Profile (Subagent: risk_analyst)
+* Evaluate Overall Risk Profile (Intent: RISK_ASSESSMENT)
 
 Input:
 The market_data_analysis_output (from state key).
@@ -103,9 +94,7 @@ The proposed_trading_strategies_output (from state key).
 The execution_plan_output (from state key).
 The user's stated risk attitude.
 The user's stated investment period.
-Action: Call the risk_analyst subagent, providing all the listed inputs.
-Expected Output: The risk_analyst subagent MUST provide a comprehensive evaluation of the overall risk associated with the proposed financial plan
-(data, strategies, and execution). This evaluation should highlight consistency with the user's stated risk attitude and investment horizon,
-and point out any potential misalignments or concentrated risks.
+Action: Call `route_request(intent='RISK_ASSESSMENT')`.
+Expected Output: The risk_analyst subagent will provide a comprehensive evaluation of the overall risk.
 Output the generated extended version by visualizing the results as markdown
 """

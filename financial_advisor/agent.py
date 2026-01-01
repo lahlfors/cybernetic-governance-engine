@@ -15,7 +15,8 @@
 """Financial coordinator: provide reasonable investment strategies."""
 
 from google.adk.agents import LlmAgent
-from google.adk.tools.agent_tool import AgentTool
+# from google.adk.tools.agent_tool import AgentTool # Removed to enforce HD-MDP
+from .tools.router import route_request
 
 from . import prompt
 from .sub_agents.data_analyst import data_analyst_agent
@@ -37,12 +38,15 @@ financial_coordinator = LlmAgent(
     ),
     instruction=prompt.FINANCIAL_COORDINATOR_PROMPT,
     output_key="financial_coordinator_output",
-    tools=[
-        AgentTool(agent=data_analyst_agent),
-        AgentTool(agent=governed_trading_agent),
-        AgentTool(agent=execution_analyst_agent),
-        AgentTool(agent=risk_analyst_agent),
+    # Explicitly register sub-agents for hierarchy, but do not expose them as tools directly.
+    sub_agents=[
+        data_analyst_agent,
+        governed_trading_agent,
+        execution_analyst_agent,
+        risk_analyst_agent,
     ],
+    # Expose ONLY the deterministic router tool.
+    tools=[route_request],
 )
 
 root_agent = financial_coordinator
