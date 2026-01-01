@@ -1,60 +1,77 @@
-# Cybernetic Governance Implementation
+# Cybernetic Governance of Agentic AI
 
-This repository contains the implementation of the Cybernetic Governance framework for the Financial Advisor agent.
+This repository implements the **Cybernetic Governance** framework, transforming the Financial Advisor agent from a probabilistic LLM application into a deterministic, engineering-controlled system.
 
-## Architecture
+## 1. Theoretical Framework: HD-MDP
+We utilize a **Hierarchical Deterministic Markov Decision Process (HD-MDP)** to solve the "Recursive Paradox" of agent safety (High Variety vs. Low Safety).
 
-The system enforces "Variety Attenuation" through three layers of governance:
+*   **Variety Attenuation:** We use Ashby's Law ($V_R \ge V_A$) to constrain the agent's infinite action space ($V_A$) into a manageable set of states verified by our governance stack ($V_R$).
+*   **Explicit Routing:** Unlike standard "tool-use" agents that probabilistically choose tools, our **Supervisor Agent** uses a deterministic `route_request` tool to transition between states (Market Analysis -> Trading -> Risk). This forms the "hard logic" cage around the probabilistic "soft logic" of the LLM.
 
-1.  **Layer 1 (Syntax):** Pydantic models strictly define tool inputs (`financial_advisor/tools/trades.py`).
-2.  **Layer 2 (Policy):** Open Policy Agent (OPA) evaluates Rego policies to block high-risk actions (`financial_advisor/governance.py`).
-3.  **Layer 3 (Semantics):** A "Verifier" LLM agent reviews the worker's proposed actions before execution (`financial_advisor/sub_agents/governed_trader/`).
+## 2. The Dynamic Risk-Adaptive Stack
 
-## Local Demonstration (PoC)
+The architecture enforces "Defense in Depth" through three distinct layers:
 
-To run the standalone proof-of-concept:
+### Layer 1: The Syntax Trapdoor (Schema)
+**Goal:** Structural Integrity.
+We use strict **Pydantic** models to validate every tool call *before* it reaches the policy engine.
+*   **Implementation:** `financial_advisor/tools/trades.py`
+*   **Features:**
+    *   **UUID Validation:** `transaction_id` must be a valid UUID v4.
+    *   **Regex Validation:** Ticker symbols must match `^[A-Z]{1,5}$`.
+    *   **Role Context:** `trader_role` (Junior/Senior) is enforced in the schema.
 
-1.  Start the OPA server (with production config):
-    ```bash
-    ./opa run --server --config-file=deployment/opa_config.yaml ./governance_poc/finance_policy.rego
-    ```
+### Layer 2: The Policy Engine (RBAC & OPA)
+**Goal:** Authorization & Business Logic.
+We use **Open Policy Agent (OPA)** and **Rego** to decouple policy from code. The system implements a **Tri-State Decision** logic:
+1.  **ALLOW:** Action proceeds automatically.
+2.  **DENY:** Action is hard-blocked.
+3.  **MANUAL_REVIEW:** Action is suspended pending human intervention ("Constructive Friction").
 
-2.  Run the demo script:
-    ```bash
-    python3 governance_poc/real_governance_demo.py
-    ```
+**Role-Based Access Control (RBAC):**
+*   **Junior Trader:** Limit $5,000. Manual Review $5,000 - $10,000.
+*   **Senior Trader:** Limit $500,000. Manual Review $500,000 - $1,000,000.
+*   **Implementation:** `governance_poc/finance_policy.rego`
 
-## Cloud Run Deployment (Sidecar Pattern)
+### Layer 3: The Semantic Verifier (Intent)
+**Goal:** Semantic Safety & Anti-Hallucination.
+A dedicated **Verifier Agent** audits the proposed actions of the "Worker" agent.
+*   **Output:** A structured `RiskPacket` (JSON) containing:
+    *   `risk_score` (1-100)
+    *   `flags` (List of detected risks)
+    *   `decision` (APPROVE, REJECT, ESCALATE)
+*   **Implementation:** `financial_advisor/sub_agents/governed_trader/verifier.py`
 
-This project is designed to run on Google Cloud Run using the multi-container (sidecar) pattern.
+## 3. Implementation Details
+
+### The HD-MDP Router
+The `financial_coordinator` agent does **not** have direct access to sub-agents. It cannot "hallucinate" a call to `governed_trading_agent`.
+Instead, it MUST use the `route_request` tool (`financial_advisor/tools/router.py`), which executes a deterministic `transfer_to_agent` call based on a strict `RouterIntent` Enum.
+
+### Governance Decorator
+The `@governed_tool` decorator (`financial_advisor/governance.py`) intercepts all tool executions.
+1.  Validates Pydantic Schema (Layer 1).
+2.  Queries OPA Sidecar (Layer 2).
+3.  If OPA returns `MANUAL_REVIEW`, it returns a `PENDING_HUMAN_REVIEW` signal to the agent, halting execution.
+
+## 4. Local Development
 
 ### Prerequisites
+*   [Open Policy Agent (OPA)](https://www.openpolicyagent.org/docs/latest/#running-opa) installed.
 
-1.  **Google Cloud Project** with Cloud Run enabled.
-2.  **Secret Manager** enabled.
-
-### Deployment Steps
-
-1.  **Create Secrets:**
-    Upload the Rego policy and OPA configuration to Secret Manager.
+### Running the Stack
+1.  **Start OPA Server:**
     ```bash
-    gcloud secrets create finance-policy-rego --data-file=governance_poc/finance_policy.rego
-    gcloud secrets create opa-configuration --data-file=deployment/opa_config.yaml
+    ./opa run -s -b . --addr :8181
+    ```
+2.  **Run Tests:**
+    ```bash
+    uv run pytest tests/verify_full_stack.py
     ```
 
-2.  **Build the Agent Container:**
-    ```bash
-    gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/financial-advisor:latest .
-    ```
+## 5. Deployment (Cloud Run Sidecar)
 
-3.  **Deploy the Service:**
-    Update `deployment/service.yaml` with your image URL and deploy.
-    ```bash
-    gcloud beta run services replace deployment/service.yaml
-    ```
-
-### Networking
-
-*   **Ingress:** The Agent container listens on port 8080.
-*   **Internal:** The Agent communicates with the OPA sidecar via `localhost:8181`.
-*   **Isolation:** The OPA container is not exposed to the public internet.
+The architecture is designed for Google Cloud Run with OPA as a sidecar container.
+*   **Application Container:** Python/FastAPI agent.
+*   **Sidecar Container:** OPA serving the Rego policy.
+*   **Communication:** Localhost HTTP (Application -> `localhost:8181` -> OPA).
