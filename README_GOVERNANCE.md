@@ -2,15 +2,16 @@
 
 This repository implements the **Cybernetic Governance** framework, transforming the Financial Advisor agent from a probabilistic LLM application into a deterministic, engineering-controlled system.
 
-## 1. Theoretical Framework: HD-MDP
+## 1. Theoretical Framework: HD-MDP & STPA
 We utilize a **Hierarchical Deterministic Markov Decision Process (HD-MDP)** to solve the "Recursive Paradox" of agent safety (High Variety vs. Low Safety).
+We also employ **Systems-Theoretic Process Analysis (STPA)** to identify and mitigate Unsafe Control Actions (UCAs). See [STPA_ANALYSIS.md](STPA_ANALYSIS.md) for the detailed hazard analysis.
 
 *   **Variety Attenuation:** We use Ashby's Law ($V_R \ge V_A$) to constrain the agent's infinite action space ($V_A$) into a manageable set of states verified by our governance stack ($V_R$).
 *   **Explicit Routing:** Unlike standard "tool-use" agents that probabilistically choose tools, our **Supervisor Agent** uses a deterministic `route_request` tool to transition between states (Market Analysis -> Trading -> Risk). This forms the "hard logic" cage around the probabilistic "soft logic" of the LLM.
 
 ## 2. The Dynamic Risk-Adaptive Stack
 
-The architecture enforces "Defense in Depth" through three distinct layers:
+The architecture enforces "Defense in Depth" through four distinct layers:
 
 ### Layer 1: The Syntax Trapdoor (Schema)
 **Goal:** Structural Integrity.
@@ -24,7 +25,7 @@ We use strict **Pydantic** models to validate every tool call *before* it reache
 ### Layer 2: The Policy Engine (RBAC & OPA)
 **Goal:** Authorization & Business Logic.
 We use **Open Policy Agent (OPA)** and **Rego** to decouple policy from code. The system implements a **Tri-State Decision** logic:
-1.  **ALLOW:** Action proceeds automatically.
+1.  **ALLOW:** Action proceeds to next layer.
 2.  **DENY:** Action is hard-blocked.
 3.  **MANUAL_REVIEW:** Action is suspended pending human intervention ("Constructive Friction").
 
@@ -35,14 +36,27 @@ We use **Open Policy Agent (OPA)** and **Rego** to decouple policy from code. Th
 
 ### Layer 3: The Semantic Verifier (Intent)
 **Goal:** Semantic Safety & Anti-Hallucination.
-A dedicated **Verifier Agent** audits the proposed actions of the "Worker" agent.
-*   **Output:** A structured `RiskPacket` (JSON) containing:
-    *   `risk_score` (1-100)
-    *   `flags` (List of detected risks)
-    *   `decision` (APPROVE, REJECT, ESCALATE)
+We implement a **Propose-Verify-Execute** pattern:
+1.  **Worker Agent:** Uses `propose_trade` to draft an action. It *cannot* execute trades.
+2.  **Verifier Agent:** Audits the proposal against the prompt and safety rules.
+    *   **Tool:** `submit_risk_assessment`. Enforces a structured `RiskPacket` schema (Risk Score, Flags, Decision).
+    *   **Execution:** Only the Verifier can call `execute_trade`.
 *   **Implementation:** `financial_advisor/sub_agents/governed_trader/verifier.py`
 
-## 3. Implementation Details
+### Layer 4: The Consensus Engine (Adaptive Compute)
+**Goal:** High-Stakes Validation.
+For actions exceeding a high-risk threshold ($10,000), the system triggers an **Ensemble Check**.
+*   **Mechanism:** The `ConsensusEngine` simulates a voting process (mocked for this sample) to ensure unanimous agreement before execution.
+*   **Integration:** Embedded in the `@governed_tool` decorator. If the consensus check fails, the trade is blocked even if OPA approves.
+*   **Implementation:** `financial_advisor/consensus.py`
+
+## 3. Observability: GenAI Semantics
+We implement **OpenTelemetry** with **GenAI Semantic Conventions** (v1.37+ draft) to ensure full visibility into the "Black Box" of cognition.
+*   **Attributes:** Captures `gen_ai.content.prompt`, `gen_ai.content.completion`, and `gen_ai.tool.name`.
+*   **Spans:** Each cognitive step (Reasoning, Tool Use, Consensus Check) is a distinct span in the trace.
+*   **Implementation:** `financial_advisor/telemetry.py`
+
+## 4. Implementation Details
 
 ### The HD-MDP Router
 The `financial_coordinator` agent does **not** have direct access to sub-agents. It cannot "hallucinate" a call to `governed_trading_agent`.
@@ -52,9 +66,10 @@ Instead, it MUST use the `route_request` tool (`financial_advisor/tools/router.p
 The `@governed_tool` decorator (`financial_advisor/governance.py`) intercepts all tool executions.
 1.  Validates Pydantic Schema (Layer 1).
 2.  Queries OPA Sidecar (Layer 2).
-3.  If OPA returns `MANUAL_REVIEW`, it returns a `PENDING_HUMAN_REVIEW` signal to the agent, halting execution.
+3.  Triggers Consensus Engine if applicable (Layer 4).
+4.  Wraps execution in GenAI Telemetry spans.
 
-## 4. Local Development
+## 5. Local Development
 
 ### Prerequisites
 *   [Open Policy Agent (OPA)](https://www.openpolicyagent.org/docs/latest/#running-opa) installed.
@@ -66,10 +81,10 @@ The `@governed_tool` decorator (`financial_advisor/governance.py`) intercepts al
     ```
 2.  **Run Tests:**
     ```bash
-    uv run pytest tests/verify_full_stack.py
+    uv run python3 -m unittest discover tests
     ```
 
-## 5. Deployment (Cloud Run Sidecar)
+## 6. Deployment (Cloud Run Sidecar)
 
 The architecture is designed for Google Cloud Run with OPA as a sidecar container.
 *   **Application Container:** Python/FastAPI agent.

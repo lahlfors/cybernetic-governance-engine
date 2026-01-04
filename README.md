@@ -6,12 +6,12 @@
 
 The Financial Advisor is a team of specialized AI agents that assists human financial advisors. It has been refactored to use a **Hierarchical Deterministic Markov Decision Process (HD-MDP)** for safety and control.
 
-For details on the security architecture, including **Role-Based Access Control (RBAC)**, **Open Policy Agent (OPA)** integration, and **Semantic Verification**, please read **[README_GOVERNANCE.md](README_GOVERNANCE.md)**.
+For details on the security architecture, including **Role-Based Access Control (RBAC)**, **Open Policy Agent (OPA)** integration, **Semantic Verification**, and **Consensus Engines**, please read **[README_GOVERNANCE.md](README_GOVERNANCE.md)**.
 
 ## Agent Team
 
 1.  **Data Analyst Agent:** Market analysis via Google Search (accessed via Router).
-2.  **Trading Analyst Agent (Governed):** Proposes strategies, subject to **Layer 3 Verification**.
+2.  **Trading Analyst Agent (Governed):** Proposes strategies (Worker), subject to **Layer 3 Verification** (Verifier) and **Layer 4 Consensus**.
 3.  **Execution Agent:** Creates detailed execution plans.
 4.  **Risk Evaluation Agent:** Evaluates overall risk.
 
@@ -53,4 +53,4 @@ This diagram shows the detailed architecture of the agents and tools used to imp
 
 ## Deployment
 
-See [README_GOVERNANCE.md](README_GOVERNANCE.md#5-deployment-cloud-run-sidecar) for Cloud Run Sidecar deployment instructions.
+See [README_GOVERNANCE.md](README_GOVERNANCE.md#6-deployment-cloud-run-sidecar) for Cloud Run Sidecar deployment instructions.
