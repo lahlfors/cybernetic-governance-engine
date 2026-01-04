@@ -5,6 +5,8 @@ import requests
 from typing import Any, Dict, Union
 from pydantic import BaseModel
 from opentelemetry import trace
+from .telemetry import genai_span
+from .consensus import consensus_engine
 
 # Configure logging
 logger = logging.getLogger("GovernanceLayer")
@@ -91,19 +93,30 @@ def governed_tool(action_name: str):
             if not model_instance:
                 return "SYSTEM ERROR: Tool called without structured data schema."
 
-            # 2. Layer 2: Policy Check
             payload = model_instance.model_dump()
             payload['action'] = action_name
 
+            # 2. Layer 2: Policy Check (OPA)
             decision = opa_client.evaluate_policy(payload)
 
             if decision == "DENY":
-                return f"BLOCKED: Governance Policy Violation. {model_instance.model_dump()}"
+                return f"BLOCKED: Governance Policy Violation. {payload}"
 
             if decision == "MANUAL_REVIEW":
                 return "PENDING_HUMAN_REVIEW: Policy triggered Manual Intervention."
 
-            # 3. Execution (ALLOW)
-            return func(*args, **kwargs)
+            # 3. Layer 4: Consensus Check (High Stakes)
+            # Only for execution, not proposal (which is cheap)
+            if action_name == "execute_trade":
+                amount = payload.get("amount", 0)
+                symbol = payload.get("symbol", "UNKNOWN")
+                consensus = consensus_engine.check_consensus(action_name, amount, symbol)
+                if consensus["status"] == "REJECT":
+                     return f"BLOCKED: Consensus Engine Rejected. {consensus['reason']}"
+
+            # 4. Execution (ALLOW)
+            with genai_span(f"tool.execution.{action_name}"):
+                 return func(*args, **kwargs)
+
         return wrapper
     return decorator

@@ -1,5 +1,6 @@
 import logging
 import os
+import contextlib
 from opentelemetry import trace
 from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
 from opentelemetry.sdk.trace import TracerProvider
@@ -9,6 +10,7 @@ from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from google.auth.exceptions import DefaultCredentialsError
 
 logger = logging.getLogger("Telemetry")
+tracer = trace.get_tracer("financial_advisor.genai")
 
 def setup_telemetry(app):
     """
@@ -46,3 +48,27 @@ def setup_telemetry(app):
     if app:
         FastAPIInstrumentor.instrument_app(app)
         logger.info("✅ OpenTelemetry: FastAPI instrumented.")
+
+@contextlib.contextmanager
+def genai_span(name: str, prompt: str = None, model: str = None):
+    """
+    Context manager for GenAI Semantic Conventions (v1.37+ draft).
+    Captures prompt, model, and creates a distinct span.
+    """
+    with tracer.start_as_current_span(name) as span:
+        if prompt:
+            span.set_attribute("gen_ai.content.prompt", prompt)
+        if model:
+            span.set_attribute("gen_ai.request.model", model)
+
+        try:
+            yield span
+        except Exception as e:
+            span.record_exception(e)
+            span.set_status(trace.Status(trace.StatusCode.ERROR))
+            raise
+
+def record_completion(span, completion: str):
+    """Helper to add completion to the current span."""
+    if span:
+        span.set_attribute("gen_ai.content.completion", completion)

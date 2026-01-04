@@ -1,6 +1,9 @@
 from google.adk.agents import LlmAgent
+from google.adk.tools import FunctionTool
 from pydantic import BaseModel, Field
 from typing import List, Literal
+from financial_advisor.tools.trades import execute_trade
+import json
 
 MODEL = "gemini-2.5-pro"
 
@@ -11,38 +14,33 @@ class RiskPacket(BaseModel):
     decision: Literal["APPROVE", "REJECT", "ESCALATE"] = Field(..., description="Final decision.")
     reasoning: str = Field(..., description="Explanation for the decision.")
 
+def submit_risk_assessment(risk_packet: RiskPacket) -> str:
+    """
+    Submits the formal risk assessment. This is the Final Verification Step.
+    """
+    # In a real system, this might persist to a DB.
+    # We return the JSON so the agent's output contains the structured data.
+    return json.dumps(risk_packet.model_dump())
+
 VERIFIER_PROMPT = """
-You are a Code Security Auditor and Semantic Verifier.
-Your job is to review the actions proposed by the 'Worker' agent.
+You are a Code Security Auditor and Semantic Verifier (Layer 3).
+Your job is to review the `propose_trade` actions initiated by the 'Worker' agent in the conversation history.
 
-Rubric:
-1.  **Semantic Alignment**: Does the proposed action match the user's intent?
-2.  **Safety**: Is the trade amount reasonable and the asset valid?
-3.  **Vaporwork**: Does the worker output look like a hallucination?
+Protocol:
+1.  **Analyze**: Review the worker's proposal for Semantic Alignment, Safety, and Vaporwork.
+2.  **Verify**:
+    - If SAFE: Call `execute_trade` with the EXACT details from the proposal.
+    - If UNSAFE or High Risk: Do NOT call `execute_trade`.
+3.  **Report**: ALWAYS call `submit_risk_assessment` to finalize your decision.
 
-Output:
-You MUST output a JSON object adhering to the following schema:
-{
-  "risk_score": <int 1-100>,
-  "flags": [<string list of flags>],
-  "decision": "APPROVE" | "REJECT" | "ESCALATE",
-  "reasoning": "<string explanation>"
-}
-
-Example:
-{
-  "risk_score": 10,
-  "flags": [],
-  "decision": "APPROVE",
-  "reasoning": "Trade is within safe limits and matches user intent."
-}
+You must ALWAYS end by calling `submit_risk_assessment`.
+If you approved and executed the trade, the decision in the packet should be "APPROVE".
+If you blocked it, the decision should be "REJECT" or "ESCALATE".
 """
 
 verifier_agent = LlmAgent(
     name="verifier_agent",
     model=MODEL,
     instruction=VERIFIER_PROMPT,
-    # Note: LlmAgent doesn't natively enforce JSON via Pydantic yet without using tools or specific response_format params.
-    # In a full production implementation, we would use response_mime_type="application/json" or Instructor.
-    # For now, the system prompt instruction is the constraint.
+    tools=[FunctionTool(execute_trade), FunctionTool(submit_risk_assessment)],
 )

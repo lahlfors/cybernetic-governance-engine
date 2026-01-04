@@ -46,6 +46,14 @@ class TradeOrder(BaseModel):
         return v.lower()
 
 
+@governed_tool(action_name="propose_trade")
+def propose_trade(order: TradeOrder) -> str:
+    """
+    Proposes a trade strategy. This does NOT execute the trade.
+    It submits the order for verification and policy checks.
+    """
+    return f"PROPOSAL LOGGED: {order.symbol} {order.amount} {order.currency}. Transaction ID: {order.transaction_id}. Waiting for Verifier."
+
 @governed_tool(action_name="execute_trade")
 def execute_trade(order: TradeOrder) -> str:
     """
