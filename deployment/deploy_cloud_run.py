@@ -110,14 +110,19 @@ def main():
     create_secret(project_id, "system-authz-policy", file_path="deployment/system_authz.rego")
 
     # Finance Policy
-    if os.path.exists("deployment/finance_policy.rego"):
+    # Check governance_poc/ first (source of truth), then deployment/ (fallback)
+    if os.path.exists("governance_poc/finance_policy.rego"):
+        policy_path = "governance_poc/finance_policy.rego"
+    elif os.path.exists("deployment/finance_policy.rego"):
         policy_path = "deployment/finance_policy.rego"
     else:
         # Create a dummy policy if it doesn't exist
+        print("⚠️ Warning: finance_policy.rego not found in governance_poc/ or deployment/. Creating dummy.")
         policy_path = "deployment/finance_policy.rego"
         with open(policy_path, "w") as f:
             f.write("package finance\nallow := true")
 
+    print(f"📄 Using Finance Policy from: {policy_path}")
     create_secret(project_id, "finance-policy-rego", file_path=policy_path)
 
     # OPA Config
