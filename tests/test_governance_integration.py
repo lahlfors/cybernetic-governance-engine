@@ -2,8 +2,13 @@ import unittest
 from unittest.mock import patch
 from financial_advisor.tools.trades import execute_trade, TradeOrder
 import uuid
+from financial_advisor.safety import safety_filter
 
 class TestGovernanceIntegration(unittest.TestCase):
+
+    def setUp(self):
+        # Reset safety filter state to ensure consistent tests
+        safety_filter.current_cash = 100000.0
 
     @patch('financial_advisor.governance.opa_client.evaluate_policy')
     def test_valid_trade_allow(self, mock_evaluate_policy):
@@ -11,18 +16,23 @@ class TestGovernanceIntegration(unittest.TestCase):
         # Mock OPA to allow
         mock_evaluate_policy.return_value = "ALLOW"
 
+        # Reduced amount to $5,000 to satisfy CBF velocity constraints (Gamma=0.5)
+        # Initial: 100k. Trade: 5k. Next: 95k.
+        # h(t)=99k. Req h(t+1)=49.5k. Actual h(t+1)=94k. SAFE.
+        amount = 5000.0
+
         order = TradeOrder(
             transaction_id=str(uuid.uuid4()),
             trader_id="trader_senior",
             trader_role="senior",
             symbol="AAPL",
-            amount=50000.0,
+            amount=amount,
             currency="USD"
         )
         result = execute_trade(order)
         print(f"\n[Valid Trade] Result: {result}")
         self.assertIn("SUCCESS", result)
-        self.assertIn("50000.0", result)
+        self.assertIn(str(amount), result)
 
     @patch('financial_advisor.governance.opa_client.evaluate_policy')
     def test_trade_blocked_deny(self, mock_evaluate_policy):

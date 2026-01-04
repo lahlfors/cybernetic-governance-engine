@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from opentelemetry import trace
 from .telemetry import genai_span
 from .consensus import consensus_engine
+from .safety import safety_filter
 
 # Configure logging
 logger = logging.getLogger("GovernanceLayer")
@@ -105,7 +106,12 @@ def governed_tool(action_name: str):
             if decision == "MANUAL_REVIEW":
                 return "PENDING_HUMAN_REVIEW: Policy triggered Manual Intervention."
 
-            # 3. Layer 4: Consensus Check (High Stakes)
+            # 3. Layer 3.5: Mathematical Safety (CBF) - Integrated before Consensus
+            cbf_result = safety_filter.verify_action(action_name, payload)
+            if cbf_result.startswith("UNSAFE"):
+                 return f"BLOCKED: Mathematical Safety Violation (CBF). {cbf_result}"
+
+            # 4. Layer 4: Consensus Check (High Stakes)
             # Only for execution, not proposal (which is cheap)
             if action_name == "execute_trade":
                 amount = payload.get("amount", 0)
@@ -114,7 +120,10 @@ def governed_tool(action_name: str):
                 if consensus["status"] == "REJECT":
                      return f"BLOCKED: Consensus Engine Rejected. {consensus['reason']}"
 
-            # 4. Execution (ALLOW)
+                # If we pass all checks, update the safety state (Simulation)
+                safety_filter.update_state(amount)
+
+            # 5. Execution (ALLOW)
             with genai_span(f"tool.execution.{action_name}"):
                  return func(*args, **kwargs)
 

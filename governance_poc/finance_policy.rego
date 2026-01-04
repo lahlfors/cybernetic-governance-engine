@@ -5,6 +5,17 @@ import rego.v1
 # Default output: Deny
 default decision = "DENY"
 
+# --- Basic Access Control (RBAC) ---
+# Ensure only valid roles are even considered.
+allowed_roles := {"junior", "senior"}
+
+# Rule: Deny if role is unknown (Implicitly handled by default, but explicit for clarity)
+decision = "DENY" if {
+    not input.trader_role in allowed_roles
+}
+
+# --- Risk Limits ---
+
 # Rule: JUNIOR ALLOW
 # Junior bankers can trade up to $5,000 without review.
 decision = "ALLOW" if {
