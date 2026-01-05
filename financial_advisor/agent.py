@@ -17,6 +17,7 @@
 from google.adk.agents import LlmAgent
 # from google.adk.tools.agent_tool import AgentTool # Removed to enforce HD-MDP
 from .tools.router import route_request
+from .nemo_manager import create_nemo_manager
 
 from . import prompt
 from .sub_agents.data_analyst import data_analyst_agent
@@ -27,7 +28,7 @@ from .sub_agents.risk_analyst import risk_analyst_agent
 MODEL = "gemini-2.5-pro"
 
 
-financial_coordinator = LlmAgent(
+_financial_coordinator = LlmAgent(
     name="financial_coordinator",
     model=MODEL,
     description=(
@@ -48,5 +49,33 @@ financial_coordinator = LlmAgent(
     # Expose ONLY the deterministic router tool.
     tools=[route_request],
 )
+
+
+class GovernedAgent:
+    """
+    Wraps the LlmAgent with NeMo Guardrails.
+    """
+
+    def __init__(self, agent):
+        self.agent = agent
+        try:
+            self.rails = create_nemo_manager()
+            self.rails_active = True
+        except Exception as e:
+            print(f"Warning: Failed to initialize NeMo Guardrails: {e}")
+            self.rails_active = False
+
+    def __call__(self, prompt: str):
+        # TODO: Implement full rails generation loop
+        # For now, acts as a pass-through to ensure the agent still works
+        # while rails are being configured.
+        return self.agent(prompt)
+
+    def __getattr__(self, name):
+        """Proxy attribute access to the underlying agent."""
+        return getattr(self.agent, name)
+
+
+financial_coordinator = GovernedAgent(_financial_coordinator)
 
 root_agent = financial_coordinator
