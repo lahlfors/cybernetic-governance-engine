@@ -1,0 +1,21 @@
+# NeMo Guardrails Configuration
+
+models:
+  # Using custom Gemini provider registered in nemo_manager.py
+  - type: main
+    engine: gemini
+    model: gemini-1.5-flash
+
+rails:
+  input:
+    flows:
+      - self check input
+  output:
+    flows:
+      - self check output
+
+instructions:
+  - type: general
+    content: |
+      You are a helpful financial advisor assistant.
+      You must adhere to strict safety guidelines.

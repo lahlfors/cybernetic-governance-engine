@@ -15,6 +15,7 @@
 """Risk Analysis Agent for providing the final risk evaluation"""
 
 from google.adk import Agent
+from google.adk.tools import transfer_to_agent
 
 from . import prompt
 
@@ -25,4 +26,5 @@ risk_analyst_agent = Agent(
     name="risk_analyst_agent",
     instruction=prompt.RISK_ANALYST_PROMPT,
     output_key="final_risk_assessment_output",
+    tools=[transfer_to_agent],
 )

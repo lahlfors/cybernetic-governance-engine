@@ -15,18 +15,52 @@
 """Financial coordinator: provide reasonable investment strategies."""
 
 from google.adk.agents import LlmAgent
-from google.adk.tools.agent_tool import AgentTool
+# from google.adk.tools.agent_tool import AgentTool # Removed to enforce HD-MDP
+from .tools.router import route_request
+from .nemo_manager import create_nemo_manager
+from .telemetry import configure_telemetry
+
+# Initialize GCP observability (logging and tracing)
+configure_telemetry()
 
 from . import prompt
 from .sub_agents.data_analyst import data_analyst_agent
 from .sub_agents.execution_analyst import execution_analyst_agent
+from .sub_agents.governed_trader.agent import governed_trading_agent
 from .sub_agents.risk_analyst import risk_analyst_agent
-from .sub_agents.trading_analyst import trading_analyst_agent
 
 MODEL = "gemini-2.5-pro"
 
 
-financial_coordinator = LlmAgent(
+class GovernedLlmAgent(LlmAgent):
+    """
+    Extension of LlmAgent that includes NeMo Guardrails.
+    """
+    _rails: object = None
+    _rails_active: bool = False
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        try:
+            self._rails = create_nemo_manager()
+            self._rails_active = True
+        except Exception as e:
+            print(f"Warning: Failed to initialize NeMo Guardrails: {e}")
+            self._rails_active = False
+
+    def __call__(self, prompt: str):
+        # TODO: Implement full rails generation loop
+        # For now, acts as a pass-through to ensure the agent still works
+        # while rails are being configured.
+
+        # Example of where rails logic would go:
+        # if self._rails_active:
+        #     res = self._rails.generate(messages=[...])
+
+        return super().__call__(prompt)
+
+
+financial_coordinator = GovernedLlmAgent(
     name="financial_coordinator",
     model=MODEL,
     description=(
@@ -37,12 +71,15 @@ financial_coordinator = LlmAgent(
     ),
     instruction=prompt.FINANCIAL_COORDINATOR_PROMPT,
     output_key="financial_coordinator_output",
-    tools=[
-        AgentTool(agent=data_analyst_agent),
-        AgentTool(agent=trading_analyst_agent),
-        AgentTool(agent=execution_analyst_agent),
-        AgentTool(agent=risk_analyst_agent),
+    # Explicitly register sub-agents for hierarchy, but do not expose them as tools directly.
+    sub_agents=[
+        data_analyst_agent,
+        governed_trading_agent,
+        execution_analyst_agent,
+        risk_analyst_agent,
     ],
+    # Expose ONLY the deterministic router tool.
+    tools=[route_request],
 )
 
 root_agent = financial_coordinator

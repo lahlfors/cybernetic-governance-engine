@@ -15,6 +15,7 @@
 """Execution_analyst_agent for finding the ideal execution strategy"""
 
 from google.adk import Agent
+from google.adk.tools import transfer_to_agent
 
 from . import prompt
 
@@ -25,4 +26,5 @@ execution_analyst_agent = Agent(
     name="execution_analyst_agent",
     instruction=prompt.EXECUTION_ANALYST_PROMPT,
     output_key="execution_plan_output",
+    tools=[transfer_to_agent],
 )
