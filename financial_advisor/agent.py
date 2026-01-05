@@ -28,7 +28,35 @@ from .sub_agents.risk_analyst import risk_analyst_agent
 MODEL = "gemini-2.5-pro"
 
 
-_financial_coordinator = LlmAgent(
+class GovernedLlmAgent(LlmAgent):
+    """
+    Extension of LlmAgent that includes NeMo Guardrails.
+    """
+    _rails: object = None
+    _rails_active: bool = False
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        try:
+            self._rails = create_nemo_manager()
+            self._rails_active = True
+        except Exception as e:
+            print(f"Warning: Failed to initialize NeMo Guardrails: {e}")
+            self._rails_active = False
+
+    def __call__(self, prompt: str):
+        # TODO: Implement full rails generation loop
+        # For now, acts as a pass-through to ensure the agent still works
+        # while rails are being configured.
+
+        # Example of where rails logic would go:
+        # if self._rails_active:
+        #     res = self._rails.generate(messages=[...])
+
+        return super().__call__(prompt)
+
+
+financial_coordinator = GovernedLlmAgent(
     name="financial_coordinator",
     model=MODEL,
     description=(
@@ -49,33 +77,5 @@ _financial_coordinator = LlmAgent(
     # Expose ONLY the deterministic router tool.
     tools=[route_request],
 )
-
-
-class GovernedAgent:
-    """
-    Wraps the LlmAgent with NeMo Guardrails.
-    """
-
-    def __init__(self, agent):
-        self.agent = agent
-        try:
-            self.rails = create_nemo_manager()
-            self.rails_active = True
-        except Exception as e:
-            print(f"Warning: Failed to initialize NeMo Guardrails: {e}")
-            self.rails_active = False
-
-    def __call__(self, prompt: str):
-        # TODO: Implement full rails generation loop
-        # For now, acts as a pass-through to ensure the agent still works
-        # while rails are being configured.
-        return self.agent(prompt)
-
-    def __getattr__(self, name):
-        """Proxy attribute access to the underlying agent."""
-        return getattr(self.agent, name)
-
-
-financial_coordinator = GovernedAgent(_financial_coordinator)
 
 root_agent = financial_coordinator

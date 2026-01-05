@@ -15,6 +15,7 @@ dependencies = [
     "opentelemetry-instrumentation-requests>=0.58b0",
     "nemoguardrails>=0.17.0",
     "nest-asyncio>=1.6.0",
+    "langchain-openai>=0.3.35",
 ]
 
 requires-python = ">=3.10,<3.13"
