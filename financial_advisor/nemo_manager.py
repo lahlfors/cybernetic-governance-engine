@@ -1,13 +1,62 @@
 """
-Factory for creating NeMo Guardrails manager.
+Factory for creating NeMo Guardrails manager with custom Gemini support.
 """
 import os
 import nest_asyncio
 from nemoguardrails import LLMRails, RailsConfig
+from nemoguardrails.llm.providers import register_llm_provider
+from langchain_core.language_models.llms import LLM
+from langchain_google_genai import ChatGoogleGenerativeAI
+from typing import Any, List, Optional
+
+
+class GeminiLLM(LLM):
+    """Custom LangChain-compatible wrapper for Google Gemini using google-genai."""
+    
+    model: str = "gemini-1.5-flash"
+    
+    @property
+    def _llm_type(self) -> str:
+        return "gemini"
+    
+    def _call(self, prompt: str, stop: Optional[List[str]] = None, **kwargs: Any) -> str:
+        """Call the Gemini model."""
+        try:
+            # Use LangChain's Google Generative AI integration
+            llm = ChatGoogleGenerativeAI(
+                model=self.model,
+                convert_system_message_to_human=True,
+            )
+            response = llm.invoke(prompt)
+            return response.content
+        except Exception as e:
+            return f"Error calling Gemini: {e}"
+    
+    async def _acall(self, prompt: str, stop: Optional[List[str]] = None, **kwargs: Any) -> str:
+        """Async call to the Gemini model."""
+        try:
+            llm = ChatGoogleGenerativeAI(
+                model=self.model,
+                convert_system_message_to_human=True,
+            )
+            response = await llm.ainvoke(prompt)
+            return response.content
+        except Exception as e:
+            return f"Error calling Gemini: {e}"
+    
+    @property
+    def _identifying_params(self) -> dict:
+        return {"model": self.model}
+
+
+def _get_gemini_llm(model_name: str, **kwargs) -> GeminiLLM:
+    """Factory function for creating Gemini LLM instances."""
+    return GeminiLLM(model=model_name)
+
 
 def create_nemo_manager(config_path: str = "financial_advisor/rails_config") -> LLMRails:
     """
-    Creates and initializes a NeMo Guardrails manager.
+    Creates and initializes a NeMo Guardrails manager with Gemini support.
 
     Args:
         config_path: Path to the guardrails configuration directory.
@@ -21,6 +70,9 @@ def create_nemo_manager(config_path: str = "financial_advisor/rails_config") -> 
         nest_asyncio.apply()
     except Exception:
         pass
+
+    # Register custom Gemini provider - pass the class directly, not a factory
+    register_llm_provider("gemini", GeminiLLM)
 
     # Resolve config path
     if not os.path.exists(config_path):
@@ -41,3 +93,4 @@ def create_nemo_manager(config_path: str = "financial_advisor/rails_config") -> 
     config = RailsConfig.from_path(config_path)
     rails = LLMRails(config)
     return rails
+

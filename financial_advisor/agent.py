@@ -18,6 +18,10 @@ from google.adk.agents import LlmAgent
 # from google.adk.tools.agent_tool import AgentTool # Removed to enforce HD-MDP
 from .tools.router import route_request
 from .nemo_manager import create_nemo_manager
+from .telemetry import configure_telemetry
+
+# Initialize GCP observability (logging and tracing)
+configure_telemetry()
 
 from . import prompt
 from .sub_agents.data_analyst import data_analyst_agent

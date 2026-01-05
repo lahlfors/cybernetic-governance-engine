@@ -15,16 +15,23 @@
 """data_analyst_agent for finding information using google search"""
 
 from google.adk import Agent
-from google.adk.tools import google_search
+from google.adk.tools.google_search_agent_tool import GoogleSearchAgentTool, create_google_search_agent
+from google.adk.tools import transfer_to_agent
 
 from . import prompt
 
 MODEL = "gemini-2.5-pro"
+
+# Create a dedicated search agent and wrap it as a tool
+# This isolates the Google Search Retrieval tool to prevent conflicts with other function tools.
+search_agent = create_google_search_agent(model=MODEL)
+google_search_tool = GoogleSearchAgentTool(agent=search_agent)
 
 data_analyst_agent = Agent(
     model=MODEL,
     name="data_analyst_agent",
     instruction=prompt.DATA_ANALYST_PROMPT,
     output_key="market_data_analysis_output",
-    tools=[google_search],
+    tools=[google_search_tool, transfer_to_agent],
 )
+

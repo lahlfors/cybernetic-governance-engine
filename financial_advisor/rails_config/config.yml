@@ -1,14 +1,10 @@
 # NeMo Guardrails Configuration
 
 models:
-  # For this specific setup, the "main" model is the ADK agent itself in a wrapping pattern.
-  # However, NeMo requires a model config or a dummy model to operate if we use `rails.generate`.
-  # If we use `rails.generate(messages=[...])` and want it to call our agent,
-  # we usually define a custom action.
-  # But for simplicity, we define a dummy model or assume the environment has one.
+  # Using custom Gemini provider registered in nemo_manager.py
   - type: main
-    engine: openai
-    model: gpt-3.5-turbo # Placeholder - we won't actually call this if we intercept correctly or use local actions.
+    engine: gemini
+    model: gemini-1.5-flash
 
 rails:
   input:

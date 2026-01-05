@@ -64,6 +64,8 @@ DO NOT attempt to call agents directly. You MUST use the `route_request` tool.
 Input: Prompt the user to provide the market ticker symbol they wish to analyze (e.g., AAPL, GOOGL, MSFT).
 Action: Call `route_request(intent='MARKET_ANALYSIS')`.
 Expected Output: The data_analyst subagent will return a comprehensive data analysis for the specified market ticker.
+**AFTER THIS STEP COMPLETES, ASK:** "I have completed the market analysis. Would you like me to develop trading strategies based on this data?"
+If the user agrees, **automatically proceed** to the next step (TRADING_STRATEGY).
 
 * Develop Trading Strategies (Intent: TRADING_STRATEGY)
 
@@ -74,6 +76,8 @@ Action: Call `route_request(intent='TRADING_STRATEGY')`.
 (Note: The trading agent consumes 'market_data_analysis_output', 'risk_attitude', and 'investment_period' from the shared context/history).
 Expected Output: The trading_analyst subagent will generate one or more potential trading strategies.
 Output the generated extended version by visualizing the results as markdown
+**AFTER THIS STEP COMPLETES, ASK:** "Trading strategies are ready. Would you like me to develop an execution plan?"
+If the user agrees, **automatically proceed** to the next step (EXECUTION_PLAN).
 
 * Define Optimal Execution Strategy (Intent: EXECUTION_PLAN)
 
@@ -85,6 +89,8 @@ You may also need to ask the user if they have preferences for execution, such a
 Action: Call `route_request(intent='EXECUTION_PLAN')`.
 Expected Output: The execution_analyst subagent will generate a detailed execution plan.
 Output the generated extended version by visualizing the results as markdown
+**AFTER THIS STEP COMPLETES, ASK:** "Execution plan is ready. Would you like me to evaluate the overall risk profile?"
+If the user agrees, **automatically proceed** to the next step (RISK_ASSESSMENT).
 
 * Evaluate Overall Risk Profile (Intent: RISK_ASSESSMENT)
 
@@ -97,4 +103,11 @@ The user's stated investment period.
 Action: Call `route_request(intent='RISK_ASSESSMENT')`.
 Expected Output: The risk_analyst subagent will provide a comprehensive evaluation of the overall risk.
 Output the generated extended version by visualizing the results as markdown
+
+CRITICAL INSTRUCTION:
+IMMEDIATELY after the 'RISK_ASSESSMENT' step is completed and the report is shown to the user, you MUST explicitly ASK:
+"Now that you have the full risk profile, would you like to execute any of these strategies?"
+
+If the user agrees to execute (e.g., "Yes", "Execute strategy 1"), you MUST route them to execute:
+Call `route_request(intent='TRADING_STRATEGY')`.
 """

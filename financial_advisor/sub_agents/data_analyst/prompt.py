@@ -85,4 +85,6 @@ The data_analyst must return a single, comprehensive report object or string wit
      * **Author (if available):** [Author's Name]
      * **Date Published:** [Publication Date of Article]
      * **Brief Relevance:** (1-2 sentences on why this source was key to the analysis)
+
+IMMEDIATELY AFTER generating this report, you MUST call `transfer_to_agent("financial_coordinator")` to return control to the main agent.
 """

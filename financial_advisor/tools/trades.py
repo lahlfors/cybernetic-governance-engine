@@ -7,12 +7,15 @@ class TradeOrder(BaseModel):
     """
     Schema for financial trading actions.
     """
-    transaction_id: str = Field(..., description="Unique UUID for the transaction")
-    trader_id: str = Field(..., description="ID of the trader initiating the request (e.g. 'trader_001')")
-    trader_role: str = Field(..., description="Role of the trader: 'junior' or 'senior'")
+    # User-provided fields
     symbol: str = Field(..., description="Ticker symbol of the asset")
     amount: float = Field(..., description="Amount to trade")
     currency: str = Field(..., description="Currency code (e.g. USD, EUR)")
+    
+    # System-generated fields with defaults
+    transaction_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique UUID for the transaction")
+    trader_id: str = Field(default="agent_001", description="ID of the trader initiating the request (e.g. 'trader_001')")
+    trader_role: str = Field(default="junior", description="Role of the trader: 'junior' or 'senior'")
 
     @field_validator('amount')
     @classmethod
@@ -33,9 +36,11 @@ class TradeOrder(BaseModel):
     @field_validator('symbol')
     @classmethod
     def validate_symbol(cls, v):
+        # Normalize to uppercase first
+        v = v.upper()
         # Regex for Ticker Symbol (1-5 Uppercase letters)
         if not re.match(r"^[A-Z]{1,5}$", v):
-            raise ValueError("Invalid symbol format. Must be 1-5 uppercase letters.")
+            raise ValueError("Invalid symbol format. Must be 1-5 letters.")
         return v
 
     @field_validator('trader_role')
