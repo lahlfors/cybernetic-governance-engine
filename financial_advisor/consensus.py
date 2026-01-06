@@ -34,6 +34,7 @@ class ConsensusEngine:
             Your job is to identify high-risk or irregular activity.
             If the trade looks reasonable for a standard portfolio, say 'APPROVE'.
             If it looks suspicious, reckless, or undefined, say 'REJECT'.
+            If the trade is legitimate but requires human verification (e.g., large withdrawals, complex life events), say 'ESCALATE'.
 
             Format: [DECISION] - [Reason]
             Example: APPROVE - Standard equity purchase.
@@ -46,6 +47,8 @@ class ConsensusEngine:
                 return "APPROVE"
             elif "REJECT" in content:
                 return "REJECT"
+            elif "ESCALATE" in content:
+                return "ESCALATE"
             else:
                 return "ESCALATE (Unclear)"
 
@@ -73,13 +76,19 @@ class ConsensusEngine:
 
             votes = [vote1, vote2]
 
-            # Consensus Rule: Unanimous Approval Required
-            if all(v == "APPROVE" for v in votes):
+            # Consensus Rule: REJECT > ESCALATE > APPROVE
+            if any(v == "REJECT" for v in votes):
+                decision = "REJECT"
+                reason = f"Blocked by at least one critic. Votes: {votes}"
+            elif any(v == "ESCALATE" or "ESCALATE" in v for v in votes):
+                decision = "ESCALATE"
+                reason = f"Escalated for human review. Votes: {votes}"
+            elif all(v == "APPROVE" for v in votes):
                 decision = "APPROVE"
                 reason = "Unanimous approval from Risk and Compliance."
             else:
-                decision = "REJECT"
-                reason = f"Consensus failed. Votes: {votes}"
+                decision = "ESCALATE"
+                reason = f"Consensus unclear. Votes: {votes}"
 
             span.set_attribute("consensus.decision", decision)
             span.set_attribute("consensus.votes", str(votes))
