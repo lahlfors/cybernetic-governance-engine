@@ -1,81 +1,78 @@
 import logging
 from typing import Dict, Any, Optional
+from financial_advisor.infrastructure.redis_client import redis_client
 
 logger = logging.getLogger("SafetyLayer")
 
 class ControlBarrierFunction:
     """
-    Implements a discrete-time Control Barrier Function (CBF) to enforce set invariance.
+    Implements a discrete-time Control Barrier Function (CBF).
 
-    Mathematical Safety Condition:
-    h(x_{t+1}) >= (1 - gamma) * h(x_t)
-
-    Where:
-    - h(x): Safety function. Safe if h(x) >= 0.
-    - gamma: Decay rate (0 < gamma <= 1). Determines how fast we can approach the boundary.
+    CRITICAL: Uses Redis for state persistence.
+    In Cloud Run (Stateless), local variables reset on every request.
+    We MUST fetch `current_cash` from Redis for every verification.
     """
 
     def __init__(self, min_cash_balance: float = 1000.0, gamma: float = 0.5):
         self.min_cash_balance = min_cash_balance
         self.gamma = gamma
-        # In a real system, this state would be fetched from a DB or Portfolio Service.
-        # Here we maintain a simulated local state for the agent session.
-        self.current_cash = 100000.0 # Initial safe state
+        self.redis_key = "safety:current_cash"
+
+        # Bootstrap state if empty (e.g. first run)
+        if redis_client.get(self.redis_key) is None:
+            redis_client.set(self.redis_key, "100000.0")
+
+    def _get_current_cash(self) -> float:
+        return redis_client.get_float(self.redis_key, 100000.0)
 
     def get_h(self, cash_balance: float) -> float:
         """
-        Calculates the safety value h(x).
-        h(x) = Current Cash - Minimum Required Cash
-        Safe Set: {x | h(x) >= 0}
+        Safety Function h(x). Safe if h(x) >= 0.
         """
         return cash_balance - self.min_cash_balance
 
     def verify_action(self, action_name: str, payload: Dict[str, Any]) -> str:
         """
-        Simulates the next state x_{t+1} given the action and checks the CBF condition.
-        Returns "SAFE" or "UNSAFE".
+        Verifies if the action is safe relative to the *shared* state in Redis.
         """
-        # We only care about actions that reduce cash (BUY orders)
-        # Assuming payload has 'amount' and 'symbol'
+        # 1. Fetch State (Hot Path)
+        current_cash = self._get_current_cash()
 
-        # NOTE: In a real implementation, we'd need current price to calculate cost.
-        # For this simulation, we assume 'amount' is the approximate cash cost
-        # OR we simplified the TradeOrder to be "amount of cash to spend".
-        # Looking at TradeOrder schema, 'amount' is "Amount to trade".
-        # Let's assume for this safety check that 'amount' is the DOLLAR VALUE
-        # (or we interpret it conservatively as such for the simulation).
-
+        # 2. Calculate Next State
         cost = 0.0
         if action_name == "execute_trade":
-            # Heuristic: Check if it's a "BUY" (Spending cash)
-            # The current TradeOrder doesn't specify Buy/Sell explicitly,
-            # but usually 'execute_trade' implies entering a position in this simple agent.
-            # Let's assume worst case: it consumes cash.
+            # Assuming 'amount' is cash cost for this safety check
             cost = payload.get("amount", 0.0)
 
-        next_cash = self.current_cash - cost
+        next_cash = current_cash - cost
 
-        h_t = self.get_h(self.current_cash)
+        # 3. Calculate Barrier
+        h_t = self.get_h(current_cash)
         h_next = self.get_h(next_cash)
-
-        # Barrier Condition: h(x_{t+1}) - (1 - gamma) * h(x_t) >= 0
         required_h_next = (1.0 - self.gamma) * h_t
 
-        logger.info(f"🛡️ CBF Check | Current Cash: {self.current_cash} | Cost: {cost} | Next Cash: {next_cash}")
-        logger.info(f"   h(t): {h_t} | h(t+1): {h_next} | Required h(t+1): {required_h_next}")
+        print(f"DEBUG: Cash: {current_cash} -> {next_cash}")
+        print(f"DEBUG: h(t): {h_t}, h(next): {h_next}, required: {required_h_next}")
+        print(f"DEBUG: Gamma: {self.gamma}")
 
+        logger.info(f"🛡️ CBF Check | Cash: {current_cash} -> {next_cash}")
+
+        # 4. Verify Condition: h(next) >= (1-gamma) * h(current)
         if h_next >= required_h_next and h_next >= 0:
-            # Commit the state change (simulated) if we are allowing it
-            # In a real app, this update happens after execution, but for a
-            # pre-execution filter, we predict the state.
-            # To avoid drift, we'd sync this with the real DB.
             return "SAFE"
 
-        return f"UNSAFE: Control Barrier Function violation. h(next)={h_next} < threshold={required_h_next}"
+        return f"UNSAFE: CBF violation. h(next)={h_next} < threshold={required_h_next}"
 
     def update_state(self, cost: float):
-        """Updates the internal state after a successful execution."""
-        self.current_cash -= cost
+        """
+        Commits the new state to Redis after successful execution.
+        """
+        # Note: In high-concurrency production, use Redis transactions (WATCH/MULTI).
+        # For this implementation, simple SET is used.
+        current = self._get_current_cash()
+        new_balance = current - cost
+        redis_client.set(self.redis_key, str(new_balance))
+        logger.info(f"✅ State Updated: Cash balance is now {new_balance}")
 
 # Global instance
 safety_filter = ControlBarrierFunction()

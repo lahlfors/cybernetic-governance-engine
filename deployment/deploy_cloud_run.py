@@ -94,6 +94,12 @@ def main():
     parser.add_argument("--region", default="us-central1", help="Cloud Run Region")
     parser.add_argument("--service-name", default="governed-financial-advisor", help="Cloud Run Service Name")
     parser.add_argument("--skip-build", action="store_true", help="Skip image build step")
+
+    # New Arguments for Memory and Redis
+    parser.add_argument("--agent-engine-id", help="Vertex AI Agent Engine ID")
+    parser.add_argument("--redis-host", default="localhost", help="Redis Host")
+    parser.add_argument("--redis-port", default="6379", help="Redis Port")
+
     args = parser.parse_args()
 
     project_id = args.project_id
@@ -147,11 +153,32 @@ def main():
     with open("deployment/service.yaml", "r") as f:
         service_config = yaml.safe_load(f)
 
-    # Update Ingress Image
+    # Update Ingress Image and Inject Environment Variables
     containers = service_config["spec"]["template"]["spec"]["containers"]
     for container in containers:
         if container["name"] == "ingress-agent":
             container["image"] = image_uri
+
+            # Environment Variables Injection
+            env = container.setdefault("env", [])
+
+            def add_env(k, v):
+                # Update existing if present, else append
+                for item in env:
+                    if item["name"] == k:
+                        item["value"] = str(v)
+                        return
+                env.append({"name": k, "value": str(v)})
+
+            if args.agent_engine_id:
+                add_env("AGENT_ENGINE_ID", args.agent_engine_id)
+
+            add_env("REDIS_HOST", args.redis_host)
+            add_env("REDIS_PORT", args.redis_port)
+            add_env("GOOGLE_CLOUD_PROJECT", project_id)
+            add_env("GOOGLE_CLOUD_LOCATION", region)
+
+            print(f"✅ Injected Envs: AGENT_ENGINE_ID={args.agent_engine_id}, REDIS_HOST={args.redis_host}")
             break
 
     # Guarantee Secret Name Consistency
