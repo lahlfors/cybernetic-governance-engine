@@ -124,7 +124,16 @@ We implement this via Chain-of-Verification (CoVe) and Multi-Agent Debate.
 Chain-of-Verification (CoVe): The agent generates a baseline response, then plans a set of verification questions (e.g., "Did I cite a real statute?"), answers them independently (to avoid context bias), and finally synthesizes a corrected response. This "self-correction" loop significantly reduces hallucinations by forcing the model to check its own work.
 Multi-Agent Debate: A "Critic" agent (prompted to be skeptical) reviews the "Actor" agent's proposal. Execution proceeds only if the Critic signs off. Research demonstrates that scaling the number of verifiers or "aspect verifiers" (agents checking specific properties like math or logic) significantly improves reliability, creating a "jury" system for AI decisions that is more robust than any single model.
 
-Layer 5: Ephemeral Isolation (The Physics Layer)
+Layer 5: Human-in-the-Loop (The Escalation Layer)
+Technique: Constructive Friction
+Concept: Meaningful Human Control in the "Grey Zone"
+
+This layer handles the "Grey Zone"—scenarios where an action is syntactically valid and policy-compliant, but contextually ambiguous or highly consequential. Instead of a binary "Computer Says No," the system implements "Escalation as a Fallback."
+
+*   **Constructive Friction:** When the Consensus Engine (Layer 4) returns an "ESCALATE" vote (e.g., for complex life events or borderline risk scores), the system halts autonomous execution.
+*   **Routing:** The request is routed to a human queue (simulated or real). This ensures that "Meaningful Human Control" is preserved not by slowing down every action, but by selectively elevating only those that require human judgment.
+
+Layer 6: Ephemeral Isolation (The Physics Layer)
 Technique: Micro-Virtualization (Sandboxing)
 Concept: Blast Radius Containment
 

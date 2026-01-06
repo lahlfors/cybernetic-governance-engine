@@ -50,6 +50,13 @@ For actions exceeding a high-risk threshold ($10,000), the system triggers an **
 *   **Integration:** Embedded in the `@governed_tool` decorator. If the consensus check fails, the trade is blocked even if OPA approves.
 *   **Implementation:** `financial_advisor/consensus.py`
 
+### Layer 5: Human-in-the-Loop (Escalation)
+**Goal:** The Grey Zone & Constructive Friction.
+When the Consensus Engine encounters ambiguous scenarios (e.g., complex life events, borderline risk), it returns an `ESCALATE` vote instead of a hard `REJECT`.
+*   **Mechanism:** The system halts execution and returns a `MANUAL_REVIEW` status.
+*   **Concept:** This implements "Escalation as a Fallback," ensuring that the automated system has a fail-safe path to human judgment for "Grey Zone" decisions.
+*   **Implementation:** `financial_advisor/consensus.py` (Vote Logic) & `financial_advisor/governance.py` (Routing).
+
 ## 3. Observability: GenAI Semantics
 We implement **OpenTelemetry** with **GenAI Semantic Conventions** (v1.37+ draft) to ensure full visibility into the "Black Box" of cognition.
 *   **Attributes:** Captures `gen_ai.content.prompt`, `gen_ai.content.completion`, and `gen_ai.tool.name`.
