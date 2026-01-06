@@ -51,10 +51,6 @@ class ControlBarrierFunction:
         h_next = self.get_h(next_cash)
         required_h_next = (1.0 - self.gamma) * h_t
 
-        print(f"DEBUG: Cash: {current_cash} -> {next_cash}")
-        print(f"DEBUG: h(t): {h_t}, h(next): {h_next}, required: {required_h_next}")
-        print(f"DEBUG: Gamma: {self.gamma}")
-
         logger.info(f"🛡️ CBF Check | Cash: {current_cash} -> {next_cash}")
 
         # 4. Verify Condition: h(next) >= (1-gamma) * h(current)

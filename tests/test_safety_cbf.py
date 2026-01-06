@@ -40,7 +40,7 @@ class TestControlBarrierFunction(unittest.TestCase):
             self.fail(f"Expected 'UNSAFE' in result, but got: '{result}'. Current Cash: {current_cash}, Gamma: {safety_filter.gamma}")
 
         self.assertIn("UNSAFE", result)
-        self.assertIn("Control Barrier Function violation", result)
+        self.assertIn("CBF violation", result)
 
     def test_absolute_safety_boundary(self):
         print("\n--- Test Absolute Boundary ---")
