@@ -49,13 +49,19 @@ class GovernedLlmAgent(LlmAgent):
             self._rails_active = False
 
     def __call__(self, prompt: str):
-        # TODO: Implement full rails generation loop
-        # For now, acts as a pass-through to ensure the agent still works
-        # while rails are being configured.
+        if self._rails_active:
+            try:
+                # Wrap input in NeMo Guardrails
+                # Messages format: [{"role": "user", "content": prompt}]
+                response = self._rails.generate(messages=[{"role": "user", "content": prompt}])
 
-        # Example of where rails logic would go:
-        # if self._rails_active:
-        #     res = self._rails.generate(messages=[...])
+                # Check if response is a dict or string (depends on NeMo version/config)
+                if isinstance(response, dict):
+                    return response.get("content", str(response))
+                return str(response)
+            except Exception as e:
+                print(f"Error in NeMo Guardrails: {e}. Falling back to standard execution.")
+                return super().__call__(prompt)
 
         return super().__call__(prompt)
 
