@@ -5,7 +5,6 @@
 # Cloud Run captures stdout/stderr and sends it to Cloud Logging.
 decision_logs:
   console: true
-  service: google_cloud_logging
 
 # 2. Status / Monitoring
 # Report status updates to the console (useful for startup debugging).
@@ -24,7 +23,7 @@ status:
 
 # 4. Default Decision
 # Set the default decision path if not specified in the query.
-default_decision: /finance/allow
+default_decision: /finance/decision
 
 # 5. Caching (Optional)
 # Optimize for frequent policy evaluations.

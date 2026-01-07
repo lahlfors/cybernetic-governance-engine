@@ -15,11 +15,8 @@
 """Financial coordinator: provide reasonable investment strategies."""
 
 from google.adk.agents import LlmAgent
-# from google.adk.tools.agent_tool import AgentTool # Removed to enforce HD-MDP
 from .tools.router import route_request
-from .nemo_manager import create_nemo_manager
 from .telemetry import configure_telemetry
-from .infrastructure.memory import memory_client
 
 # Initialize GCP observability (logging and tracing)
 configure_telemetry()
@@ -32,67 +29,7 @@ from .sub_agents.risk_analyst import risk_analyst_agent
 
 MODEL = "gemini-2.5-pro"
 
-
-class GovernedLlmAgent(LlmAgent):
-    """
-    Extension of LlmAgent that includes NeMo Guardrails.
-    """
-    _rails: object = None
-    _rails_active: bool = False
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        try:
-            self._rails = create_nemo_manager()
-            self._rails_active = True
-        except Exception as e:
-            print(f"Warning: Failed to initialize NeMo Guardrails: {e}")
-            self._rails_active = False
-
-    def __call__(self, prompt: str, user_id: str = "default_user"):
-        # 1. Retrieve Cold Context (Vertex AI)
-        # We fetch this *outside* the tool execution loop to minimize latency
-        context = memory_client.retrieve_context(user_id)
-
-        augmented_prompt = prompt
-        if context:
-            augmented_prompt = f"""
-            [Persistent User Context]:
-            {context}
-
-            [User Request]:
-            {prompt}
-            """
-
-        response = None
-        if self._rails_active:
-            try:
-                # Wrap input in NeMo Guardrails
-                # Messages format: [{"role": "user", "content": prompt}]
-                # Note: We are sending the augmented prompt to the rails
-                rails_response = self._rails.generate(messages=[{"role": "user", "content": augmented_prompt}])
-
-                # Check if response is a dict or string (depends on NeMo version/config)
-                if isinstance(rails_response, dict):
-                    response = rails_response.get("content", str(rails_response))
-                else:
-                    response = str(rails_response)
-            except Exception as e:
-                print(f"Error in NeMo Guardrails: {e}. Falling back to standard execution.")
-                response = super().__call__(augmented_prompt)
-        else:
-            response = super().__call__(augmented_prompt)
-
-        # 3. Save New Context (Fire-and-Forget)
-        # We save the user's prompt to build history
-        # We persist the original prompt, not the augmented one
-        if self._rails_active:
-             memory_client.save_context(user_id, prompt)
-
-        return response
-
-
-financial_coordinator = GovernedLlmAgent(
+financial_coordinator = LlmAgent(
     name="financial_coordinator",
     model=MODEL,
     description=(

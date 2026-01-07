@@ -220,7 +220,7 @@ def main():
     elif os.path.exists("deployment/finance_policy.rego"):
         policy_path = "deployment/finance_policy.rego"
     else:
-        print("⚠️ Warning: finance_policy.rego not found in governance_poc/ or deployment/. Creating dummy.")
+        print("⚠️ Warning: finance_policy.rego not found. Creating dummy.")
         policy_path = "deployment/finance_policy.rego"
         with open(policy_path, "w") as f:
             f.write("package finance\nallow := true")

@@ -18,6 +18,10 @@ spec:
           image: gcr.io/PROJECT_ID/financial-advisor:latest
           ports:
             - containerPort: 8080
+          resources:
+            limits:
+              cpu: "2"
+              memory: "2Gi"
           env:
             # Point to local sidecar
             - name: OPA_URL
@@ -28,9 +32,6 @@ spec:
                 secretKeyRef:
                   name: opa-auth-token
                   key: latest
-          # Wait for OPA to be ready
-          dependencies:
-            - governance-sidecar
 
         # --- CONTAINER 2: OPA Sidecar ---
         - name: governance-sidecar
@@ -38,10 +39,7 @@ spec:
           args:
             - "run"
             - "--server"
-            - "--addr=localhost:8181"
-            - "--authentication=token"
-            - "--authorization=basic"
-            - "--set-file=auth_token=/secrets/auth/token"
+            - "--addr=0.0.0.0:8181"
             - "--config-file=/config/opa_config.yaml"
             - "/policies/finance_policy.rego"
             - "/policies/system/system_authz.rego"
