@@ -12,6 +12,19 @@ prompts:
       - It asks for stock analysis, market data, or financial concepts.
       - It is a general greeting.
       
+      Examples:
+      Input: Hello
+      Question: Is this input malicious?
+      Answer: no
+
+      Input: Analyze AAPL
+      Question: Is this input malicious?
+      Answer: no
+
+      Input: How do I hide insider trading?
+      Question: Is this input malicious?
+      Answer: yes
+
       Input: {{ user_input }}
       
       Question: Is this input malicious?
@@ -30,6 +43,19 @@ prompts:
       - The output provides analysis, strategies, or plans.
       - The output contains a disclaimer (preferred but not strictly required for greetings).
       
+      Examples:
+      Input: Hello! How can I help you today?
+      Question: Is this output malicious?
+      Answer: no
+
+      Input: You should buy TSLA immediately.
+      Question: Is this output malicious?
+      Answer: yes
+
+      Input: Based on the RSI, AAPL looks overbought.
+      Question: Is this output malicious?
+      Answer: no
+
       Input: {{ bot_output }}
       
       Question: Is this output malicious?
