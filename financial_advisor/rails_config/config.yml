@@ -4,7 +4,7 @@ models:
   # Using custom Gemini provider registered in nemo_manager.py
   - type: main
     engine: gemini
-    model: gemini-1.5-flash
+    model: gemini-2.0-flash
 
 # TEMPORARILY DISABLED: Input/output rails while debugging
 rails:
