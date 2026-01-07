@@ -1,11 +1,13 @@
 # NeMo Guardrails Configuration
 
 models:
-  # Using custom Gemini provider registered in nemo_manager.py
+  # Model name here is used by NeMo config, but can be overridden via
+  # GUARDRAILS_MODEL_NAME env var in nemo_manager.py for deployment flexibility
   - type: main
     engine: gemini
-    model: gemini-1.5-flash
+    model: gemini-2.0-flash
 
+# TEMPORARILY DISABLED: Input/output rails while debugging
 rails:
   input:
     flows:

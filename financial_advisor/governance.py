@@ -120,6 +120,9 @@ def governed_tool(action_name: str):
                 if consensus["status"] == "REJECT":
                      return f"BLOCKED: Consensus Engine Rejected. {consensus['reason']}"
 
+                if consensus["status"] == "ESCALATE":
+                     return f"MANUAL_REVIEW: Consensus Engine Escalation. {consensus['reason']}"
+
                 # If we pass all checks, update the safety state (Simulation)
                 safety_filter.update_state(amount)
 

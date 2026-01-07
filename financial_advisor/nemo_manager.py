@@ -6,41 +6,69 @@ import nest_asyncio
 from nemoguardrails import LLMRails, RailsConfig
 from nemoguardrails.llm.providers import register_llm_provider
 from langchain_core.language_models.llms import LLM
-from langchain_google_genai import ChatGoogleGenerativeAI
 from typing import Any, List, Optional
 
 
 class GeminiLLM(LLM):
-    """Custom LangChain-compatible wrapper for Google Gemini using google-genai."""
+    """Custom LangChain-compatible wrapper for Google Gemini using Vertex AI."""
     
-    model: str = "gemini-1.5-flash"
+    model: str = os.environ.get("GUARDRAILS_MODEL_NAME", "gemini-2.0-flash")
     
     @property
     def _llm_type(self) -> str:
         return "gemini"
     
     def _call(self, prompt: str, stop: Optional[List[str]] = None, **kwargs: Any) -> str:
-        """Call the Gemini model."""
+        """Call the Gemini model via Vertex AI."""
         try:
-            # Use LangChain's Google Generative AI integration
-            llm = ChatGoogleGenerativeAI(
-                model=self.model,
-                convert_system_message_to_human=True,
+            # Use Vertex AI integration (works with service account)
+            from langchain_google_vertexai import ChatVertexAI
+            
+            llm = ChatVertexAI(
+                model_name=self.model,
+                project=os.environ.get("GOOGLE_CLOUD_PROJECT", "laah-cybernetics"),
+                location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
             )
             response = llm.invoke(prompt)
             return response.content
+        except ImportError:
+            # Fallback to google-genai if vertexai not available
+            try:
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                llm = ChatGoogleGenerativeAI(
+                    model=self.model,
+                    convert_system_message_to_human=True,
+                )
+                response = llm.invoke(prompt)
+                return response.content
+            except Exception as e:
+                return f"Error calling Gemini: {e}"
         except Exception as e:
             return f"Error calling Gemini: {e}"
     
     async def _acall(self, prompt: str, stop: Optional[List[str]] = None, **kwargs: Any) -> str:
-        """Async call to the Gemini model."""
+        """Async call to the Gemini model via Vertex AI."""
         try:
-            llm = ChatGoogleGenerativeAI(
-                model=self.model,
-                convert_system_message_to_human=True,
+            from langchain_google_vertexai import ChatVertexAI
+            
+            llm = ChatVertexAI(
+                model_name=self.model,
+                project=os.environ.get("GOOGLE_CLOUD_PROJECT", "laah-cybernetics"),
+                location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
             )
             response = await llm.ainvoke(prompt)
             return response.content
+        except ImportError:
+            try:
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                llm = ChatGoogleGenerativeAI(
+                    model=self.model,
+                    convert_system_message_to_human=True,
+                )
+                response = await llm.ainvoke(prompt)
+                return response.content
+            except Exception as e:
+                return f"Error calling Gemini: {e}"
         except Exception as e:
             return f"Error calling Gemini: {e}"
     

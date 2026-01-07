@@ -11,7 +11,16 @@ We also employ **Systems-Theoretic Process Analysis (STPA)** to identify and mit
 
 ## 2. The Dynamic Risk-Adaptive Stack
 
-The architecture enforces "Defense in Depth" through four distinct layers:
+The architecture enforces "Defense in Depth" through six distinct layers (0-5):
+
+### Layer 0: Conversational Guardrails (NeMo)
+**Goal:** Input/Output Safety & Topical Control.
+We use **NeMo Guardrails** as the first line of defense to ensure the model stays on topic and avoids jailbreaks *before* it even processes a tool call.
+*   **Implementation:** `financial_advisor/nemo_manager.py` & `financial_advisor/rails_config/`
+*   **Features:**
+    *   **Input Rails:** Detect jailbreak attempts or off-topic queries.
+    *   **Output Rails:** Ensure the tone and content match the financial advisor persona.
+    *   **Topical Rails:** Restrict conversation to financial domains.
 
 ### Layer 1: The Syntax Trapdoor (Schema)
 **Goal:** Structural Integrity.
@@ -49,6 +58,13 @@ For actions exceeding a high-risk threshold ($10,000), the system triggers an **
 *   **Mechanism:** The `ConsensusEngine` simulates a voting process (mocked for this sample) to ensure unanimous agreement before execution.
 *   **Integration:** Embedded in the `@governed_tool` decorator. If the consensus check fails, the trade is blocked even if OPA approves.
 *   **Implementation:** `financial_advisor/consensus.py`
+
+### Layer 5: Human-in-the-Loop (Escalation)
+**Goal:** The Grey Zone & Constructive Friction.
+When the Consensus Engine encounters ambiguous scenarios (e.g., complex life events, borderline risk), it returns an `ESCALATE` vote instead of a hard `REJECT`.
+*   **Mechanism:** The system halts execution and returns a `MANUAL_REVIEW` status.
+*   **Concept:** This implements "Escalation as a Fallback," ensuring that the automated system has a fail-safe path to human judgment for "Grey Zone" decisions.
+*   **Implementation:** `financial_advisor/consensus.py` (Vote Logic) & `financial_advisor/governance.py` (Routing).
 
 ## 3. Observability: GenAI Semantics
 We implement **OpenTelemetry** with **GenAI Semantic Conventions** (v1.37+ draft) to ensure full visibility into the "Black Box" of cognition.
@@ -90,3 +106,5 @@ The architecture is designed for Google Cloud Run with OPA as a sidecar containe
 *   **Application Container:** Python/FastAPI agent.
 *   **Sidecar Container:** OPA serving the Rego policy.
 *   **Communication:** Localhost HTTP (Application -> `localhost:8181` -> OPA).
+
+For detailed deployment instructions, including the sidecar configuration and startup checks, please see **[deployment/README.md](deployment/README.md)**.

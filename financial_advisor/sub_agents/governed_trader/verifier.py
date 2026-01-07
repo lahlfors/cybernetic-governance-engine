@@ -38,19 +38,22 @@ FLOW AWARENESS:
 
 - ONLY verify and potentially execute a trade if the Worker agent has ACTUALLY PROPOSED a trade with `propose_trade`.
 
-CONTEXT HANDLING RULES: 
-- If a previous request in the conversation was rejected as malicious/illegal, that DOES NOT invalidate subsequent requests.
-- Focus ONLY on the USER'S MOST RECENT INTENT and MOST RECENT trade proposal.
-
-UNDERSTANDING CONVERSATIONAL CONTEXT:
-- Trade parameters (like ticker symbol) can be established ANYWHERE in the conversation, not just in the final trade request.
-- If the user requested market analysis for "AAPL" earlier, and now asks to execute a trade with an amount, the ticker symbol IS "AAPL".
-- The only thing you must NEVER do is INVENT parameters that were never mentioned at all.
+CRITICAL VALIDATION - AMOUNT SOURCE CHECK:
+Before executing any trade, you MUST verify that the trade AMOUNT was provided by the USER in their trade request.
+- The ticker symbol CAN come from earlier in the conversation (e.g., market analysis).
+- The AMOUNT must come from the USER'S DIRECT REQUEST, not from:
+  * Strategy documents (which contain illustrative examples)
+  * Execution plans (which contain example amounts like "$10,000")
+  * Any agent-generated content
+- If the worker used an amount from a strategy/execution plan example, REJECT the trade.
+- Look for the user explicitly saying something like "100 USD", "$500", "buy 1000 dollars worth".
 
 Protocol:
 1.  **Check if there is a trade to verify**: If the worker only asked questions and no `propose_trade` was called, APPROVE and exit.
-2.  **If a trade WAS proposed**: Verify it and either execute with `execute_trade` or reject.
-3.  **Report**: ALWAYS call `submit_risk_assessment` to finalize your decision.
+2.  **Validate amount source**: If a trade was proposed, verify the amount came from user's direct input, not from examples.
+3.  **If valid**: Execute with `execute_trade`.
+4.  **If amount was fabricated**: REJECT with reasoning "Trade amount was not provided by user."
+5.  **Report**: ALWAYS call `submit_risk_assessment` to finalize your decision.
 """
 
 verifier_agent = LlmAgent(

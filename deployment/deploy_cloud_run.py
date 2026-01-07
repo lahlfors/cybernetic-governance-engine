@@ -15,7 +15,7 @@
 
 """
 Cloud Run Deployment Script for Governed Financial Advisor
-Handles secret creation, image building, and service deployment.
+Handles secret creation, image building, service deployment, and infrastructure verification.
 """
 
 import yaml
@@ -46,6 +46,169 @@ def run_command(command, check=True, capture_output=False):
         if check:
             sys.exit(1)
         return e
+
+def enable_apis(project_id):
+    """Enables necessary Google Cloud APIs."""
+    print("\n--- 🛠️ Enabling APIs ---")
+    apis = [
+        "redis.googleapis.com",
+        "aiplatform.googleapis.com",
+        "secretmanager.googleapis.com",
+        "run.googleapis.com",
+        "cloudbuild.googleapis.com"
+    ]
+    for api in apis:
+        run_command([
+            "gcloud", "services", "enable", api, "--project", project_id
+        ], check=False)
+
+def get_redis_host(project_id, region, instance_name="financial-advisor-redis"):
+    """
+    Verifies if a Redis instance exists. If not, creates it.
+    Returns the Host IP and Port.
+    """
+    print(f"\n--- 🗄️ Verifying Redis: {instance_name} ---")
+
+    # Check if exists
+    check_cmd = [
+        "gcloud", "redis", "instances", "describe", instance_name,
+        "--region", region,
+        "--project", project_id,
+        "--format", "value(host, port)"
+    ]
+
+    result = run_command(check_cmd, check=False, capture_output=True)
+
+    if result.returncode == 0:
+        output = result.stdout.strip()
+        # Output format: "10.0.0.3 6379"
+        if output:
+            parts = output.split()
+            host = parts[0]
+            port = parts[1] if len(parts) > 1 else "6379"
+            print(f"✅ Found existing Redis at {host}:{port}")
+            return host, port
+
+    # Create if not exists
+    print(f"⚠️ Redis instance '{instance_name}' not found. Creating new instance (Basic Tier)...")
+    print("⏳ This operation may take 10-15 minutes.")
+
+    create_cmd = [
+        "gcloud", "redis", "instances", "create", instance_name,
+        "--region", region,
+        "--project", project_id,
+        "--tier", "BASIC",
+        "--size", "1",
+        "--redis-version", "redis_7_0"
+    ]
+
+    run_command(create_cmd)
+
+    # Retrieve details after creation
+    result = run_command(check_cmd, check=True, capture_output=True)
+    output = result.stdout.strip()
+    parts = output.split()
+    return parts[0], parts[1]
+
+def verify_agent_engine(project_id, location, agent_engine_id):
+    """
+    Verifies the Agent Engine ID.
+    Since programmatic creation of Vertex AI Agents is complex/requires data,
+    we perform a soft verification or warn the user.
+    """
+    print("\n--- 🧠 Verifying Vertex AI Agent Engine ---")
+
+    if not agent_engine_id:
+        print("⚠️ No --agent-engine-id provided.")
+        print("   The 'financial_coordinator' agent uses Vertex AI Memory Bank for context.")
+        print("   Without a valid Agent Engine ID, memory features will be disabled (Ephemeral Mode).")
+        print("   Please create an Agent in Vertex AI Agent Builder and pass its ID via --agent-engine-id.")
+        return
+
+    print(f"ℹ️ Agent Engine ID provided: {agent_engine_id}")
+    # Ideally, we would run: gcloud discovery-engine apps describe ...
+    # But the CLI mapping isn't always 1:1 with "Agent Engine ID" depending on the resource type (Search vs Chat).
+    # We assume the user provided a valid ID if they went to the trouble of passing it.
+    print("✅ Using provided Agent Engine ID for deployment.")
+
+
+def check_service_exists(project_id, region, service_name):
+    """Checks if a Cloud Run service exists."""
+    cmd = [
+        "gcloud", "run", "services", "describe", service_name,
+        "--region", region,
+        "--project", project_id,
+        "--format", "value(status.url)"
+    ]
+    result = run_command(cmd, check=False, capture_output=True)
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip()
+    return None
+
+
+def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=False, force_ui=False):
+    """
+    Checks if UI service exists on Cloud Run. If not, builds and deploys it.
+    Use force_ui=True to force rebuild and redeployment (e.g., for code updates).
+    Returns the UI service URL.
+    """
+    print(f"\n--- 🖥️ Verifying UI Service: {ui_service_name} ---")
+
+    if skip_ui:
+        print("⏭️ Skipping UI deployment (--skip-ui flag set)")
+        return None
+
+    # Check if UI service already exists
+    existing_url = check_service_exists(project_id, region, ui_service_name)
+    if existing_url and not force_ui:
+        print(f"✅ UI service already deployed at: {existing_url}")
+        print("   Use --force-ui to rebuild and redeploy.")
+        return existing_url
+    elif existing_url and force_ui:
+        print(f"🔄 Force redeploying UI service (--force-ui flag set)...")
+
+    print(f"⚠️ UI service '{ui_service_name}' not found. Deploying...")
+
+    # Check if ui/ directory exists
+    ui_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ui")
+    if not os.path.exists(ui_dir):
+        print(f"❌ UI directory not found at: {ui_dir}")
+        print("   Skipping UI deployment.")
+        return None
+
+    # Build UI image
+    ui_image_uri = f"gcr.io/{project_id}/financial-advisor-ui:latest"
+    print(f"\n🏗️ Building UI container image...")
+    run_command([
+        "gcloud", "builds", "submit",
+        "--tag", ui_image_uri,
+        "--project", project_id,
+        ui_dir
+    ])
+
+    # Deploy UI service
+    print(f"\n🚀 Deploying UI service to Cloud Run...")
+    run_command([
+        "gcloud", "run", "deploy", ui_service_name,
+        "--image", ui_image_uri,
+        "--region", region,
+        "--project", project_id,
+        "--platform", "managed",
+        "--allow-unauthenticated",
+        "--set-env-vars", f"BACKEND_URL={backend_url}",
+        "--port", "8080",
+        "--memory", "512Mi",
+        "--cpu", "1"
+    ])
+
+    # Get the deployed URL
+    deployed_url = check_service_exists(project_id, region, ui_service_name)
+    if deployed_url:
+        print(f"✅ UI service deployed at: {deployed_url}")
+        return deployed_url
+
+    print("⚠️ UI deployment completed but could not retrieve URL.")
+    return None
 
 def check_secret_exists(project_id, secret_name):
     """Checks if a secret exists in Secret Manager."""
@@ -94,12 +257,38 @@ def main():
     parser.add_argument("--region", default="us-central1", help="Cloud Run Region")
     parser.add_argument("--service-name", default="governed-financial-advisor", help="Cloud Run Service Name")
     parser.add_argument("--skip-build", action="store_true", help="Skip image build step")
+
+    # New Arguments for Memory and Redis
+    parser.add_argument("--agent-engine-id", help="Vertex AI Agent Engine ID")
+    parser.add_argument("--redis-host", help="Redis Host (Optional: will provision if missing)")
+    parser.add_argument("--redis-port", default="6379", help="Redis Port")
+    parser.add_argument("--redis-instance-name", default="financial-advisor-redis", help="Name for auto-provisioned Redis")
+
+    # UI Deployment Arguments
+    parser.add_argument("--skip-ui", action="store_true", help="Skip UI service deployment")
+    parser.add_argument("--force-ui", action="store_true", help="Force rebuild and redeploy UI service (for code updates)")
+    parser.add_argument("--ui-service-name", default="financial-advisor-ui", help="Cloud Run UI Service Name")
+
     args = parser.parse_args()
 
     project_id = args.project_id
     region = args.region
 
-    # 1. Secret Management
+    # 0. Enable APIs
+    enable_apis(project_id)
+
+    # 1. Infrastructure Provisioning
+    redis_host = args.redis_host
+    redis_port = args.redis_port
+
+    if not redis_host:
+        redis_host, redis_port = get_redis_host(project_id, region, args.redis_instance_name)
+    else:
+        print(f"\n--- 🗄️ Using provided Redis: {redis_host}:{redis_port} ---")
+
+    verify_agent_engine(project_id, region, args.agent_engine_id)
+
+    # 2. Secret Management
     print("\n--- 🔑 Managing Secrets ---")
 
     # Random Auth Token
@@ -110,14 +299,12 @@ def main():
     create_secret(project_id, "system-authz-policy", file_path="deployment/system_authz.rego")
 
     # Finance Policy
-    # Check governance_poc/ first (source of truth), then deployment/ (fallback)
     if os.path.exists("governance_poc/finance_policy.rego"):
         policy_path = "governance_poc/finance_policy.rego"
     elif os.path.exists("deployment/finance_policy.rego"):
         policy_path = "deployment/finance_policy.rego"
     else:
-        # Create a dummy policy if it doesn't exist
-        print("⚠️ Warning: finance_policy.rego not found in governance_poc/ or deployment/. Creating dummy.")
+        print("⚠️ Warning: finance_policy.rego not found. Creating dummy.")
         policy_path = "deployment/finance_policy.rego"
         with open(policy_path, "w") as f:
             f.write("package finance\nallow := true")
@@ -128,7 +315,7 @@ def main():
     # OPA Config
     create_secret(project_id, "opa-configuration", file_path="deployment/opa_config.yaml")
 
-    # 2. Build Image
+    # 3. Build Image
     image_uri = f"gcr.io/{project_id}/financial-advisor:latest"
     if not args.skip_build:
         print("\n--- 🏗️ Building Container Image ---")
@@ -141,17 +328,37 @@ def main():
     else:
         print(f"\n--- ⏭️ Skipping Build (Image: {image_uri}) ---")
 
-    # 3. Prepare Service YAML
+    # 4. Prepare Service YAML
     print("\n--- 📝 Preparing Service Configuration ---")
 
     with open("deployment/service.yaml", "r") as f:
         service_config = yaml.safe_load(f)
 
-    # Update Ingress Image
+    # Update Ingress Image and Inject Environment Variables
     containers = service_config["spec"]["template"]["spec"]["containers"]
     for container in containers:
         if container["name"] == "ingress-agent":
             container["image"] = image_uri
+
+            # Environment Variables Injection
+            env = container.setdefault("env", [])
+
+            def add_env(k, v):
+                for item in env:
+                    if item["name"] == k:
+                        item["value"] = str(v)
+                        return
+                env.append({"name": k, "value": str(v)})
+
+            if args.agent_engine_id:
+                add_env("AGENT_ENGINE_ID", args.agent_engine_id)
+
+            add_env("REDIS_HOST", redis_host)
+            add_env("REDIS_PORT", redis_port)
+            add_env("GOOGLE_CLOUD_PROJECT", project_id)
+            add_env("GOOGLE_CLOUD_LOCATION", region)
+
+            print(f"✅ Injected Envs: REDIS_HOST={redis_host}")
             break
 
     # Guarantee Secret Name Consistency
@@ -168,16 +375,42 @@ def main():
         temp_path = temp.name
 
     try:
-        # 4. Deploy
+        # 5. Deploy
         print("\n--- 🚀 Deploying to Cloud Run ---")
+
+        # Note: Cloud Run needs VPC connector to access Redis (Memorystore).
+        # This script assumes a VPC Connector is set up or Redis is accessible.
+        # Adding VPC connector automation is highly complex (Networking).
+        # We assume the default VPC or a Serverless VPC Access connector is configured if required.
+
         run_command([
             "gcloud", "run", "services", "replace", temp_path,
             "--region", region,
             "--project", project_id
         ])
 
-        print("\n--- ✅ Deployment Complete ---")
-        print(f"Service URL: gcloud run services describe {args.service_name} --region {region} --format 'value(status.url)'")
+        # Get the backend URL for UI configuration
+        backend_url = check_service_exists(project_id, region, args.service_name)
+        if not backend_url:
+            backend_url = f"https://{args.service_name}-{project_id}.{region}.run.app"
+
+        print("\n--- ✅ Main Service Deployment Complete ---")
+        print(f"Backend URL: {backend_url}")
+
+        # 6. Deploy UI Service
+        ui_url = deploy_ui_service(
+            project_id, 
+            region, 
+            args.ui_service_name, 
+            backend_url,
+            skip_ui=args.skip_ui,
+            force_ui=args.force_ui
+        )
+
+        print("\n--- ✅ Full Deployment Complete ---")
+        print(f"Backend Service: {backend_url}")
+        if ui_url:
+            print(f"UI Service: {ui_url}")
 
     finally:
         os.remove(temp_path)
