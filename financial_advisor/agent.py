@@ -23,7 +23,6 @@ configure_telemetry()
 
 from . import prompt
 from .sub_agents.data_analyst import data_analyst_agent
-from .sub_agents.execution_analyst import execution_analyst_agent
 from .sub_agents.governed_trader.agent import governed_trading_agent
 from .sub_agents.risk_analyst import risk_analyst_agent
 
@@ -44,7 +43,6 @@ financial_coordinator = LlmAgent(
     sub_agents=[
         data_analyst_agent,
         governed_trading_agent,
-        execution_analyst_agent,
         risk_analyst_agent,
     ],
     # Expose ONLY the deterministic router tool.
