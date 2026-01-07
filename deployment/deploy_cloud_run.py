@@ -131,6 +131,85 @@ def verify_agent_engine(project_id, location, agent_engine_id):
     # We assume the user provided a valid ID if they went to the trouble of passing it.
     print("✅ Using provided Agent Engine ID for deployment.")
 
+
+def check_service_exists(project_id, region, service_name):
+    """Checks if a Cloud Run service exists."""
+    cmd = [
+        "gcloud", "run", "services", "describe", service_name,
+        "--region", region,
+        "--project", project_id,
+        "--format", "value(status.url)"
+    ]
+    result = run_command(cmd, check=False, capture_output=True)
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip()
+    return None
+
+
+def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=False, force_ui=False):
+    """
+    Checks if UI service exists on Cloud Run. If not, builds and deploys it.
+    Use force_ui=True to force rebuild and redeployment (e.g., for code updates).
+    Returns the UI service URL.
+    """
+    print(f"\n--- 🖥️ Verifying UI Service: {ui_service_name} ---")
+
+    if skip_ui:
+        print("⏭️ Skipping UI deployment (--skip-ui flag set)")
+        return None
+
+    # Check if UI service already exists
+    existing_url = check_service_exists(project_id, region, ui_service_name)
+    if existing_url and not force_ui:
+        print(f"✅ UI service already deployed at: {existing_url}")
+        print("   Use --force-ui to rebuild and redeploy.")
+        return existing_url
+    elif existing_url and force_ui:
+        print(f"🔄 Force redeploying UI service (--force-ui flag set)...")
+
+    print(f"⚠️ UI service '{ui_service_name}' not found. Deploying...")
+
+    # Check if ui/ directory exists
+    ui_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ui")
+    if not os.path.exists(ui_dir):
+        print(f"❌ UI directory not found at: {ui_dir}")
+        print("   Skipping UI deployment.")
+        return None
+
+    # Build UI image
+    ui_image_uri = f"gcr.io/{project_id}/financial-advisor-ui:latest"
+    print(f"\n🏗️ Building UI container image...")
+    run_command([
+        "gcloud", "builds", "submit",
+        "--tag", ui_image_uri,
+        "--project", project_id,
+        ui_dir
+    ])
+
+    # Deploy UI service
+    print(f"\n🚀 Deploying UI service to Cloud Run...")
+    run_command([
+        "gcloud", "run", "deploy", ui_service_name,
+        "--image", ui_image_uri,
+        "--region", region,
+        "--project", project_id,
+        "--platform", "managed",
+        "--allow-unauthenticated",
+        "--set-env-vars", f"BACKEND_URL={backend_url}",
+        "--port", "8080",
+        "--memory", "512Mi",
+        "--cpu", "1"
+    ])
+
+    # Get the deployed URL
+    deployed_url = check_service_exists(project_id, region, ui_service_name)
+    if deployed_url:
+        print(f"✅ UI service deployed at: {deployed_url}")
+        return deployed_url
+
+    print("⚠️ UI deployment completed but could not retrieve URL.")
+    return None
+
 def check_secret_exists(project_id, secret_name):
     """Checks if a secret exists in Secret Manager."""
     cmd = [
@@ -184,6 +263,11 @@ def main():
     parser.add_argument("--redis-host", help="Redis Host (Optional: will provision if missing)")
     parser.add_argument("--redis-port", default="6379", help="Redis Port")
     parser.add_argument("--redis-instance-name", default="financial-advisor-redis", help="Name for auto-provisioned Redis")
+
+    # UI Deployment Arguments
+    parser.add_argument("--skip-ui", action="store_true", help="Skip UI service deployment")
+    parser.add_argument("--force-ui", action="store_true", help="Force rebuild and redeploy UI service (for code updates)")
+    parser.add_argument("--ui-service-name", default="financial-advisor-ui", help="Cloud Run UI Service Name")
 
     args = parser.parse_args()
 
@@ -305,8 +389,28 @@ def main():
             "--project", project_id
         ])
 
-        print("\n--- ✅ Deployment Complete ---")
-        print(f"Service URL: gcloud run services describe {args.service_name} --region {region} --format 'value(status.url)'")
+        # Get the backend URL for UI configuration
+        backend_url = check_service_exists(project_id, region, args.service_name)
+        if not backend_url:
+            backend_url = f"https://{args.service_name}-{project_id}.{region}.run.app"
+
+        print("\n--- ✅ Main Service Deployment Complete ---")
+        print(f"Backend URL: {backend_url}")
+
+        # 6. Deploy UI Service
+        ui_url = deploy_ui_service(
+            project_id, 
+            region, 
+            args.ui_service_name, 
+            backend_url,
+            skip_ui=args.skip_ui,
+            force_ui=args.force_ui
+        )
+
+        print("\n--- ✅ Full Deployment Complete ---")
+        print(f"Backend Service: {backend_url}")
+        if ui_url:
+            print(f"UI Service: {ui_url}")
 
     finally:
         os.remove(temp_path)

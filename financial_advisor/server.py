@@ -82,10 +82,10 @@ async def query_agent(request: QueryRequest):
                 print(f"Guardrails Input Check Warning: {e}")
 
         # --- Layer 3: Execution (The Runner) ---
-        # Reuse the global runner to find the existing session
-        # Passing 'app_name' explicitly to ensure match if default differs
+        # Create session using runner's app_name to ensure consistency
+        # The app_name is derived from the agent's name property
         session = await runner.session_service.create_session(
-            app_name="financial_advisor",
+            app_name=runner.app_name,
             user_id=user_id
         )
 

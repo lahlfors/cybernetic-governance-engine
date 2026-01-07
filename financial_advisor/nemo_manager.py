@@ -12,7 +12,7 @@ from typing import Any, List, Optional
 class GeminiLLM(LLM):
     """Custom LangChain-compatible wrapper for Google Gemini using Vertex AI."""
     
-    model: str = "gemini-2.0-flash"
+    model: str = os.environ.get("GUARDRAILS_MODEL_NAME", "gemini-2.0-flash")
     
     @property
     def _llm_type(self) -> str:

@@ -88,20 +88,28 @@ with st.sidebar:
     - 📈 **Trading Strategies** - Get strategy recommendations
     - ⚖️ **Risk Assessment** - Evaluate portfolio risk
     - 🔒 **Governed Trading** - Execute trades with policy enforcement
+    
+    *Governed Trading is available but Google does not take any responsibility for results.*
+    
+    **All services are provided solely for educational purposes.**
     """)
     
     st.divider()
     st.markdown("**Backend Status**")
     
-    # Health check
+    # Health check with auth
     try:
-        health = requests.get(f"{BACKEND_URL}/health", timeout=5)
+        headers = {}
+        token = get_auth_token()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        health = requests.get(f"{BACKEND_URL}/health", headers=headers, timeout=5)
         if health.status_code == 200:
             st.success("✅ Connected")
         else:
             st.error(f"⚠️ Status: {health.status_code}")
     except:
-        st.warning("⚠️ Cannot reach backend (auth may be required)")
+        st.warning("⚠️ Cannot reach backend")
 
 # Initialize chat history
 if "messages" not in st.session_state:
