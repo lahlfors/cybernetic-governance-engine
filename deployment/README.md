@@ -49,3 +49,4 @@ python3 deployment/deploy_cloud_run.py --project-id YOUR_PROJECT_ID --skip-build
 *   **Identity:** Uses Bearer Token authentication between the App and Sidecar to prevent unauthorized access to the policy engine (Defense in Depth).
 *   **Fail-Closed:** The application fails securely if the OPA sidecar is unreachable.
 *   **Startup Boost:** Uses Cloud Run CPU Boost to minimize cold start latency, ensuring the sidecar is ready before the app serves traffic.
+*   **Startup Dependency:** Uses the `dependsOn` configuration to ensure the application container waits for the OPA sidecar's health check to pass before starting, preventing startup race conditions.
