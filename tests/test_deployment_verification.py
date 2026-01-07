@@ -19,7 +19,7 @@ class TestDeploymentConfig(unittest.TestCase):
         sidecar = next(c for c in containers if c['name'] == 'governance-sidecar')
 
         # Check Dependencies
-        self.assertIn('governance-sidecar', agent['dependencies'])
+        self.assertIn('governance-sidecar', agent['dependsOn'])
 
         # Check OPA Image Pinned
         self.assertTrue(sidecar['image'].startswith("openpolicyagent/opa:0.68.0-static"))

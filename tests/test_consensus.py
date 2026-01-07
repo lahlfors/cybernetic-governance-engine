@@ -9,7 +9,9 @@ class TestConsensusEngine(unittest.TestCase):
         result = consensus_engine.check_consensus("execute_trade", 5000.0, "AAPL")
         self.assertEqual(result["status"], "SKIPPED")
 
-    def test_high_value_trade_triggers_consensus(self):
+    @patch("financial_advisor.consensus.ConsensusEngine._get_critic_vote")
+    def test_high_value_trade_triggers_consensus(self, mock_vote):
+        mock_vote.return_value = "APPROVE"
         result = consensus_engine.check_consensus("execute_trade", 15000.0, "AAPL")
         # In our mock, it approves by default
         self.assertEqual(result["status"], "APPROVE")
