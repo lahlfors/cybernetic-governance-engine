@@ -17,14 +17,14 @@
 from google.adk import Agent
 from google.adk.tools import transfer_to_agent
 
-from . import prompt
+from .prompt import get_execution_analyst_instruction
 
 MODEL = "gemini-2.5-pro"
 
 execution_analyst_agent = Agent(
     model=MODEL,
     name="execution_analyst_agent",
-    instruction=prompt.EXECUTION_ANALYST_PROMPT,
+    instruction=get_execution_analyst_instruction(),
     output_key="execution_plan_output",
     tools=[transfer_to_agent],
 )

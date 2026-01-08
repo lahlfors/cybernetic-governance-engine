@@ -14,7 +14,16 @@
 
 """data_analyst_agent for finding information using google search"""
 
-DATA_ANALYST_PROMPT = """
+from financial_advisor.prompt_utils import Prompt, PromptData, Content, Part
+
+DATA_ANALYST_PROMPT_OBJ = Prompt(
+    prompt_data=PromptData(
+        model="gemini-2.5-pro",
+        contents=[
+            Content(
+                parts=[
+                    Part(
+                        text="""
 Agent Role: data_analyst
 Tool Usage: Exclusively use the Google Search tool.
 
@@ -88,3 +97,12 @@ The data_analyst must return a single, comprehensive report object or string wit
 
 IMMEDIATELY AFTER generating this report, you MUST call `transfer_to_agent("financial_coordinator")` to return control to the main agent.
 """
+                    )
+                ]
+            )
+        ]
+    )
+)
+
+def get_data_analyst_instruction() -> str:
+    return DATA_ANALYST_PROMPT_OBJ.prompt_data.contents[0].parts[0].text

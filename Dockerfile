@@ -19,5 +19,8 @@ RUN pip install --no-cache-dir . uvicorn fastapi google-auth google-cloud-aiplat
 ENV PORT=8080
 EXPOSE 8080
 
+# DEBUG: Check file content
+RUN cat financial_advisor/server.py
+
 # Run the server
 CMD ["python", "financial_advisor/server.py"]

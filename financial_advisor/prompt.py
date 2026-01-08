@@ -14,7 +14,16 @@
 
 """Prompt for the financial_coordinator_agent."""
 
-FINANCIAL_COORDINATOR_PROMPT = """
+from financial_advisor.prompt_utils import Prompt, PromptData, Content, Part
+
+FINANCIAL_COORDINATOR_PROMPT_OBJ = Prompt(
+    prompt_data=PromptData(
+        model="gemini-2.5-pro",
+        contents=[
+            Content(
+                parts=[
+                    Part(
+                        text="""
 Role: Act as a specialized financial advisory assistant.
 Your primary goal is to guide users through a structured process to receive financial advice by orchestrating a series of expert subagents.
 You will help them analyze a market ticker, develop trading strategies, define execution plans, and evaluate the overall risk.
@@ -128,3 +137,12 @@ Would you like to proceed to **Governed Trading** to execute this strategy under
 If the user agrees to execute (e.g., "Yes", "Execute strategy 1"), you MUST route them to execute:
 Call `route_request(intent='TRADING_STRATEGY')` (which handles execution in this context).
 """
+                    )
+                ]
+            )
+        ]
+    )
+)
+
+def get_financial_coordinator_instruction() -> str:
+    return FINANCIAL_COORDINATOR_PROMPT_OBJ.prompt_data.contents[0].parts[0].text

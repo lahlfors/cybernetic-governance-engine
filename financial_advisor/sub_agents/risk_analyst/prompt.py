@@ -14,7 +14,16 @@
 
 """Risk Analysis Agent for providing the final risk evaluation"""
 
-RISK_ANALYST_PROMPT = """
+from financial_advisor.prompt_utils import Prompt, PromptData, Content, Part
+
+RISK_ANALYST_PROMPT_OBJ = Prompt(
+    prompt_data=PromptData(
+        model="gemini-2.5-pro",
+        contents=[
+            Content(
+                parts=[
+                    Part(
+                        text="""
 Objective: Generate a detailed and reasoned risk analysis for the provided trading strategy and execution strategy.
 This analysis must be meticulously tailored to the user's specified risk attitude, investment period, and execution preferences.
 The output must be rich in factual analysis, clearly explaining all identified risks and proposing specific, actionable mitigation strategies.
@@ -27,7 +36,7 @@ Mean reversion strategy for WTI Crude Oil futures using Bollinger Bands on H1 ti
 "Dollar-cost averaging into VOO ETF for long-term holding").
 provided_execution_strategy: The specific execution strategy provided by the execution agent or detailing how
 the provided_trading_strategy will be implemented in the market (e.g., "Execute QQQ trades using limit orders placed 0.5% below breakout level,
-with an initial stop-loss at the pattern's low and a take-profit target at 2x risk; orders managed via Broker X's API,"
+with an initial stop-loss at the pattern's low and a target-profit target at 2x risk; orders managed via Broker X's API,"
 "Enter WTI futures positions with market orders upon Bollinger Band cross, with a 1.5 ATR stop-loss and a target at the mean").
 user_risk_attitude: The user's defined risk tolerance (e.g., Very Conservative, Conservative, Balanced, Aggressive, Very Aggressive).
 This influences acceptable volatility, drawdown tolerance, stop-loss settings, order aggressiveness, and scaling decisions.
@@ -129,3 +138,12 @@ Provide critical considerations or trade-offs the user must accept if they proce
 
 IMMEDIATELY AFTER generating this report, you MUST call `transfer_to_agent("financial_coordinator")` to return control to the main agent.
 """
+                    )
+                ]
+            )
+        ]
+    )
+)
+
+def get_risk_analyst_instruction() -> str:
+    return RISK_ANALYST_PROMPT_OBJ.prompt_data.contents[0].parts[0].text

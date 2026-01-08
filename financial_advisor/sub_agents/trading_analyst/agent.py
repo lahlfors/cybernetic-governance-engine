@@ -17,7 +17,7 @@
 from google.adk import Agent
 from google.adk.tools import FunctionTool
 
-from . import prompt
+from .prompt import get_trading_analyst_instruction
 from financial_advisor.tools.trades import execute_trade
 
 MODEL = "gemini-2.5-pro"
@@ -25,7 +25,7 @@ MODEL = "gemini-2.5-pro"
 trading_analyst_agent = Agent(
     model=MODEL,
     name="trading_analyst_agent",
-    instruction=prompt.TRADING_ANALYST_PROMPT,
+    instruction=get_trading_analyst_instruction(),
     output_key="proposed_trading_strategies_output",
     tools=[FunctionTool(execute_trade)],
 )

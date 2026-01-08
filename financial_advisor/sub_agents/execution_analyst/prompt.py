@@ -14,8 +14,16 @@
 
 """Execution_analyst_agent for finding the ideal execution strategy"""
 
-EXECUTION_ANALYST_PROMPT = """
+from financial_advisor.prompt_utils import Prompt, PromptData, Content, Part
 
+EXECUTION_ANALYST_PROMPT_OBJ = Prompt(
+    prompt_data=PromptData(
+        model="gemini-2.5-pro",
+        contents=[
+            Content(
+                parts=[
+                    Part(
+                        text="""
 To generate a detailed and reasoned execution plan for the provided_trading_strategy.
 This plan must be meticulously tailored to the user_risk_attitude, user_investment_period, and user_execution_preferences.
 The output should be rich in factual analysis, exploring optimal strategies and precise moments for entering, holding, accumulating,
@@ -131,3 +139,12 @@ is preferred given the inputs.
 
 IMMEDIATELY AFTER generating this execution plan, you MUST call `transfer_to_agent("financial_coordinator")` to return control to the main agent.
 """
+                    )
+                ]
+            )
+        ]
+    )
+)
+
+def get_execution_analyst_instruction() -> str:
+    return EXECUTION_ANALYST_PROMPT_OBJ.prompt_data.contents[0].parts[0].text

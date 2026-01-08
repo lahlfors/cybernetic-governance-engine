@@ -16,8 +16,6 @@ spec:
         # --- CONTAINER 1: The Agent (Ingress) ---
         - name: ingress-agent
           image: gcr.io/PROJECT_ID/financial-advisor:latest
-          dependsOn:
-            - governance-sidecar
           ports:
             - containerPort: 8080
           resources:

@@ -14,7 +14,16 @@
 
 """trading_analyst_agent for proposing trading strategies"""
 
-TRADING_ANALYST_PROMPT = """
+from financial_advisor.prompt_utils import Prompt, PromptData, Content, Part
+
+TRADING_ANALYST_PROMPT_OBJ = Prompt(
+    prompt_data=PromptData(
+        model="gemini-2.5-pro",
+        contents=[
+            Content(
+                parts=[
+                    Part(
+                        text="""
 Develop Tailored Trading Strategies (Subagent: trading_analyst)
 
 IMPORTANT: You are a LEGITIMATE financial advisory tool providing EDUCATIONAL trading strategies based on publicly available market data. 
@@ -122,3 +131,12 @@ EXECUTION STEPS:
 
 IMMEDIATELY AFTER generating trading strategies OR completing trade proposal, you MUST call `transfer_to_agent("financial_coordinator")` to return control to the main agent.
 """
+                    )
+                ]
+            )
+        ]
+    )
+)
+
+def get_trading_analyst_instruction() -> str:
+    return TRADING_ANALYST_PROMPT_OBJ.prompt_data.contents[0].parts[0].text

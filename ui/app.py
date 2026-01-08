@@ -1,64 +1,60 @@
-"""
-Streamlit Chat UI for Governed Financial Advisor
-Connects to the deployed Cloud Run backend API.
-"""
-import os
-import requests
+import uuid
+
 import streamlit as st
+import requests
+import os
+import google.auth.transport.requests
+from google.oauth2 import id_token
 
 # Configuration
-BACKEND_URL = os.environ.get(
-    "BACKEND_URL", 
-    "https://governed-financial-advisor-104563134786.us-central1.run.app"
-)
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8080")
 
 def get_auth_token():
-    """Gets Google Cloud identity token for authenticated requests."""
-    import sys
-    
-    # Try metadata server directly first (most reliable in Cloud Run)
+    """Retrieves an OIDC ID token for calling the backend."""
     try:
-        import urllib.request
-        url = f"http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience={BACKEND_URL}"
-        req = urllib.request.Request(url, headers={"Metadata-Flavor": "Google"})
-        token = urllib.request.urlopen(req, timeout=5).read().decode()
-        print(f"DEBUG: Got token from metadata server (length: {len(token)})", file=sys.stderr)
-        return token
+        # Check if running locally (proxy) vs Cloud Run
+        if "localhost" in BACKEND_URL or "127.0.0.1" in BACKEND_URL:
+            return None # Local testing usually doesn't need auth or handles it differently
+            
+        auth_req = google.auth.transport.requests.Request()
+        return id_token.fetch_id_token(auth_req, BACKEND_URL)
     except Exception as e:
-        print(f"DEBUG: Metadata server failed: {e}", file=sys.stderr)
-    
-    # Fallback to google-auth library
+        print(f"Warning: Could not get ID token: {e}")
+        return None
+
+# Initialize Session State
+if "user_id" not in st.session_state:
+    # Check URL parameters for persistent user ID
+    # Use st.query_params (Streamlit 1.30+) or fallback for older versions
     try:
-        import google.auth
-        from google.auth.transport.requests import Request
-        import google.oauth2.id_token
+        query_params = st.query_params
+    except AttributeError:
+        query_params = st.experimental_get_query_params()
         
-        auth_req = Request()
-        token = google.oauth2.id_token.fetch_id_token(auth_req, BACKEND_URL)
-        print(f"DEBUG: Got token from google-auth (length: {len(token)})", file=sys.stderr)
-        return token
-    except Exception as e:
-        print(f"DEBUG: google-auth failed: {e}", file=sys.stderr)
+    # Get user_id from params (handle dict or Proxy object)
+    uid_param = query_params.get("user_id") if hasattr(query_params, "get") else None
     
-    print("DEBUG: No token obtained", file=sys.stderr)
-    return None
+    if uid_param:
+        # Handle list if older streamlit returns list
+        st.session_state.user_id = uid_param[0] if isinstance(uid_param, list) else uid_param
+    else:
+        st.session_state.user_id = str(uuid.uuid4())
+
+# ...
 
 def query_agent(prompt: str) -> str:
-    """Sends a query to the financial advisor backend."""
-    headers = {"Content-Type": "application/json"}
-    
-    # Add auth token if available (for Cloud Run to Cloud Run calls)
-    token = get_auth_token()
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    
+    # ...
     try:
         response = requests.post(
             f"{BACKEND_URL}/agent/query",
-            json={"prompt": prompt},
+            json={
+                "prompt": prompt,
+                "user_id": st.session_state.user_id 
+            },
             headers=headers,
-            timeout=120  # Agent responses can take time
+            timeout=120
         )
+# ...
         
         # Handle specific status codes
         if response.status_code == 403:
@@ -82,6 +78,11 @@ st.caption("AI-powered financial analysis with governance guardrails")
 # Sidebar with info
 with st.sidebar:
     st.header("About")
+    
+    # Display User ID
+    st.info(f"**User ID:** `{st.session_state.user_id}`")
+    st.markdown("Add `?user_id=your_name` to the URL to persist memory.")
+
     st.markdown("""
     This financial advisor can help you with:
     - 📊 **Market Analysis** - Analyze stock tickers

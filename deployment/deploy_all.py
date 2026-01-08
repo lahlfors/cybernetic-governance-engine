@@ -110,26 +110,115 @@ def get_redis_host(project_id, region, instance_name="financial-advisor-redis"):
     parts = output.split()
     return parts[0], parts[1]
 
-def verify_agent_engine(project_id, location, agent_engine_id):
+def ensure_agent_engine(project_id, location, agent_engine_id=None, force_deploy=False, staging_bucket=None):
     """
-    Verifies the Agent Engine ID.
-    Since programmatic creation of Vertex AI Agents is complex/requires data,
-    we perform a soft verification or warn the user.
+    Deploys an Agent Engine (ReasoningEngine) for Memory Bank usage.
+    If agent_engine_id is provided, uses that instead of deploying.
+    Returns the Agent Engine ID to use.
+    
+    CLI Pattern Reference:
+    - Deploy: adk deploy agent_engine --project=PROJECT --region=REGION --env_file=.env
     """
-    print("\n--- 🧠 Verifying Vertex AI Agent Engine ---")
+    print(f"\n--- 🧠 Deploying Vertex AI Agent Engine ({location}) ---")
 
-    if not agent_engine_id:
-        print("⚠️ No --agent-engine-id provided.")
-        print("   The 'financial_coordinator' agent uses Vertex AI Memory Bank for context.")
-        print("   Without a valid Agent Engine ID, memory features will be disabled (Ephemeral Mode).")
-        print("   Please create an Agent in Vertex AI Agent Builder and pass its ID via --agent-engine-id.")
-        return
+    # If existing ID provided, use it directly (no deployment needed)
+    if agent_engine_id:
+        print(f"ℹ️ Using provided Agent Engine ID: {agent_engine_id}")
+        return agent_engine_id
 
-    print(f"ℹ️ Agent Engine ID provided: {agent_engine_id}")
-    # Ideally, we would run: gcloud discovery-engine apps describe ...
-    # But the CLI mapping isn't always 1:1 with "Agent Engine ID" depending on the resource type (Search vs Chat).
-    # We assume the user provided a valid ID if they went to the trouble of passing it.
-    print("✅ Using provided Agent Engine ID for deployment.")
+    # Deploy new Agent Engine using ADK CLI
+    return _deploy_agent_engine(project_id, location, staging_bucket)
+
+
+def _deploy_agent_engine(project_id, location, staging_bucket=None):
+    """
+    Deploys a new Agent Engine (ReasoningEngine) using the ADK CLI.
+    Returns the new engine ID on success, None on failure.
+    """
+    print("🚀 Deploying to Vertex AI Agent Engine using ADK CLI...")
+    print("⏳ This operation may take several minutes...")
+
+    # Load environment variables to find bucket if not provided
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    if not staging_bucket:
+        # Check for GOOGLE_CLOUD_STORAGE_BUCKET in .env
+        staging_bucket = os.environ.get("GOOGLE_CLOUD_STORAGE_BUCKET")
+        if staging_bucket:
+            print(f"ℹ️  Using staging bucket from .env: {staging_bucket}")
+        else:
+            print("⚠️  Warning: GOOGLE_CLOUD_STORAGE_BUCKET not found in .env. ADK may fail if no bucket config exists.")
+
+    # The adk deploy agent_engine command deploys to Vertex AI Agent Engine
+    # Use --env_file to pull config from .env
+    # AGENT is the positional arg (path to agent source code folder)
+    deploy_cmd = [
+        "adk", "deploy", "agent_engine",
+        f"--project={project_id}",
+        f"--region={location}",
+        "--env_file=.env",
+        "--display_name=financial-advisor-agent",
+        "--trace_to_cloud",
+        "financial_advisor"  # Positional AGENT argument - path to agent source
+    ]
+    
+    # Add explicit staging bucket if successfully resolved
+    if staging_bucket:
+        deploy_cmd.insert(-1, f"--staging_bucket={staging_bucket}")
+    
+    result = run_command(deploy_cmd, check=False, capture_output=True)
+    
+    if result.returncode == 0:
+        print("✅ Agent Engine deployment completed successfully!")
+        
+        # 1. Try to extract the engine ID from the ADK output
+        if result.stdout:
+            import re
+            match = re.search(r'reasoningEngines/([0-9]+)', result.stdout)
+            if match:
+                engine_id = match.group(1)
+                print(f"✅ Deployed Agent Engine ID: {engine_id}")
+                return engine_id
+
+        # 2. Reliable Retrieval: List the most recently created engine
+        print("🔍 Retrieving deployed engine ID from Vertex AI...")
+        # Uses gcloud beta ai reasoning-engines list sorted by creation time
+        # Format: projects/.../locations/.../reasoningEngines/<ID>
+        search_cmd = [
+            "gcloud", "beta", "ai", "reasoning-engines", "list",
+            f"--region={location}",
+            f"--project={project_id}",
+            "--filter=display_name=financial-advisor-agent", 
+            "--sort-by=~createTime",
+            "--limit=1",
+            "--format=value(name)" 
+        ]
+        
+        # Note: This requires gcloud beta component.
+        search_result = run_command(search_cmd, check=False, capture_output=True)
+        
+        if search_result.returncode == 0 and "reasoningEngines/" in search_result.stdout:
+            # Output is full resource name
+            engine_id = search_result.stdout.strip().split("reasoningEngines/")[-1]
+            print(f"✅ Deployed Agent Engine: {engine_id}")
+            return engine_id
+        
+        print("⚠️ Could not retrieve engine ID automatically.")
+        print("   To find your engine manually:")
+        print(f"   gcloud beta ai reasoning-engines list --region={location} --project={project_id}")
+        return None
+    else:
+        print(f"❌ Agent Engine deployment failed.")
+        if result.stderr:
+            print(f"   Error: {result.stderr}")
+        if result.stdout:
+            print(f"   Output: {result.stdout}")
+        print("\n   Manual deployment options:")
+        print(f"   1. Run: adk deploy agent_engine --project={project_id} --region={location} --staging_bucket={staging_bucket} financial_advisor")
+        print("   2. Deploy via Vertex AI Agent Builder Console")
+        print("   3. Pass existing engine ID: --agent-engine-id YOUR_ENGINE_ID")
+        return None
 
 
 def check_service_exists(project_id, region, service_name):
@@ -146,28 +235,22 @@ def check_service_exists(project_id, region, service_name):
     return None
 
 
-def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=False, force_ui=False):
+def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=False):
     """
-    Checks if UI service exists on Cloud Run. If not, builds and deploys it.
-    Use force_ui=True to force rebuild and redeployment (e.g., for code updates).
+    Deploys UI service to Cloud Run (default behavior).
+    Use skip_ui=True to skip deployment entirely.
     Returns the UI service URL.
     """
-    print(f"\n--- 🖥️ Verifying UI Service: {ui_service_name} ---")
+    print(f"\n--- 🖥️ Deploying UI Service: {ui_service_name} ---")
 
     if skip_ui:
         print("⏭️ Skipping UI deployment (--skip-ui flag set)")
+        # Check if service exists and return its URL
+        existing_url = check_service_exists(project_id, region, ui_service_name)
+        if existing_url:
+            print(f"   Existing UI service at: {existing_url}")
+            return existing_url
         return None
-
-    # Check if UI service already exists
-    existing_url = check_service_exists(project_id, region, ui_service_name)
-    if existing_url and not force_ui:
-        print(f"✅ UI service already deployed at: {existing_url}")
-        print("   Use --force-ui to rebuild and redeploy.")
-        return existing_url
-    elif existing_url and force_ui:
-        print(f"🔄 Force redeploying UI service (--force-ui flag set)...")
-
-    print(f"⚠️ UI service '{ui_service_name}' not found. Deploying...")
 
     # Check if ui/ directory exists
     ui_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ui")
@@ -252,22 +335,26 @@ def create_secret(project_id, secret_name, file_path=None, literal_value=None):
         )
 
 def main():
-    parser = argparse.ArgumentParser(description="Deploy Financial Advisor to Cloud Run")
+    parser = argparse.ArgumentParser(
+        description="Deploy Financial Advisor to Cloud Run (deploys all services by default)"
+    )
     parser.add_argument("--project-id", required=True, help="Google Cloud Project ID")
     parser.add_argument("--region", default="us-central1", help="Cloud Run Region")
     parser.add_argument("--service-name", default="governed-financial-advisor", help="Cloud Run Service Name")
-    parser.add_argument("--skip-build", action="store_true", help="Skip image build step")
 
-    # New Arguments for Memory and Redis
-    parser.add_argument("--agent-engine-id", help="Vertex AI Agent Engine ID")
-    parser.add_argument("--redis-host", help="Redis Host (Optional: will provision if missing)")
+    # Build/Deploy Skip Flags
+    parser.add_argument("--skip-build", action="store_true", help="Skip image build step")
+    parser.add_argument("--skip-agent-deploy", action="store_true", help="Skip Agent Engine deployment (use existing)")
+    parser.add_argument("--skip-redis", action="store_true", help="Skip Redis provisioning")
+    parser.add_argument("--skip-ui", action="store_true", help="Skip UI service deployment")
+
+    # Override Arguments (use existing resources)
+    parser.add_argument("--agent-engine-id", help="Use existing Agent Engine ID (skips auto-deploy)")
+    parser.add_argument("--redis-host", help="Use existing Redis Host")
     parser.add_argument("--redis-port", default="6379", help="Redis Port")
     parser.add_argument("--redis-instance-name", default="financial-advisor-redis", help="Name for auto-provisioned Redis")
-
-    # UI Deployment Arguments
-    parser.add_argument("--skip-ui", action="store_true", help="Skip UI service deployment")
-    parser.add_argument("--force-ui", action="store_true", help="Force rebuild and redeploy UI service (for code updates)")
     parser.add_argument("--ui-service-name", default="financial-advisor-ui", help="Cloud Run UI Service Name")
+    parser.add_argument("--staging-bucket", help="GCS bucket for Agent Engine staging (default: from .env)")
 
     args = parser.parse_args()
 
@@ -277,16 +364,29 @@ def main():
     # 0. Enable APIs
     enable_apis(project_id)
 
-    # 1. Infrastructure Provisioning
+    # 1. Infrastructure Provisioning - Redis
     redis_host = args.redis_host
     redis_port = args.redis_port
 
-    if not redis_host:
+    if args.skip_redis:
+        print("\n--- ⏭️ Skipping Redis provisioning (--skip-redis flag set) ---")
+        if not redis_host:
+            print("⚠️ Warning: No Redis host provided. Memory will be ephemeral.")
+    elif not redis_host:
         redis_host, redis_port = get_redis_host(project_id, region, args.redis_instance_name)
     else:
         print(f"\n--- 🗄️ Using provided Redis: {redis_host}:{redis_port} ---")
 
-    verify_agent_engine(project_id, region, args.agent_engine_id)
+    # 2. Infrastructure Provisioning - Agent Engine
+    if args.skip_agent_deploy:
+        print("\n--- ⏭️ Skipping Agent Engine deployment (--skip-agent-deploy flag set) ---")
+        agent_engine_id = args.agent_engine_id  # May be None
+        if not agent_engine_id:
+            print("⚠️ Warning: No Agent Engine ID provided. Memory will be ephemeral.")
+    else:
+        # Deploy by default (force_deploy=True unless existing ID provided)
+        force_deploy = not bool(args.agent_engine_id)  # Force if no ID provided
+        agent_engine_id = ensure_agent_engine(project_id, region, args.agent_engine_id, force_deploy, args.staging_bucket)
 
     # 2. Secret Management
     print("\n--- 🔑 Managing Secrets ---")
@@ -350,8 +450,8 @@ def main():
                         return
                 env.append({"name": k, "value": str(v)})
 
-            if args.agent_engine_id:
-                add_env("AGENT_ENGINE_ID", args.agent_engine_id)
+            if agent_engine_id:
+                add_env("AGENT_ENGINE_ID", agent_engine_id)
 
             add_env("REDIS_HOST", redis_host)
             add_env("REDIS_PORT", redis_port)
@@ -383,6 +483,12 @@ def main():
         # Adding VPC connector automation is highly complex (Networking).
         # We assume the default VPC or a Serverless VPC Access connector is configured if required.
 
+        print("⚠️  IMPORTANT: ensuring connectivity to Redis...")
+        print("   Cloud Run requires a 'Serverless VPC Access' connector to reach Cloud Memorystore (Redis).")
+        print("   If you have not configured a VPC connector, the application will timeout connecting to Redis")
+        print("   and fallback to 'Ephemeral Mode' (Local State only). Safety state will NOT persist across restarts.")
+        print("   To fix: Create a VPC connector and add '--vpc-connector' to the gcloud run deploy command manually.")
+
         run_command([
             "gcloud", "run", "services", "replace", temp_path,
             "--region", region,
@@ -403,8 +509,7 @@ def main():
             region, 
             args.ui_service_name, 
             backend_url,
-            skip_ui=args.skip_ui,
-            force_ui=args.force_ui
+            skip_ui=args.skip_ui
         )
 
         print("\n--- ✅ Full Deployment Complete ---")

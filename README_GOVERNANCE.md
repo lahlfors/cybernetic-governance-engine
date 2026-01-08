@@ -17,12 +17,15 @@ The architecture enforces "Defense in Depth" through six distinct layers (0-5):
 **Goal:** Input/Output Safety & Topical Control.
 We use **NeMo Guardrails** as the first line of defense to ensure the model stays on topic and avoids jailbreaks *before* it even processes a tool call.
 *   **Implementation:** `financial_advisor/nemo_manager.py` & `financial_advisor/rails_config/`
-*   **Features:**
-    *   **Input Rails:** Detect jailbreak attempts or off-topic queries.
-    *   **Output Rails:** Ensure the tone and content match the financial advisor persona.
-    *   **Topical Rails:** Restrict conversation to financial domains.
 
-### Layer 1: The Syntax Trapdoor (Schema)
+### Layer 1: The Cognitive Bridge (Agent Engine)
+**Goal:** Long-Term Context & KYC Compliance.
+Cloud Run containers are **stateless** (ephemeral). To provide reliable advice, we use **Vertex AI Agent Engine** as a persistent cognitive layer.
+*   **Constraint:** The agent accesses user history (Risk Profiles, Goals) via **Semantic Retrieval** (RAG) at the start of every session.
+*   **Safety:** This ensures consistent advice ("Don't suggest Oil stocks") even if the compute node was destroyed and recreated 5 seconds ago.
+*   **Implementation:** `financial_advisor/infrastructure/vertex_memory.py` & `google.adk.memory.VertexAiMemoryBankService`.
+
+### Layer 2: The Syntax Trapdoor (Schema)
 **Goal:** Structural Integrity.
 We use strict **Pydantic** models to validate every tool call *before* it reaches the policy engine.
 *   **Implementation:** `financial_advisor/tools/trades.py`
@@ -31,7 +34,7 @@ We use strict **Pydantic** models to validate every tool call *before* it reache
     *   **Regex Validation:** Ticker symbols must match `^[A-Z]{1,5}$`.
     *   **Role Context:** `trader_role` (Junior/Senior) is enforced in the schema.
 
-### Layer 2: The Policy Engine (RBAC & OPA)
+### Layer 3: The Policy Engine (RBAC & OPA)
 **Goal:** Authorization & Business Logic.
 We use **Open Policy Agent (OPA)** and **Rego** to decouple policy from code. The system implements a **Tri-State Decision** logic:
 1.  **ALLOW:** Action proceeds to next layer.
@@ -41,9 +44,10 @@ We use **Open Policy Agent (OPA)** and **Rego** to decouple policy from code. Th
 **Role-Based Access Control (RBAC):**
 *   **Junior Trader:** Limit $5,000. Manual Review $5,000 - $10,000.
 *   **Senior Trader:** Limit $500,000. Manual Review $500,000 - $1,000,000.
+*   **Architecture (Sidecar):** OPA runs as a sidecar container on `localhost`. This eliminates network latency, enabling **real-time** compliance checks critical for high-frequency trading decisions.
 *   **Implementation:** `governance_poc/finance_policy.rego`
 
-### Layer 3: The Semantic Verifier (Intent)
+### Layer 4: The Semantic Verifier (Intent)
 **Goal:** Semantic Safety & Anti-Hallucination.
 We implement a **Propose-Verify-Execute** pattern:
 1.  **Worker Agent:** Uses `propose_trade` to draft an action. It *cannot* execute trades.
@@ -52,14 +56,14 @@ We implement a **Propose-Verify-Execute** pattern:
     *   **Execution:** Only the Verifier can call `execute_trade`.
 *   **Implementation:** `financial_advisor/sub_agents/governed_trader/verifier.py`
 
-### Layer 4: The Consensus Engine (Adaptive Compute)
+### Layer 5: The Consensus Engine (Adaptive Compute)
 **Goal:** High-Stakes Validation.
 For actions exceeding a high-risk threshold ($10,000), the system triggers an **Ensemble Check**.
 *   **Mechanism:** The `ConsensusEngine` simulates a voting process (mocked for this sample) to ensure unanimous agreement before execution.
 *   **Integration:** Embedded in the `@governed_tool` decorator. If the consensus check fails, the trade is blocked even if OPA approves.
 *   **Implementation:** `financial_advisor/consensus.py`
 
-### Layer 5: Human-in-the-Loop (Escalation)
+### Layer 6: Human-in-the-Loop (Escalation)
 **Goal:** The Grey Zone & Constructive Friction.
 When the Consensus Engine encounters ambiguous scenarios (e.g., complex life events, borderline risk), it returns an `ESCALATE` vote instead of a hard `REJECT`.
 *   **Mechanism:** The system halts execution and returns a `MANUAL_REVIEW` status.

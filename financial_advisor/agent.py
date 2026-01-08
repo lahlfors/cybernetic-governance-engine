@@ -15,8 +15,35 @@
 """Financial coordinator: provide reasonable investment strategies."""
 
 from google.adk.agents import LlmAgent
+from google.adk.tools.preload_memory_tool import PreloadMemoryTool
 from .tools.router import route_request
 from .telemetry import configure_telemetry
+from .prompt import get_financial_coordinator_instruction
+from financial_advisor.infrastructure.vertex_memory import get_memory_service
+import logging
+
+logger = logging.getLogger("FinancialCoordinator")
+
+# --- NEW: Save Middleware ---
+async def save_memory_callback(context, response):
+    """
+    Middleware: Automatically saves the turn to Vertex AI Memory Bank.
+    Triggered after the agent generates a response.
+    """
+    session = context.session
+    try:
+        service = get_memory_service()
+        if service:
+            # Persist the session state/history to the Memory Bank
+            await service.add_session_to_memory(session)
+            print(f"💾 Memory Saved for Session: {session.id}")
+        else:
+            # Graceful degradation if memory service isn't active
+            print("⚠️ Memory Service not active (skipping save).")
+    except Exception as e:
+        print(f"⚠️ Failed to save memory: {e}")
+
+# ... existing code ...
 
 # Initialize GCP observability (logging and tracing)
 configure_telemetry()
@@ -38,7 +65,7 @@ financial_coordinator = LlmAgent(
         "analyze a market ticker, develop trading strategies, define "
         "execution plans, and evaluate the overall risk."
     ),
-    instruction=prompt.FINANCIAL_COORDINATOR_PROMPT,
+    instruction=get_financial_coordinator_instruction(),
     output_key="financial_coordinator_output",
     # Explicitly register sub-agents for hierarchy, but do not expose them as tools directly.
     sub_agents=[
@@ -48,7 +75,14 @@ financial_coordinator = LlmAgent(
         risk_analyst_agent,
     ],
     # Expose ONLY the deterministic router tool.
-    tools=[route_request],
+    tools=[
+        route_request, 
+        # --- NEW: Read Middleware ---
+        # Automatically queries memory bank and injects relevant context
+        PreloadMemoryTool()
+    ],
+    # --- NEW: Write Middleware ---
+    after_model_callback=save_memory_callback,
 )
 
 root_agent = financial_coordinator
