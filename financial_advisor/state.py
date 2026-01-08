@@ -15,5 +15,9 @@ class AgentState(TypedDict):
     trading_strategy: Optional[str] # Output of Stage 2
     risk_assessment: Optional[str]  # Output of Stage 3
 
+    # Feedback Loop Control
+    feedback: Optional[str]         # Critique from Risk Node
+    revision_count: Annotated[int, operator.add] # Circuit Breaker (increments automatically)
+
     # Metadata
     user_id: str

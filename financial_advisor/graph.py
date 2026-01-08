@@ -19,19 +19,50 @@ checkpointer = RedisSaver(conn=redis_client)
 # 2. Define Graph
 workflow = StateGraph(AgentState)
 
-# 3. Add Nodes (The 4 Execution Steps)
+# 3. Add Nodes
 workflow.add_node("market_analysis", market_analysis_node)
 workflow.add_node("trading_strategy", trading_strategy_node)
 workflow.add_node("risk_assessment", risk_assessment_node)
 workflow.add_node("governed_trading", governed_trading_node)
 
-# 4. Define Edges (The Strict Execution Path)
-# Entry -> Analysis -> Strategy -> Risk -> Trading -> End
+# 4. Define Edges (The HD-MDP Logic)
 workflow.set_entry_point("market_analysis")
 
 workflow.add_edge("market_analysis", "trading_strategy")
 workflow.add_edge("trading_strategy", "risk_assessment")
-workflow.add_edge("risk_assessment", "governed_trading")
+
+# Conditional Edge Logic
+def should_revise(state: AgentState):
+    """
+    Decides whether to loop back for correction or proceed to execution.
+    """
+    risk_assessment = state.get("risk_assessment", "")
+    feedback = state.get("feedback")
+    count = state.get("revision_count", 0)
+
+    # 1. Circuit Breaker
+    MAX_RETRIES = 3
+    if count > MAX_RETRIES:
+        return "halt" # Stop if too many attempts
+
+    # 2. Risk Check
+    # If explicit "REJECT" status or feedback provided
+    if feedback or "STATUS: REJECT" in risk_assessment:
+        return "revise"
+
+    # 3. Default
+    return "proceed"
+
+workflow.add_conditional_edges(
+    "risk_assessment",
+    should_revise,
+    {
+        "revise": "trading_strategy",
+        "proceed": "governed_trading",
+        "halt": END
+    }
+)
+
 workflow.add_edge("governed_trading", END)
 
 # 5. Compile

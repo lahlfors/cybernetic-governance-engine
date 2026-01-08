@@ -40,7 +40,6 @@ def market_analysis_node(state: AgentState):
     # --- STEP 2: SYNTHESIS ---
     llm = ChatGoogleGenerativeAI(**Config.get_llm_config("reasoning"))
 
-    # Improved Prompt
     system_prompt = """You are a Senior Market Analyst.
 Your goal is to provide a comprehensive, fact-based market analysis based STRICTLY on the provided data.
 
@@ -78,9 +77,32 @@ def trading_strategy_node(state: AgentState):
 
     llm = ChatGoogleGenerativeAI(**Config.get_llm_config("reasoning"))
     data = state.get("market_data")
+    feedback = state.get("feedback")
 
-    # Improved Prompt
-    system_prompt = """You are a Trading Strategist.
+    if feedback:
+        # RECURSIVE CORRECTION PROMPT
+        system_prompt = """You are a Trading Strategist.
+You previously proposed a strategy that was REJECTED by Risk Control.
+Refine your strategy to address the following feedback.
+
+FEEDBACK:
+{feedback}
+
+WARNINGS:
+- You MUST change the strategy to satisfy the risk constraints.
+- Be conservative.
+"""
+        input_data = {"feedback": feedback, "data": data} # 'data' kept for context if needed in prompt
+        # We need to construct the prompt dynamically or use a template that handles both cases
+        # For simplicity, we stick to the if/else logic for prompt construction.
+
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("human", "Original Market Data:\n{data}\n\nProvide revised strategy:")
+        ])
+    else:
+        # STANDARD PROMPT
+        system_prompt = """You are a Trading Strategist.
 Based on the provided market analysis, propose a clear trading strategy.
 
 WARNINGS:
@@ -88,13 +110,19 @@ WARNINGS:
 - You must specify the Action (Buy/Sell/Hold), Symbol, and reasoning.
 - DISCLAIMER: This is a simulation. Not real investment advice.
 """
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human", "Market Analysis:\n{data}")
-    ])
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("human", "Market Analysis:\n{data}")
+        ])
+        input_data = {"data": data}
 
     response = prompt | llm
-    response = response.invoke({"data": data})
+    response = response.invoke(input_data)
+
+    # We reset feedback after handling it to avoid stale state issues if we loop again?
+    # Actually, the state update merges. If we don't clear it, it stays.
+    # But revisions overwrite 'trading_strategy'.
+    # 'feedback' will be overwritten by Risk node next time.
 
     return {
         "messages": [response],
@@ -111,7 +139,7 @@ def risk_assessment_node(state: AgentState):
     llm = ChatGoogleGenerativeAI(**Config.get_llm_config("reasoning"))
     strategy = state.get("trading_strategy")
 
-    # Improved Prompt
+    # Improved Prompt with STRUCTURED SIGNAL
     system_prompt = """You are a Risk Guardian.
 Your job is to critically evaluate the proposed trading strategy for safety and compliance.
 
@@ -119,6 +147,11 @@ WARNINGS:
 - Identify high-risk factors (volatility, lack of data, regulatory concerns).
 - If the strategy is vague or dangerous, flag it immediately.
 - Safety is your top priority.
+
+OUTPUT FORMAT:
+Start your response with "STATUS: [APPROVE | REJECT]".
+Then provide your detailed reasoning.
+If REJECT, provide specific constructive feedback for the strategist.
 """
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),
@@ -128,9 +161,29 @@ WARNINGS:
     response = prompt | llm
     response = response.invoke({"strategy": strategy})
 
+    content = response.content
+
+    # Simple extraction logic for the Edge to use later
+    # We populate 'feedback' if Rejected.
+    feedback = None
+    if "STATUS: REJECT" in content:
+        feedback = content # Pass full critique
+        current_span.set_attribute("risk.decision", "reject")
+    else:
+        current_span.set_attribute("risk.decision", "approve")
+
+    # We increment revision_count in the graph logic or here?
+    # 'revision_count' is an annotated int with operator.add.
+    # If we return a value, it adds.
+    # We should add 1 if we are rejecting?
+    # Or strictly count revisions. The 'should_revise' edge will check the count.
+    # To simply increment, we return {"revision_count": 1}.
+
     return {
         "messages": [response],
-        "risk_assessment": response.content
+        "risk_assessment": content,
+        "feedback": feedback,
+        "revision_count": 1 # Always increment step count
     }
 
 # --- NODE 4: GOVERNED TRADING ---
