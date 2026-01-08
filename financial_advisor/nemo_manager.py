@@ -122,3 +122,48 @@ def create_nemo_manager(config_path: str = "financial_advisor/rails_config") -> 
     rails = LLMRails(config)
     return rails
 
+# --- New Adapter Functions for Refactor ---
+
+def load_rails() -> LLMRails:
+    """Wrapper to maintain consistency with new design."""
+    return create_nemo_manager()
+
+async def validate_with_nemo(user_input: str, rails: LLMRails) -> tuple[bool, str]:
+    """
+    Validates user input using NeMo Guardrails.
+    Returns (is_safe: bool, response: str).
+    """
+    try:
+        # Check for 'self_check_input' or similar rails
+        # We perform a generation call which triggers the input rails
+        # If blocked, the response will be a refusal message.
+        res = await rails.generate_async(messages=[{
+            "role": "user",
+            "content": user_input
+        }])
+
+        # Heuristic: Check if the response indicates a block
+        # NeMo typically returns a predefined message if blocked by a rail
+        if res and isinstance(res, dict) and "content" in res:
+            content = res["content"]
+            if "I cannot answer" in content or "policy" in content.lower():
+                return False, content
+            # If it's a pass-through or a normal response, we treat it as safe
+            # Note: In a 'Governance Sandwich', we might just check input rails here
+            # but NeMo usually runs generation.
+            # A strict input check might use rails.generate(..., options={"rails": ["input"]})
+            return True, content
+
+        # If response object structure varies (e.g. string)
+        if isinstance(res, str):
+             if "I cannot answer" in res or "policy" in res.lower():
+                return False, res
+             return True, res
+
+        return True, ""
+    except Exception as e:
+        print(f"NeMo Validation Error: {e}")
+        # Fail safe (or fail closed depending on policy)
+        # Here we allow the graph to proceed if NeMo crashes,
+        # relying on the Graph's internal safety.
+        return True, ""
