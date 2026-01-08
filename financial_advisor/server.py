@@ -77,22 +77,35 @@ async def query_agent(request: QueryRequest):
                 print(f"Guardrails Input Check Warning: {e}")
 
         # --- Layer 3: Execution ---
-        # --- Layer 3: Execution ---
-        # Let the runner manage session creation implicitly (to avoid InMemoryRunner lookup issues)
         
-        # Pass raw prompt. Tool will augment context.
-        content = UserContent(parts=[Part(text=request.prompt)])
-        
-        final_text = ""
-        async for event in runner.run_async(
-            session_id=None,
-            user_id=request.user_id,
-            new_message=content
-        ):
-            if event.content and event.content.parts:
-                for part in event.content.parts:
-                    if part.text:
-                        final_text += part.text
+        # Explicitly create a session for this request since InMemoryRunner is stateless
+        # Use runner.app_name to ensure consistency with internal lookups
+        session = await runner.session_service.create_session(
+            app_name=runner.app_name,
+            user_id=request.user_id
+        )
+
+        try:
+            # Pass raw prompt. Tool will augment context.
+            content = UserContent(parts=[Part(text=request.prompt)])
+
+            final_text = ""
+            async for event in runner.run_async(
+                session_id=session.id,
+                user_id=request.user_id,
+                new_message=content
+            ):
+                if event.content and event.content.parts:
+                    for part in event.content.parts:
+                        if part.text:
+                            final_text += part.text
+        finally:
+            # Cleanup session to prevent memory leaks in InMemoryRunner
+            await runner.session_service.delete_session(
+                app_name=runner.app_name,
+                user_id=request.user_id,
+                session_id=session.id
+            )
         
         # --- Layer 4: Output Guardrails ---
         if rails_active:
