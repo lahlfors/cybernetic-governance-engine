@@ -1,120 +1,65 @@
-"""
-Telemetry configuration for GCP Cloud Logging and Cloud Trace.
-"""
-import logging
 import os
-import contextlib
-
-# Configure logging first
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger("FinancialAdvisor")
-
-_telemetry_configured = False
+import logging
+import google.cloud.logging
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
+from openinference.instrumentation.langchain import LangChainInstrumentor
 
 def configure_telemetry():
     """
-    Configures OpenTelemetry tracing and Google Cloud Logging.
-    This function is idempotent - calling it multiple times has no effect.
+    Configures OpenTelemetry for Google Cloud Trace and Logging,
+    instrumented with OpenInference for LangChain/LangGraph.
     """
-    global _telemetry_configured
-    if _telemetry_configured:
-        return
-    
+    # 1. Setup Google Cloud Logging (The Log Explorer)
+    # This connects standard Python logging directly to GCP Log Explorer
     try:
-        # Import optional dependencies
-        from opentelemetry import trace
-        from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor
-        
-        # Try to configure Google Cloud Trace
-        try:
-            from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
-            
-            # Set up tracer provider
-            provider = TracerProvider()
-            trace.set_tracer_provider(provider)
-            
-            # Configure Cloud Trace exporter
-            cloud_exporter = CloudTraceSpanExporter()
-            span_processor = BatchSpanProcessor(cloud_exporter)
-            provider.add_span_processor(span_processor)
-            logger.info("✅ OpenTelemetry: Google Cloud Trace Exporter configured.")
-            
-            # Instrument the requests library for HTTP tracing
-            try:
-                from opentelemetry.instrumentation.requests import RequestsInstrumentor
-                RequestsInstrumentor().instrument()
-                logger.info("✅ OpenTelemetry: Requests HTTP library instrumented.")
-            except ImportError:
-                logger.warning("⚠️ Requests instrumentation not available (install opentelemetry-instrumentation-requests)")
-            except Exception as e:
-                logger.warning(f"⚠️ Requests instrumentation failed: {e}")
-                
-        except Exception as e:
-            logger.warning(f"⚠️ OpenTelemetry Cloud Trace not configured: {e}")
-        
-        # Try to configure Google Cloud Logging
-        try:
-            import google.cloud.logging
-            
-            client = google.cloud.logging.Client()
-            client.setup_logging()
-            logger.info("✅ Google Cloud Logging configured.")
-        except Exception as e:
-            logger.warning(f"⚠️ Google Cloud Logging not configured: {e}")
-        
-        _telemetry_configured = True
-        logger.info("✅ Telemetry configuration complete.")
-        
-    except ImportError as e:
-        logger.warning(f"⚠️ Telemetry dependencies not available: {e}")
+        log_client = google.cloud.logging.Client()
+        log_client.setup_logging()
     except Exception as e:
-        logger.error(f"❌ Telemetry configuration failed: {e}")
+        print(f"⚠️ Google Cloud Logging not configured: {e}")
 
+    # Create a standard logger
+    logger = logging.getLogger("iso-agent")
+    logger.setLevel(logging.INFO)
 
-# Tracer for creating custom spans
-def get_tracer():
-    """Returns a tracer for creating custom spans."""
-    try:
-        from opentelemetry import trace
-        return trace.get_tracer("financial_advisor.genai")
-    except ImportError:
-        return None
+    # 2. Define the Resource
+    resource = Resource(attributes={
+        "service.name": "financial-advisor-agent",
+        "service.version": "1.0.0",
+        "deployment.environment": os.getenv("DEPLOYMENT_ENV", "production")
+    })
 
-
-@contextlib.contextmanager
-def genai_span(name: str, prompt: str = None, model: str = None):
-    """
-    Context manager for GenAI Semantic Conventions.
-    Captures prompt, model, and creates a distinct span.
-    """
-    tracer = get_tracer()
-    if tracer is None:
-        yield None
-        return
+    # 3. Set up the Provider
+    tracer_provider = TracerProvider(resource=resource)
     
+    # 4. Configure Exporters
+    # Primary: Google Cloud Trace
     try:
-        from opentelemetry import trace as otel_trace
-        with tracer.start_as_current_span(name) as span:
-            if prompt:
-                span.set_attribute("gen_ai.content.prompt", prompt)
-            if model:
-                span.set_attribute("gen_ai.request.model", model)
-            try:
-                yield span
-            except Exception as e:
-                span.record_exception(e)
-                span.set_status(otel_trace.Status(otel_trace.StatusCode.ERROR))
-                raise
-    except Exception:
-        yield None
+        cloud_trace_exporter = CloudTraceSpanExporter()
+        tracer_provider.add_span_processor(
+            BatchSpanProcessor(cloud_trace_exporter)
+        )
+    except Exception as e:
+        print(f"⚠️ OpenTelemetry Cloud Trace not configured: {e}")
+        # Fallback to Console for dev/debug if GCP fails
+        # console_exporter = ConsoleSpanExporter()
+        # tracer_provider.add_span_processor(BatchSpanProcessor(console_exporter))
 
+    # 5. Link Logs to Traces
+    # This auto-instruments the logging library to inject trace_id/span_id
+    LoggingInstrumentor().instrument(set_logging_format=True)
 
-def record_completion(span, completion: str):
-    """Helper to add completion to the current span."""
-    if span:
-        span.set_attribute("gen_ai.content.completion", completion)
+    # 6. Instrument LangGraph/LangChain (OpenInference)
+    # This captures the Agent's internal steps (Nodes, Chains)
+    LangChainInstrumentor().instrument(tracer_provider=tracer_provider)
 
+    logger.info("✅ Telemetry configuration complete.")
+    return tracer_provider
+
+# Helper to get tracer
+def get_tracer():
+    return trace.get_tracer(__name__)
