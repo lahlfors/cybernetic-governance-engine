@@ -124,4 +124,27 @@ See **[deployment/README.md](deployment/README.md)** for detailed deployment ins
 
 ## Architecture Diagram
 
-<img src="financial-advisor.png" alt="Financial Advisor Architecture" width="800"/>
+```mermaid
+graph TD
+    %% Nodes
+    A[Market Analyst<br/>(Deterministic Tool)] --> B[Strategist<br/>(LLM)]
+    B --> C[Risk Guardian<br/>(LLM + Policy)]
+
+    %% The Governance Loop
+    C -- "REJECT (Feedback)" --> B
+    linkStyle 1 stroke:red,stroke-width:2px,color:red;
+
+    %% The Execution Path
+    C -- "APPROVE" --> D[Governed Trader<br/>(Execution Node)]
+
+    %% The Governance Cage
+    subgraph "Governance Cage (OPA Sidecar)"
+    D
+    end
+
+    %% Styling
+    style A fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    style B fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style C fill:#ffebee,stroke:#c62828,stroke-width:2px
+    style D fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+```
