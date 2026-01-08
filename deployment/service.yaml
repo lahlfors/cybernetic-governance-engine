@@ -16,6 +16,9 @@ spec:
         # --- CONTAINER 1: The Agent (Ingress) ---
         - name: ingress-agent
           image: gcr.io/PROJECT_ID/financial-advisor:latest
+          # CLOUD RUN CONFIGURATION
+          # "dependsOn" is valid in Cloud Run (Knative) for startup ordering.
+          # Required for Sidecar readiness.
           dependsOn:
             - governance-sidecar
           ports:
