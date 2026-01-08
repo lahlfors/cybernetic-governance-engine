@@ -6,27 +6,23 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 # Imports
-from google.adk.runners import InMemoryRunner
 from google.genai.types import Part, UserContent 
+from opentelemetry import trace
+from opentelemetry.instrumentation.langchain import LangchainInstrumentor
 
 # Project Imports
-from financial_advisor.agent import financial_coordinator
 from financial_advisor.telemetry import configure_telemetry
-from financial_advisor.nemo_manager import create_nemo_manager
-from financial_advisor.context import user_context
-# --- NEW: Infrastructure Import ---
-from financial_advisor.infrastructure.vertex_memory import create_memory_service
+from financial_advisor.nemo_manager import create_nemo_manager, validate_with_nemo
+from financial_advisor.graph import create_graph
 
 app = FastAPI(title="Governed Financial Advisor")
 
+# Setup OTel
 configure_telemetry()
+LangchainInstrumentor().instrument() # Auto-traces Graph & ADK Wrapper
 
-# --- GLOBAL SINGLETONS ---
-runner = InMemoryRunner(agent=financial_coordinator)
-
-import datetime
-# Force update timestamp
-print(f"DEBUG: Server started (Fixed Session) at {datetime.datetime.now()}", file=sys.stderr, flush=True)
+# Initialize Graph
+graph = create_graph(redis_url=os.environ.get("REDIS_URL", "redis://localhost:6379"))
 
 # Guardrails
 try:
@@ -38,81 +34,36 @@ except Exception as e:
     rails = None
     rails_active = False
 
-# --- NEW: Memory Initialization ---
-# This sets up the singleton for the Agent to use later
-PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT")
-LOCATION = os.environ.get("GOOGLE_CLOUD_REGION", "us-central1")
-AGENT_ENGINE_ID = os.environ.get("AGENT_ENGINE_ID")
-
-if AGENT_ENGINE_ID:
-    try:
-        create_memory_service(PROJECT_ID, LOCATION, AGENT_ENGINE_ID)
-        print(f"✅ Native ADK Memory Service Active (Engine: {AGENT_ENGINE_ID})")
-    except Exception as e:
-        print(f"❌ Failed to init Memory Service: {e}")
-else:
-    print("⚠️ AGENT_ENGINE_ID not set. Memory will be ephemeral.")
-
-class QueryRequest(BaseModel):
-    prompt: str
-    user_id: str = "default_user" 
+class AgentQuery(BaseModel):
+    input: str
+    thread_id: str = "default_thread"
 
 @app.get("/health")
 def health_check():
     return {"status": "ok", "service": "financial-advisor-agent"}
 
 @app.post("/agent/query")
-async def query_agent(request: QueryRequest):
-    token = user_context.set(request.user_id)
+async def query_endpoint(req: AgentQuery):
+    # 1. NeMo Security Check
+    if rails_active:
+        safe, msg = await validate_with_nemo(req.input, rails)
+        if not safe:
+            return {"response": msg} # Blocked
+
+    # 2. Graph Execution (Supervisor -> ADK Worker)
     try:
-        # --- Layer 1: Context Retrieval (REMOVED) ---
-        # Handled automatically by PreloadMemoryTool in agent.py
+        res = await graph.ainvoke(
+            {"messages": [("user", req.input)]},
+            config={"configurable": {"thread_id": req.thread_id}}
+        )
+        # Extract last AI message
+        last_msg = res["messages"][-1]
+        content = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
         
-        # --- Layer 2: Input Guardrails ---
-        if rails_active:
-            try:
-                # Basic check 
-                pass 
-            except Exception as e:
-                print(f"Guardrails Input Check Warning: {e}")
-
-        # --- Layer 3: Execution ---
-        # --- Layer 3: Execution ---
-        # Let the runner manage session creation implicitly (to avoid InMemoryRunner lookup issues)
-        
-        # Pass raw prompt. Tool will augment context.
-        content = UserContent(parts=[Part(text=request.prompt)])
-        
-        final_text = ""
-        async for event in runner.run_async(
-            session_id=None,
-            user_id=request.user_id,
-            new_message=content
-        ):
-            if event.content and event.content.parts:
-                for part in event.content.parts:
-                    if part.text:
-                        final_text += part.text
-        
-        # --- Layer 4: Output Guardrails ---
-        if rails_active:
-            try:
-                # Output verification logic 
-                pass
-            except Exception as e:
-                print(f"Guardrails Output Check Warning: {e}")
-
-        # --- Layer 5: Context Storage (REMOVED) ---
-        # Handled automatically by save_memory_callback in agent.py
-        
-        return {"response": final_text}
-
+        return {"response": content}
     except Exception as e:
-        print(f"❌ Error invoking agent: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        user_context.reset(token)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))

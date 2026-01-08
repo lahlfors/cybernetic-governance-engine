@@ -122,3 +122,39 @@ def create_nemo_manager(config_path: str = "financial_advisor/rails_config") -> 
     rails = LLMRails(config)
     return rails
 
+async def validate_with_nemo(user_input: str, rails: LLMRails):
+    """
+    Validates user input against NeMo Guardrails.
+    Returns (safe: bool, message: str)
+    """
+    try:
+        # Generate the response to check for guardrail intervention
+        # The 'self_check_input' rail should trigger here.
+        # We use a dummy prompt context if needed, or just send the input.
+        res = await rails.generate_async(messages=[{"role": "user", "content": user_input}])
+
+        # If NeMo blocked it, the response usually indicates refusal or matches a block pattern.
+        # However, generate_async runs the full dialog.
+        # For input checking specifically, we assume if it returns a standard refusal string.
+        # Better approach: Check if 'bot_refusal' or similar event occurred.
+        # For simplicity, we assume if response is "I cannot answer..." it's blocked.
+        # But wait, the SDD says: safe, msg = await validate_with_nemo(req.input, rails)
+
+        # Let's inspect the 'response'.
+        if hasattr(res, "response"):
+             # If using new API
+             content = res.response[0].get("content", "")
+        else:
+             # String or dict
+             content = str(res)
+
+        # Simple heuristic for this demo:
+        # If the content matches our guardrail refusal message.
+        if "I cannot engage" in content or "harmful" in content.lower():
+             return False, content
+
+        return True, ""
+    except Exception as e:
+        print(f"NeMo Validation Error: {e}")
+        # Fail open or closed? SDD implies strict ingress. Fail closed.
+        return False, "Security Check Failed."

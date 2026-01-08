@@ -5,9 +5,9 @@ import requests
 from typing import Any, Dict, Union
 from pydantic import BaseModel
 from opentelemetry import trace
-from .telemetry import genai_span
-from .consensus import consensus_engine
-from .safety import safety_filter
+from financial_advisor.telemetry import genai_span
+from financial_advisor.consensus import consensus_engine
+from financial_advisor.safety import safety_filter
 
 # Configure logging
 logger = logging.getLogger("GovernanceLayer")
