@@ -5,28 +5,16 @@ import traceback
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-# Imports
-from google.adk.runners import InMemoryRunner
-from google.genai.types import Part, UserContent 
-
-# Project Imports
-from financial_advisor.agent import financial_coordinator
 from financial_advisor.telemetry import configure_telemetry
 from financial_advisor.nemo_manager import create_nemo_manager
 from financial_advisor.context import user_context
-# --- NEW: Infrastructure Import ---
-from financial_advisor.infrastructure.vertex_memory import create_memory_service
+
+# New Imports
+from financial_advisor.graph import app as graph_app
 
 app = FastAPI(title="Governed Financial Advisor")
 
 configure_telemetry()
-
-# --- GLOBAL SINGLETONS ---
-runner = InMemoryRunner(agent=financial_coordinator)
-
-import datetime
-# Force update timestamp
-print(f"DEBUG: Server started (Fixed Session) at {datetime.datetime.now()}", file=sys.stderr, flush=True)
 
 # Guardrails
 try:
@@ -38,87 +26,58 @@ except Exception as e:
     rails = None
     rails_active = False
 
-# --- NEW: Memory Initialization ---
-# This sets up the singleton for the Agent to use later
-PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT")
-LOCATION = os.environ.get("GOOGLE_CLOUD_REGION", "us-central1")
-AGENT_ENGINE_ID = os.environ.get("AGENT_ENGINE_ID")
-
-if AGENT_ENGINE_ID:
-    try:
-        create_memory_service(PROJECT_ID, LOCATION, AGENT_ENGINE_ID)
-        print(f"✅ Native ADK Memory Service Active (Engine: {AGENT_ENGINE_ID})")
-    except Exception as e:
-        print(f"❌ Failed to init Memory Service: {e}")
-else:
-    print("⚠️ AGENT_ENGINE_ID not set. Memory will be ephemeral.")
-
 class QueryRequest(BaseModel):
-    prompt: str
-    user_id: str = "default_user" 
+    message: str
+    user_id: str = "default_user"
+
+# Endpoint for NeMo compliant chat
+class ChatCompletionRequest(BaseModel):
+    text: str # User plan used 'text' in example
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "financial-advisor-agent"}
+    return {"status": "ok", "service": "financial-advisor-agent-langgraph"}
 
+# --- NE MO GUARDRAILS ENDPOINT (Secure) ---
+@app.post("/v1/chat/completions")
+async def chat_endpoint(request: ChatCompletionRequest):
+    if not rails or not rails_active:
+        raise HTTPException(status_code=503, detail="NeMo Guardrails not initialized")
+
+    try:
+        # SECURE: Wraps the flow in Input -> LLM -> Output rails
+        # Note: This executes the NeMo flow. If NeMo is not configured to call the HD-MDP graph,
+        # it will use its default LLM to answer.
+        # Ideally, we would register the graph as a tool or action in NeMo.
+        response = await rails.generate_async(
+            messages=[{"role": "user", "content": request.text}]
+        )
+        # Handle the response structure (NeMo can return different shapes)
+        content = response.content if hasattr(response, 'content') else str(response)
+        return {"content": content}
+
+    except Exception as e:
+        # Catches rail violations ("I cannot answer...")
+        print(f"Policy Violation: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Policy Violation: {str(e)}")
+
+# --- LEGACY/DIRECT GRAPH ENDPOINT ---
 @app.post("/agent/query")
 async def query_agent(request: QueryRequest):
     token = user_context.set(request.user_id)
     try:
-        # --- Layer 1: Context Retrieval (REMOVED) ---
-        # Handled automatically by PreloadMemoryTool in agent.py
+        config = {"configurable": {"thread_id": request.user_id}}
         
-        # --- Layer 2: Input Guardrails ---
-        if rails_active:
-            try:
-                # Basic check 
-                pass 
-            except Exception as e:
-                print(f"Guardrails Input Check Warning: {e}")
-
-        # --- Layer 3: Execution ---
-        
-        # Explicitly create a session for this request since InMemoryRunner is stateless
-        # Use runner.app_name to ensure consistency with internal lookups
-        session = await runner.session_service.create_session(
-            app_name=runner.app_name,
-            user_id=request.user_id
+        final_state = await graph_app.ainvoke(
+            {
+                "messages": [("user", request.message)],
+                "user_id": request.user_id
+            },
+            config=config
         )
-
-        try:
-            # Pass raw prompt. Tool will augment context.
-            content = UserContent(parts=[Part(text=request.prompt)])
-
-            final_text = ""
-            async for event in runner.run_async(
-                session_id=session.id,
-                user_id=request.user_id,
-                new_message=content
-            ):
-                if event.content and event.content.parts:
-                    for part in event.content.parts:
-                        if part.text:
-                            final_text += part.text
-        finally:
-            # Cleanup session to prevent memory leaks in InMemoryRunner
-            await runner.session_service.delete_session(
-                app_name=runner.app_name,
-                user_id=request.user_id,
-                session_id=session.id
-            )
         
-        # --- Layer 4: Output Guardrails ---
-        if rails_active:
-            try:
-                # Output verification logic 
-                pass
-            except Exception as e:
-                print(f"Guardrails Output Check Warning: {e}")
-
-        # --- Layer 5: Context Storage (REMOVED) ---
-        # Handled automatically by save_memory_callback in agent.py
-        
-        return {"response": final_text}
+        bot_response = final_state["messages"][-1].content
+        return {"response": bot_response}
 
     except Exception as e:
         print(f"❌ Error invoking agent: {e}")
