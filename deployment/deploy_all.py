@@ -160,7 +160,7 @@ def _deploy_agent_engine(project_id, location, staging_bucket=None):
         "--env_file=.env",
         "--display_name=financial-advisor-agent",
         "--trace_to_cloud",
-        "financial_advisor"  # Positional AGENT argument - path to agent source
+        "src"  # Positional AGENT argument - path to agent source
     ]
     
     # Add explicit staging bucket if successfully resolved
