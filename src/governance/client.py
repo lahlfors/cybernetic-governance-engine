@@ -5,7 +5,7 @@ import requests
 from typing import Any, Dict, Union
 from pydantic import BaseModel
 from opentelemetry import trace
-from .telemetry import genai_span
+from src.utils.telemetry import genai_span
 from src.governance.consensus import consensus_engine
 from src.governance.safety import safety_filter
 
@@ -21,8 +21,8 @@ class OPAClient:
     """
     def __init__(self):
         # Default to localhost for standalone testing, but allow override for Docker/Cloud
-        # Pointing to 'decision' rule instead of 'allow'
-        self.url = os.environ.get("OPA_URL", "http://localhost:8181/v1/data/finance/decision")
+        # Updated to point to the new 'allow' rule by default, but keeping logic flexible
+        self.url = os.environ.get("OPA_URL", "http://localhost:8181/v1/data/financial/trade/allow")
         # Fetch authentication token if available
         self.auth_token = os.environ.get("OPA_AUTH_TOKEN")
 
@@ -48,8 +48,15 @@ class OPAClient:
                 )
                 response.raise_for_status()
 
-                # OPA returns {"result": "ALLOW"} or "DENY" etc.
+                # OPA returns {"result": "ALLOW"} or "DENY" etc. OR {"result": true/false}
                 result = response.json().get("result", "DENY")
+
+                # Adapt boolean result (from simple policies) to tiered string result
+                if result is True:
+                    result = "ALLOW"
+                elif result is False:
+                    result = "DENY"
+
                 span.set_attribute("governance.decision", result)
 
                 if result == "ALLOW":
