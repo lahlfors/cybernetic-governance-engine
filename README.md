@@ -24,20 +24,23 @@ The architecture enforces "Defense in Depth" through six distinct layers (0-5), 
 4.  **Policy Engine (Layer 3):** **Open Policy Agent (OPA)** enforces Role-Based Access Control (RBAC) and business logic (e.g., trading limits) external to the Python code.
 5.  **Semantic Verification (Layer 4):** A specialized **Verifier Agent** audits the proposed actions of a "Worker" agent to prevent hallucinations (Propose-Verify-Execute pattern).
 6.  **Consensus Engine (Layer 5):** Simulates an ensemble vote for high-stakes actions.
-7.  **Deterministic Routing:** The `financial_coordinator` uses a strict router tool to transition between states, preventing invalid agent transitions.
+7.  **Deterministic Routing (LangGraph):** The system uses **LangGraph** to implement the HD-MDP, replacing probabilistic tool use with a strict State Graph. This enforces the Strategy -> Risk -> Execution workflow and enables self-correcting loops.
 
 For a deep dive into the theory and implementation, read **[README_GOVERNANCE.md](README_GOVERNANCE.md)**.
 
 ## Agent Team
 
-The system orchestrates a team of specialized sub-agents:
+The system orchestrates a team of specialized sub-agents, managed by a central **Supervisor Node**:
 
-1.  **Data Analyst Agent:** Performs market research using Google Search (accessed via Router).
+1.  **Data Analyst Agent:** Performs market research using Google Search.
 2.  **Governed Trader Agent (Layer 3):**
     *   **Worker:** Proposes trading strategies based on analysis.
     *   **Verifier:** Audits the proposal against safety rules and the user's direct intent. Only the Verifier can execute.
-3.  **Execution Analyst Agent:** Creates detailed execution plans (e.g., VWAP, TWAP).
+3.  **Execution Analyst Agent (Strategy):** Creates detailed execution plans (e.g., VWAP, TWAP).
 4.  **Risk Analyst Agent:** Evaluates the overall portfolio risk and compliance.
+
+### Risk Refinement Loop
+The architecture implements a **Self-Correction Loop**. If the Risk Analyst rejects a plan proposed by the Execution Analyst, the graph automatically routes the feedback back to the Planner with a "CRITICAL" instruction to revise the strategy. This cycle continues until the plan is safe or escalated to a human.
 
 ## Quick Start
 

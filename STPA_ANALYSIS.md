@@ -40,13 +40,13 @@ The Control Structure of an AI Agent
 
 We begin by mapping the agent's feedback loops. In this model, the AI Model (e.g., GPT-4, Claude) functions as the Controller. It issues Control Actions (API Calls, Tool Use) to the Controlled Process (The Database, The Financial Ledger, The Physical Plant) via Actuators. The environment returns Feedback (Logs, Query Results, User Responses) via Sensors.
 
-This diagram reveals the "surface area" of risk: the points where the agent interacts with the world. Crucially, STPA identifies that the Controller (the Agent) operates based on a Process Model—its internal representation of the state of the world. In AI, this Process Model is formed by the context window and the model's training weights. Accidents often occur because the Process Model is flawed; the agent thinks the system is in state X (e.g., "Test Mode") when it is actually in state Y ("Production Mode"). This discrepancy leads to actions that are correct for the perceived state but catastrophic for the actual state.
+This diagram reveals the "surface area" of risk: the points where the agent interacts with the world. Crucially, STPA identifies that the Controller (the Agent) operates based on a Process Model—its internal representation of the state of the world. In AI, this Process Model is formed by the **Graph State** (LangGraph context), the context window, and the model's training weights. Accidents often occur because the Process Model is flawed; the agent thinks the system is in state X (e.g., "Test Mode") when it is actually in state Y ("Production Mode"). This discrepancy leads to actions that are correct for the perceived state but catastrophic for the actual state.
 
 Identifying Unsafe Control Actions (UCAs)
 
 We analyze the control loops to identify Unsafe Control Actions (UCAs). STPA defines four types of UCAs that can lead to hazardous states:
 1. Not providing the control action when required: For example, an autonomous security agent fails to revoke access credentials for a terminated employee, leaving the system vulnerable.
-2. Providing the control action when it is unsafe: For example, an infrastructure agent deletes a database table while the application is live, or a trading agent executes a buy order when liquidity is below a safety threshold.
+2. Providing the control action when it is unsafe: For example, an infrastructure agent deletes a database table while the application is live, or a trading agent executes a buy order when liquidity is below a safety threshold. *Mitigation: The Risk Refinement Loop traps this UCA by validating the plan against the OPA policy before execution, cycling it back for correction if unsafe.*
 3. Providing the control action too early, too late, or out of sequence: For example, an agent attempts to execute a code deployment before the backup process has completed, or it reboots a server before shifting traffic away from it.
 4. Stopping the control action too soon or applying it too long: For example, an agent retrying a failed API call in an infinite loop, triggering a Denial of Service (DoS) protection ban, or an autonomous vehicle braking too late.
 
@@ -161,7 +161,7 @@ Implementation: System 4 is the domain of STPA Hazard Analysis. It is responsibl
 System 3: Control & Optimization (The Now)
 VSM Function: Resource allocation, monitoring internal operations, and audit (The "Inside and Now").
 ISO 42001 Mapping: Clause 8.1 (Operational planning and control) & Clause 9.1 (Monitoring, measurement, analysis).
-Implementation: This is the "Audit Channel" and the runtime orchestration layer. System 3 is the Supervisor Agent (e.g., a LangGraph node) that enforces the budget, monitors "algedonic" signals (pain/pleasure signals like error rates, latency, or toxic output flags), and applies Control Barrier Functions (CBFs) to keep operations within the safe set. It ensures that the operational controls planned in Clause 8.1 are executed and that performance is measured against the metrics defined in Clause 9.1. Crucially, System 3 maintains the "Audit Trail" via tools like OpenTelemetry, ensuring every decision is traceable.
+Implementation: This is the "Audit Channel" and the runtime orchestration layer. System 3 is the **Supervisor Agent (LangGraph node)** that enforces the budget, monitors "algedonic" signals (pain/pleasure signals like error rates, latency, or toxic output flags), and applies Control Barrier Functions (CBFs) to keep operations within the safe set. It ensures that the operational controls planned in Clause 8.1 are executed and that performance is measured against the metrics defined in Clause 9.1. Crucially, System 3 maintains the "Audit Trail" via tools like OpenTelemetry, ensuring every decision is traceable.
 
 System 2: Coordination (The Stabilizer)
 VSM Function: Preventing oscillation and conflict between operational units.
