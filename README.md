@@ -13,18 +13,17 @@ Use this authentic reference implementation to understand how to build **high-re
 This system demonstrates a **Hybrid Cognitive Architecture** designed for regulated industries:
 
 *   **Stateless Compute (Cloud Run):** The core agent logic runs on Google Cloud Run. This ensures **infinite scalability** (scale-to-zero) and **deterministic restarts** (no drift).
-*   **Stateful Cognition (Agent Engine):** Long-term memory is offloaded to **Vertex AI Agent Engine**. This allows the advisor to "know" the user for years, while the compute infrastructure remains ephemeral.
+*   **Redis State Store:** Session state is persisted to Redis (Cloud Memorystore) for reliable recovery across stateless compute instances.
 *   **Zero-Hop Policy (OPA Sidecar):** Regulatory checks happen over `localhost`. There is **no network latency** penalty for compliance, enabling high-frequency decision auditing.
 
 The architecture enforces "Defense in Depth" through six distinct layers (0-5), combining symbolic AI (Hard Logic) with Generative AI (Soft Logic):
 
 1.  **Conversational Guardrails (Layer 0):** **NeMo Guardrails** ensures the model stays on topic and prevents jailbreaks before any tool execution.
-2.  **Cognitive Memory (Layer 1):** **Vertex AI Agent Engine** provides long-term, semantic memory (RAG) to maintain user context across stateless sessions.
-3.  **Structural Validation (Layer 2):** Strict **Pydantic** schemas validate all inputs/outputs.
-4.  **Policy Engine (Layer 3):** **Open Policy Agent (OPA)** enforces Role-Based Access Control (RBAC) and business logic (e.g., trading limits) external to the Python code.
-5.  **Semantic Verification (Layer 4):** A specialized **Verifier Agent** audits the proposed actions of a "Worker" agent to prevent hallucinations (Propose-Verify-Execute pattern).
-6.  **Consensus Engine (Layer 5):** Simulates an ensemble vote for high-stakes actions.
-7.  **Deterministic Routing (LangGraph):** The system uses **LangGraph** to implement the HD-MDP, replacing probabilistic tool use with a strict State Graph. This enforces the Strategy -> Risk -> Execution workflow and enables self-correcting loops.
+2.  **Structural Validation (Layer 1):** Strict **Pydantic** schemas validate all inputs/outputs.
+3.  **Policy Engine (Layer 2):** **Open Policy Agent (OPA)** enforces Role-Based Access Control (RBAC) and business logic (e.g., trading limits) external to the Python code.
+4.  **Semantic Verification (Layer 3):** A specialized **Verifier Agent** audits the proposed actions of a "Worker" agent to prevent hallucinations (Propose-Verify-Execute pattern).
+5.  **Consensus Engine (Layer 4):** Simulates an ensemble vote for high-stakes actions.
+6.  **Deterministic Routing (LangGraph):** The system uses **LangGraph** to implement the HD-MDP, replacing probabilistic tool use with a strict State Graph. This enforces the Strategy -> Risk -> Execution workflow and enables self-correcting loops.
 
 For a deep dive into the theory and implementation, read **[README_GOVERNANCE.md](README_GOVERNANCE.md)**.
 
@@ -100,11 +99,10 @@ streamlit run ui/app.py
 
 ### 7. Advanced Usage
 
-#### A. Persistent User Memory
-The UI supports persisting user context (via Vertex AI Memory Bank) across sessions using URL parameters.
-*   **Default:** Random session ID (Memory is lost on refresh).
-*   **Persistent:** Add `?user_id=[YOUR_ID]` to the URL.
-    *   Example: `http://localhost:8501/?user_id=alice_trader`
+#### A. Session Persistence
+The system uses Redis for session state persistence. When running on Cloud Run with a VPC connector to Memorystore, session state is automatically persisted.
+*   **Default:** Ephemeral session (state lost on container restart).
+*   **With Redis:** Session state persists across container restarts.
 
 #### B. Using Cloud Run Proxy (Recommended for Testing)
 To test the backend directly without managing tokens manually, use the Google Cloud Proxy:

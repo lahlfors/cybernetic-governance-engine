@@ -5,7 +5,7 @@ import requests
 from typing import Any, Dict, Union
 from pydantic import BaseModel
 from opentelemetry import trace
-from .telemetry import genai_span
+from src.utils.telemetry import genai_span
 from src.governance.consensus import consensus_engine
 from src.governance.safety import safety_filter
 

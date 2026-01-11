@@ -1,7 +1,7 @@
 from typing import Dict, Any, List
 import logging
 from opentelemetry import trace
-from .telemetry import genai_span
+from src.utils.telemetry import genai_span
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 logger = logging.getLogger("ConsensusEngine")

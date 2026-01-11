@@ -22,30 +22,20 @@ The system is deployed as a **single Cloud Run Service** that follows the multi-
 
 *   Google Cloud Project with billing enabled.
 *   `gcloud` CLI installed and authenticated.
-*   permissions to manage Cloud Run, Secret Manager, and Artifact Registry/Cloud Build.
-*   **Vertex AI Agent Engine (ReasoningEngine):** Required for persistent memory. The script will auto-detect existing engines. To verify or create manually:
-    ```bash
-    # Verify existing engines:
-    gcloud asset search-all-resources \
-      --scope=projects/YOUR_PROJECT_ID \
-      --asset-types='aiplatform.googleapis.com/ReasoningEngine' \
-      --format="table(name,assetType,location)"
-    
-    # Create new engine via ADK CLI:
-    adk deploy cloud_run --project=YOUR_PROJECT_ID --region=us-central1
-    ```
+*   Permissions to manage Cloud Run, Secret Manager, and Artifact Registry/Cloud Build.
 *   **Optional:** [Serverless VPC Access](https://cloud.google.com/run/docs/configuring/vpc-connectors) connector (Required for Redis/Memorystore connectivity).
+
+## Deployment Script
 
 The `deploy_all.py` script is the central entry point for deploying the entire Cybernetic Governance Engine stack. It orchestrates the provisioning and configuration of:
 
-1.  **Vertex AI Agent Engine**: Deploys the reasoning engine using `adk deploy agent_engine` (auto-detects staging bucket from `.env`).
-2.  **Redis**: Provisions or verifies a Redis instance (for persistent memory).
-3.  **Secrets & Config**: Updates Secret Manager (OPA policies, auth tokens).
-4.  **Cloud Run Services**: Builds and deploys the Backend (`governed-financial-advisor`) and UI (`financial-advisor-ui`) services.
+1.  **Redis**: Provisions or verifies a Redis instance (for session state persistence).
+2.  **Secrets & Config**: Updates Secret Manager (OPA policies, auth tokens).
+3.  **Cloud Run Services**: Builds and deploys the Backend (`governed-financial-advisor`) and UI (`financial-advisor-ui`) services.
 
 ### Usage
 
-By default, the script **deploys all services** (Agent Engine, Redis, UI, Main Service). Use `--skip-*` flags to opt out.
+By default, the script **deploys all services** (Redis, UI, Main Service). Use `--skip-*` flags to opt out.
 
 ```bash
 # Full deployment (deploys everything)
@@ -55,23 +45,13 @@ python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID
 python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --region europe-west1
 
 # Skip specific services
-python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --skip-build       # Skip container build
-python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --skip-ui          # Skip UI deployment
-python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --skip-redis       # Skip Redis provisioning
-python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --skip-agent-deploy # Skip Agent Engine deploy
+python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --skip-build  # Skip container build
+python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --skip-ui     # Skip UI deployment
+python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --skip-redis  # Skip Redis provisioning
 
-# Use existing resources (skips auto-deployment for that resource)
-python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --agent-engine-id "your-engine-id"
+# Use existing Redis
 python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --redis-host "10.0.0.5"
 ```
-
-### Agent Engine Auto-Deployment
-
-The script automatically manages Agent Engine (ReasoningEngine) lifecycle:
-
-1. **Detection**: Uses `gcloud asset search-all-resources` to find existing ReasoningEngines
-2. **Auto-Deploy**: Deploys new engine using `adk deploy cloud_run` (default behavior)
-3. **Skip Deploy**: Use `--skip-agent-deploy` to skip deployment (use with `--agent-engine-id` for existing engine)
 
 ### UI Deployment
 
@@ -87,10 +67,15 @@ The script automatically deploys the Streamlit UI as a separate Cloud Run servic
 *   **Startup Boost:** Uses Cloud Run CPU Boost to minimize cold start latency, ensuring the sidecar is ready before the app serves traffic.
 *   **Startup Dependency:** Uses the `dependsOn` configuration to ensure the application container waits for the OPA sidecar's health check to pass before starting, preventing startup race conditions.
 
-## Post-Deployment Configuration
+## Redis Connectivity
 
-**Automated:**
-The deployment script automatically provisions the Vertex AI Agent Engine. No manual configuration is required.
+For session state persistence, Cloud Run requires a **Serverless VPC Access connector** to reach Cloud Memorystore (Redis).
 
+If a VPC connector is not configured:
+*   The application will timeout connecting to Redis
+*   The system will fallback to **Ephemeral Mode** (in-memory state only)
+*   Session state will NOT persist across container restarts
 
-*Without this step, the memory agent will act as a generic chatbot rather than a structured financial profiler.*
+To configure VPC connectivity:
+1.  Create a [Serverless VPC Access connector](https://cloud.google.com/run/docs/configuring/vpc-connectors)
+2.  Add `--vpc-connector YOUR_CONNECTOR` to the Cloud Run deploy command

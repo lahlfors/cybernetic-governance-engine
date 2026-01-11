@@ -18,12 +18,12 @@ The architecture enforces "Defense in Depth" through six distinct layers (0-5):
 We use **NeMo Guardrails** as the first line of defense to ensure the model stays on topic and avoids jailbreaks *before* it even processes a tool call.
 *   **Implementation:** `financial_advisor/nemo_manager.py` & `financial_advisor/rails_config/`
 
-### Layer 1: The Cognitive Bridge (Agent Engine)
-**Goal:** Long-Term Context & KYC Compliance.
-Cloud Run containers are **stateless** (ephemeral). To provide reliable advice, we use **Vertex AI Agent Engine** as a persistent cognitive layer.
-*   **Constraint:** The agent accesses user history (Risk Profiles, Goals) via **Semantic Retrieval** (RAG) at the start of every session.
-*   **Safety:** This ensures consistent advice ("Don't suggest Oil stocks") even if the compute node was destroyed and recreated 5 seconds ago.
-*   **Implementation:** `financial_advisor/infrastructure/vertex_memory.py` & `google.adk.memory.VertexAiMemoryBankService`.
+### Layer 1: Session Persistence (Redis)
+**Goal:** Stateful Sessions on Stateless Compute.
+Cloud Run containers are **stateless** (ephemeral). To maintain session continuity, we use **Redis (Cloud Memorystore)** for session state persistence.
+*   **Constraint:** Session state is checkpointed to Redis after each turn.
+*   **Safety:** This ensures consistent behavior even if the compute node was destroyed and recreated.
+*   **Implementation:** `financial_advisor/checkpointer.py` using Redis-backed session storage.
 
 ### Layer 2: The Syntax Trapdoor (Schema)
 **Goal:** Structural Integrity.
