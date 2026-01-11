@@ -1,5 +1,5 @@
 import os
-from langchain_core.checkpoints.base import BaseCheckpointSaver
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
 
 def get_checkpointer(redis_url: str = "redis://localhost:6379") -> BaseCheckpointSaver:

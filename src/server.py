@@ -8,6 +8,13 @@ from pydantic import BaseModel
 from opentelemetry import trace
 from opentelemetry.instrumentation.langchain import LangchainInstrumentor
 
+# Initialize Vertex AI before importing agents
+import vertexai
+project_id = os.environ.get("GOOGLE_CLOUD_PROJECT", "laah-cybernetics")
+location = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+vertexai.init(project=project_id, location=location)
+print(f"✅ Vertex AI initialized: project={project_id}, location={location}")
+
 from src.utils.nemo_manager import load_rails, validate_with_nemo
 from src.graph.graph import create_graph
 from src.utils.context import user_context
@@ -47,7 +54,7 @@ async def query_agent(req: QueryRequest):
         # Using ainvoke to run the graph asynchronously
         res = await graph.ainvoke(
             {"messages": [("user", req.prompt)]},
-            config={"configurable": {"thread_id": req.thread_id}}
+            config={"recursion_limit": 20, "configurable": {"thread_id": req.thread_id}}
         )
         
         # Extract the last message content
