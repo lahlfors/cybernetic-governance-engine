@@ -7,7 +7,7 @@ models:
     engine: gemini
     model: gemini-2.0-flash
 
-# TEMPORARILY DISABLED: Input/output rails while debugging
+# Input/output rails configuration
 rails:
   input:
     flows:

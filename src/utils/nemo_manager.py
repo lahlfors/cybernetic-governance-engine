@@ -146,7 +146,7 @@ async def validate_with_nemo(user_input: str, rails: LLMRails) -> tuple[bool, st
         # NeMo typically returns a predefined message if blocked by a rail
         if res and isinstance(res, dict) and "content" in res:
             content = res["content"]
-            if "I cannot answer" in content or "policy" in content.lower():
+            if any(phrase in content for phrase in ["I cannot answer", "policy", "I am programmed", "I am sorry"]):
                 return False, content
             # If it's a pass-through or a normal response, we treat it as safe
             # Note: In a 'Governance Sandwich', we might just check input rails here
@@ -156,7 +156,7 @@ async def validate_with_nemo(user_input: str, rails: LLMRails) -> tuple[bool, st
 
         # If response object structure varies (e.g. string)
         if isinstance(res, str):
-             if "I cannot answer" in res or "policy" in res.lower():
+             if any(phrase in res for phrase in ["I cannot answer", "policy", "I am programmed", "I am sorry"]):
                 return False, res
              return True, res
 
