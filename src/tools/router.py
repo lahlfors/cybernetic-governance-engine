@@ -13,7 +13,7 @@ class RouterIntent(str, Enum):
 def route_request(intent: RouterIntent, tool_context: ToolContext) -> str:
     """
     Deterministically routes the request to the appropriate sub-agent based on the intent.
-    This enforces the HD-MDP structure by restricting transitions to valid paths.
+    This enforces the State Graph structure by restricting transitions to valid paths.
     """
     tracer = get_tracer()
     

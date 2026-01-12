@@ -2,8 +2,8 @@
 
 This repository implements the **Cybernetic Governance** framework, transforming the Financial Advisor agent from a probabilistic LLM application into a deterministic, engineering-controlled system.
 
-## 1. Theoretical Framework: HD-MDP & STPA
-We utilize a **Hierarchical Deterministic Markov Decision Process (HD-MDP)** to solve the "Recursive Paradox" of agent safety (High Variety vs. Low Safety).
+## 1. Theoretical Framework: Hybrid Reasoning Architecture & STPA
+We utilize a **Hybrid Reasoning Architecture** to solve the "Recursive Paradox" of agent safety (High Variety vs. Low Safety). This architecture combines **deterministic workflow control** (LangGraph) with **LLM-powered reasoning** (Google ADK).
 We also employ **Systems-Theoretic Process Analysis (STPA)** to identify and mitigate Unsafe Control Actions (UCAs). See [STPA_ANALYSIS.md](STPA_ANALYSIS.md) for the detailed hazard analysis.
 
 *   **Variety Attenuation:** We use Ashby's Law ($V_R \ge V_A$) to constrain the agent's infinite action space ($V_A$) into a manageable set of states verified by our governance stack ($V_R$).
@@ -78,9 +78,9 @@ We implement **OpenTelemetry** with **GenAI Semantic Conventions** (v1.37+ draft
 
 ## 4. Implementation Details
 
-### The HD-MDP Router (LangGraph)
+### The Deterministic Router (LangGraph)
 The `financial_coordinator` (Supervisor) does **not** have direct access to sub-agents. It cannot "hallucinate" a call to `governed_trading_agent`.
-Instead, we use **LangGraph** to implement the HD-MDP as a rigid State Machine.
+Instead, we use **LangGraph** to implement a rigid State Graph that separates control from reasoning.
 *   **Supervisor Node:** Routes user intents to specific agent nodes (Data, Risk, Execution).
 *   **Risk Refinement Loop:** If the Risk Analyst node returns a `REJECTED_REVISE` status, the graph *automatically* routes back to the Execution Analyst. The system injects the specific risk feedback into the prompt, forcing the planner to self-correct before the trade can proceed. This ensures that no unsafe plan can reach the Execution state.
 

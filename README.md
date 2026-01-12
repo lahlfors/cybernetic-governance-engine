@@ -4,7 +4,7 @@
 
 ## Overview
 
-The Financial Advisor is a multi-agent system designed to assist human financial advisors. Unlike standard "tool-use" agents that can unpredictably call functions, this system uses a **Hierarchical Deterministic Markov Decision Process (HD-MDP)** and **Systems-Theoretic Process Analysis (STPA)** to guarantee safety constraints.
+The Financial Advisor is a multi-agent system designed to assist human financial advisors. Unlike standard "tool-use" agents that can unpredictably call functions, this system uses a **Hybrid Reasoning Architecture** combining deterministic workflow control with LLM-powered reasoning, guided by **Systems-Theoretic Process Analysis (STPA)** to guarantee safety constraints.
 
 Use this authentic reference implementation to understand how to build **high-reliability agentic systems** for regulated industries.
 
@@ -59,7 +59,7 @@ The architecture enforces "Defense in Depth" through six distinct layers (0-5), 
 3.  **Policy Engine (Layer 2):** **Open Policy Agent (OPA)** enforces Role-Based Access Control (RBAC) and business logic (e.g., trading limits) external to the Python code.
 4.  **Semantic Verification (Layer 3):** A specialized **Verifier Agent** audits the proposed actions of a "Worker" agent to prevent hallucinations (Propose-Verify-Execute pattern).
 5.  **Consensus Engine (Layer 4):** Simulates an ensemble vote for high-stakes actions.
-6.  **Deterministic Routing (LangGraph):** The system uses **LangGraph** to implement the HD-MDP, replacing probabilistic tool use with a strict State Graph. This enforces the Strategy -> Risk -> Execution workflow and enables self-correcting loops.
+6.  **Deterministic Routing (LangGraph):** The system uses **LangGraph** to implement a strict State Graph, replacing probabilistic tool use with deterministic workflow control. This enforces the Strategy → Risk → Execution workflow and enables self-correcting loops.
 
 For a deep dive into the theory and implementation, read **[README_GOVERNANCE.md](README_GOVERNANCE.md)**.
 
