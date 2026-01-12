@@ -8,6 +8,42 @@ The Financial Advisor is a multi-agent system designed to assist human financial
 
 Use this authentic reference implementation to understand how to build **high-reliability agentic systems** for regulated industries.
 
+## Hybrid Architecture: LangGraph + Google ADK
+
+This system implements a **Hybrid Manager-Worker Architecture** that separates concerns:
+
+| Layer | Technology | Responsibility |
+|-------|------------|----------------|
+| **Control Plane** | LangGraph | Deterministic workflow orchestration, conditional routing, state management |
+| **Reasoning Plane** | Google ADK | LLM-powered agents with Vertex AI/Gemini for natural language understanding |
+| **Bridge** | Adapters | Wraps ADK agents as LangGraph nodes, intercepts tool calls for routing |
+
+```
+┌─────────────────────────────────────────────────────────┐
+│               LangGraph StateGraph                       │
+│  ┌──────────┐    ┌────────────┐    ┌─────────────────┐ │
+│  │Supervisor│───▶│Conditional │───▶│Risk Refinement  │ │
+│  │  Node    │    │  Routing   │    │     Loop        │ │
+│  └────┬─────┘    └────────────┘    └─────────────────┘ │
+│       │                                                  │
+├───────┼──────────────── ADAPTERS ───────────────────────┤
+│       ▼                                                  │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌────────────┐ │
+│  │  Data   │  │Execution│  │  Risk   │  │  Governed  │ │
+│  │ Analyst │  │ Analyst │  │ Analyst │  │   Trader   │ │
+│  └─────────┘  └─────────┘  └─────────┘  └────────────┘ │
+│               Google ADK LlmAgents                       │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Why Hybrid?**
+- **LangGraph** excels at deterministic control flow—no LLM decides the execution path
+- **Google ADK** excels at LLM reasoning—native agent patterns with Vertex AI integration
+- **The Adapter Pattern** bridges them: ADK agents run inside LangGraph nodes, with tool calls intercepted to drive routing
+
+👉 **For a deep dive, see [ARCHITECTURE.md](ARCHITECTURE.md)**
+
+
 ## High-Reliability Architecture
 
 This system demonstrates a **Hybrid Cognitive Architecture** designed for regulated industries:
