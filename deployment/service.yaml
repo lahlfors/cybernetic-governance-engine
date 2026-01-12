@@ -33,6 +33,8 @@ spec:
                 secretKeyRef:
                   name: opa-auth-token
                   key: latest
+            # NOTE: GOOGLE_GENAI_USE_VERTEXAI, GOOGLE_CLOUD_PROJECT, GOOGLE_CLOUD_LOCATION
+            # are injected by deploy_all.py from .env file (single source of truth)
 
         # --- CONTAINER 2: OPA Sidecar ---
         - name: governance-sidecar

@@ -16,6 +16,8 @@
 """
 Cloud Run Deployment Script for Governed Financial Advisor
 Handles secret creation, image building, service deployment, and infrastructure verification.
+
+Configuration is read from .env file as the single source of truth.
 """
 
 import yaml
@@ -25,6 +27,26 @@ import secrets
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
+
+# Load .env file as single source of truth
+def load_dotenv():
+    """Load environment variables from .env file."""
+    env_path = Path(__file__).parent.parent / ".env"
+    if env_path.exists():
+        print(f"📂 Loading config from: {env_path}")
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, _, value = line.partition("=")
+                    # Don't override existing env vars (allow CLI overrides)
+                    if key.strip() not in os.environ:
+                        os.environ[key.strip()] = value.strip()
+    else:
+        print(f"⚠️ No .env file found at {env_path}")
+
+load_dotenv()
 
 def run_command(command, check=True, capture_output=False):
     """Runs a shell command and prints the output."""
@@ -328,13 +350,15 @@ def main():
                         return
                 env.append({"name": k, "value": str(v)})
 
-
-            add_env("REDIS_HOST", redis_host)
-            add_env("REDIS_PORT", redis_port)
+            # Inject all deployment envs from .env (single source of truth)
+            add_env("REDIS_HOST", redis_host or "")
+            add_env("REDIS_PORT", redis_port or "6379")
             add_env("GOOGLE_CLOUD_PROJECT", project_id)
             add_env("GOOGLE_CLOUD_LOCATION", region)
+            add_env("GOOGLE_GENAI_USE_VERTEXAI", os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "true"))
+            add_env("OPA_URL", os.environ.get("OPA_URL", "http://localhost:8181/v1/data/finance/allow"))
 
-            print(f"✅ Injected Envs: REDIS_HOST={redis_host}")
+            print(f"✅ Injected Envs from .env: REDIS_HOST={redis_host}, GOOGLE_GENAI_USE_VERTEXAI={os.environ.get('GOOGLE_GENAI_USE_VERTEXAI', 'true')}")
             break
 
     # Guarantee Secret Name Consistency
