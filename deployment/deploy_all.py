@@ -183,6 +183,8 @@ def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=
 
     # Deploy UI service
     print(f"\n🚀 Deploying UI service to Cloud Run...")
+    print("ℹ️  Note: If you see 'Setting IAM policy failed', it is due to Organization Policy.")
+    print("    The service will still deploy but will require authenticated access.")
     run_command([
         "gcloud", "run", "deploy", ui_service_name,
         "--image", ui_image_uri,
