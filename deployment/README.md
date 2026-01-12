@@ -79,3 +79,57 @@ If a VPC connector is not configured:
 To configure VPC connectivity:
 1.  Create a [Serverless VPC Access connector](https://cloud.google.com/run/docs/configuring/vpc-connectors)
 2.  Add `--vpc-connector YOUR_CONNECTOR` to the Cloud Run deploy command
+
+## Post-Deployment Verification
+
+### 1. Check Service Health
+
+```bash
+# Get service URL
+gcloud run services describe governed-financial-advisor \
+  --project YOUR_PROJECT_ID \
+  --region us-central1 \
+  --format "value(status.url)"
+```
+
+### 2. Access Services (Authenticated Deployments)
+
+If your services are not publicly accessible, use **Cloud Run Proxy** to tunnel requests:
+
+```bash
+# Terminal 1: Backend proxy
+gcloud run services proxy governed-financial-advisor \
+  --project YOUR_PROJECT_ID \
+  --region us-central1 \
+  --port 8081
+
+# Terminal 2: UI proxy  
+gcloud run services proxy financial-advisor-ui \
+  --project YOUR_PROJECT_ID \
+  --region us-central1 \
+  --port 8080
+```
+
+Then open `http://localhost:8080` in your browser.
+
+### 3. Test Backend API
+
+```bash
+# Health check
+curl localhost:8081/health
+
+# Query the agent
+curl -X POST localhost:8081/agent/query \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Hello"}'
+```
+
+### 4. View Logs
+
+```bash
+gcloud logging read 'resource.type="cloud_run_revision"' \
+  --project YOUR_PROJECT_ID \
+  --limit 50 \
+  --format "value(textPayload)"
+```
+

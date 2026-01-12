@@ -83,12 +83,14 @@ The architecture implements a **Self-Correction Loop**. If the Risk Analyst reje
 
 *   [uv](https://github.com/astral-sh/uv) (for Python dependency management)
 *   [Open Policy Agent (OPA)](https://www.openpolicyagent.org/docs/latest/#running-opa)
+*   [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) (for Cloud Run deployments)
+*   A Google Cloud project with Vertex AI API enabled
 
 ### 2. Installation
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/lahlfors/cybernetic-governance-engine.git
 cd cybernetic-governance-engine
 
 # Install dependencies
@@ -101,36 +103,46 @@ Copy the example environment file and configure your Google Cloud credentials:
 
 ```bash
 cp .env.example .env
-# Edit .env with your PROJECT_ID and OPA_URL (default: http://localhost:8181/v1/data/finance/allow)
 ```
 
-### 4. Run OPA (Required)
+Edit `.env` with your settings:
+```bash
+GOOGLE_GENAI_USE_VERTEXAI=1
+GOOGLE_CLOUD_PROJECT=<YOUR_PROJECT_ID>
+GOOGLE_CLOUD_LOCATION=<YOUR_REGION>  # e.g., us-central1
+OPA_URL=http://localhost:8181/v1/data/finance/allow
+```
 
-You **must** have OPA running to execute trades setup. The system fails closed if OPA is unreachable.
+### 4. Run OPA (Required for Trading)
+
+You **must** have OPA running to execute trades. The system fails closed if OPA is unreachable.
 
 ```bash
 # Run OPA in the background with the provided policy bundle
-./opa run -s -b . --addr :8181 &
+opa run -s -b governance_poc --addr :8181 &
 ```
 
-### 5. Run the Agent
+### 5. Run the Agent (Local Development)
 
 ```bash
-adk run financial_advisor
+# Run the FastAPI server locally
+uv run python src/server.py
+```
+
+The server will start on `http://localhost:8080`. Test with:
+```bash
+curl localhost:8080/health
 ```
 
 ### 6. Run the UI (Optional)
 
-The repository includes a Streamlit-based web interface for interacting with the agent.
-
 ```bash
-# Install Streamlit
+# Install Streamlit if not already installed
 uv pip install streamlit
 
-# Run the UI (ensure the backend agent is running on port 8080)
+# Run the UI (ensure the backend is running on port 8080)
+export BACKEND_URL="http://localhost:8080"
 streamlit run ui/app.py
-```
-
 ```
 
 ### 7. Advanced Usage
@@ -140,17 +152,38 @@ The system uses Redis for session state persistence. When running on Cloud Run w
 *   **Default:** Ephemeral session (state lost on container restart).
 *   **With Redis:** Session state persists across container restarts.
 
-#### B. Using Cloud Run Proxy (Recommended for Testing)
-To test the backend directly without managing tokens manually, use the Google Cloud Proxy:
+#### B. Accessing Cloud Run Services (Not Publicly Accessible)
 
-1.  **Start Proxy:**
+Cloud Run services deployed with authentication enabled require an identity token. Use the **Cloud Run Proxy** to tunnel authenticated requests:
+
+1.  **Start the Backend Proxy:**
     ```bash
-    gcloud run services proxy governed-financial-advisor --project [PROJECT_ID] --region us-central1 --port 8080
+    gcloud run services proxy governed-financial-advisor \
+      --project <YOUR_PROJECT_ID> \
+      --region us-central1 \
+      --port 8081
     ```
-2.  **Point UI to Proxy:**
+
+2.  **Start the UI Proxy (in another terminal):**
     ```bash
-    export BACKEND_URL="http://localhost:8080"
-    streamlit run ui/app.py
+    gcloud run services proxy financial-advisor-ui \
+      --project <YOUR_PROJECT_ID> \
+      --region us-central1 \
+      --port 8080
+    ```
+
+3.  **Access the UI:**
+    Open `http://localhost:8080` in your browser.
+
+4.  **Test the Backend directly:**
+    ```bash
+    # Health check
+    curl localhost:8081/health
+
+    # Query the agent
+    curl -X POST localhost:8081/agent/query \
+      -H "Content-Type: application/json" \
+      -d '{"prompt": "Hello"}'
     ```
 
 ## Deployment
@@ -158,10 +191,15 @@ To test the backend directly without managing tokens manually, use the Google Cl
 The system is designed for **Google Cloud Run** using a multi-container Sidecar pattern.
 *   **Service 1 (Backend):** The Multi-Agent Application + OPA Sidecar (Policy Engine).
 *   **Service 2 (Frontend):** The Streamlit UI, automatically connected to the backend.
-*   **Safety:** The app uses `dependsOn` to ensure the Policy Engine is healthy before starting.
+
+To deploy:
+```bash
+python deployment/deploy_all.py --project-id <YOUR_PROJECT_ID>
+```
 
 See **[deployment/README.md](deployment/README.md)** for detailed deployment instructions.
 
 ## Architecture Diagram
 
 <img src="financial-advisor.png" alt="Financial Advisor Architecture" width="800"/>
+
