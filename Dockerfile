@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY . .
 
 # Install dependencies
+# Set PYTHONPATH to include src
+ENV PYTHONPATH="${PYTHONPATH}:/app/src"
+
 RUN pip install --no-cache-dir . uvicorn fastapi google-auth google-cloud-aiplatform google-adk opentelemetry-api opentelemetry-sdk opentelemetry-exporter-gcp-trace opentelemetry-instrumentation-fastapi opentelemetry-instrumentation-requests
 
 # Expose the port
@@ -20,7 +23,7 @@ ENV PORT=8080
 EXPOSE 8080
 
 # DEBUG: Check file content
-RUN cat financial_advisor/server.py
+RUN ls -R src
 
 # Run the server
-CMD ["python", "financial_advisor/server.py"]
+CMD ["python", "src/server.py"]

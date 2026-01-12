@@ -19,6 +19,13 @@ dependencies = [
     "langchain-google-genai>=2.1.12",
     "langchain-google-vertexai>=2.0.0",
     "redis>=5.0.0",
+    "langgraph",
+    "langgraph-checkpoint-redis",
+    "opentelemetry-api",
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-gcp-trace",
+    "opentelemetry-instrumentation-langchain",
+    "yfinance",
 ]
 
 requires-python = ">=3.10,<3.13"

@@ -7,7 +7,7 @@ We utilize a **Hierarchical Deterministic Markov Decision Process (HD-MDP)** to 
 We also employ **Systems-Theoretic Process Analysis (STPA)** to identify and mitigate Unsafe Control Actions (UCAs). See [STPA_ANALYSIS.md](STPA_ANALYSIS.md) for the detailed hazard analysis.
 
 *   **Variety Attenuation:** We use Ashby's Law ($V_R \ge V_A$) to constrain the agent's infinite action space ($V_A$) into a manageable set of states verified by our governance stack ($V_R$).
-*   **Explicit Routing:** Unlike standard "tool-use" agents that probabilistically choose tools, our **Supervisor Agent** uses a deterministic `route_request` tool to transition between states (Market Analysis -> Trading -> Risk). This forms the "hard logic" cage around the probabilistic "soft logic" of the LLM.
+*   **Explicit Routing (LangGraph):** Unlike standard "tool-use" agents that probabilistically choose tools, our **Supervisor Agent** (implemented in **LangGraph**) uses a deterministic State Graph to transition between states (Market Analysis -> Trading -> Risk). This forms the "hard logic" cage around the probabilistic "soft logic" of the LLM.
 
 ## 2. The Dynamic Risk-Adaptive Stack
 
@@ -18,12 +18,12 @@ The architecture enforces "Defense in Depth" through six distinct layers (0-5):
 We use **NeMo Guardrails** as the first line of defense to ensure the model stays on topic and avoids jailbreaks *before* it even processes a tool call.
 *   **Implementation:** `financial_advisor/nemo_manager.py` & `financial_advisor/rails_config/`
 
-### Layer 1: The Cognitive Bridge (Agent Engine)
-**Goal:** Long-Term Context & KYC Compliance.
-Cloud Run containers are **stateless** (ephemeral). To provide reliable advice, we use **Vertex AI Agent Engine** as a persistent cognitive layer.
-*   **Constraint:** The agent accesses user history (Risk Profiles, Goals) via **Semantic Retrieval** (RAG) at the start of every session.
-*   **Safety:** This ensures consistent advice ("Don't suggest Oil stocks") even if the compute node was destroyed and recreated 5 seconds ago.
-*   **Implementation:** `financial_advisor/infrastructure/vertex_memory.py` & `google.adk.memory.VertexAiMemoryBankService`.
+### Layer 1: Session Persistence (Redis)
+**Goal:** Stateful Sessions on Stateless Compute.
+Cloud Run containers are **stateless** (ephemeral). To maintain session continuity, we use **Redis (Cloud Memorystore)** for session state persistence.
+*   **Constraint:** Session state is checkpointed to Redis after each turn.
+*   **Safety:** This ensures consistent behavior even if the compute node was destroyed and recreated.
+*   **Implementation:** `financial_advisor/checkpointer.py` using Redis-backed session storage.
 
 ### Layer 2: The Syntax Trapdoor (Schema)
 **Goal:** Structural Integrity.
@@ -78,9 +78,11 @@ We implement **OpenTelemetry** with **GenAI Semantic Conventions** (v1.37+ draft
 
 ## 4. Implementation Details
 
-### The HD-MDP Router
-The `financial_coordinator` agent does **not** have direct access to sub-agents. It cannot "hallucinate" a call to `governed_trading_agent`.
-Instead, it MUST use the `route_request` tool (`financial_advisor/tools/router.py`), which executes a deterministic `transfer_to_agent` call based on a strict `RouterIntent` Enum.
+### The HD-MDP Router (LangGraph)
+The `financial_coordinator` (Supervisor) does **not** have direct access to sub-agents. It cannot "hallucinate" a call to `governed_trading_agent`.
+Instead, we use **LangGraph** to implement the HD-MDP as a rigid State Machine.
+*   **Supervisor Node:** Routes user intents to specific agent nodes (Data, Risk, Execution).
+*   **Risk Refinement Loop:** If the Risk Analyst node returns a `REJECTED_REVISE` status, the graph *automatically* routes back to the Execution Analyst. The system injects the specific risk feedback into the prompt, forcing the planner to self-correct before the trade can proceed. This ensures that no unsafe plan can reach the Execution state.
 
 ### Governance Decorator
 The `@governed_tool` decorator (`financial_advisor/governance.py`) intercepts all tool executions.
