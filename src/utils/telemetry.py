@@ -32,12 +32,19 @@ def configure_telemetry():
         # Try to configure Google Cloud Trace
         try:
             from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
+            from src.infrastructure.telemetry.tiered_processor import TieredSpanProcessor
             
             # Set up tracer provider
             provider = TracerProvider()
             trace.set_tracer_provider(provider)
             
-            # Configure Cloud Trace exporter
+            # 1. Add TieredSpanProcessor (Logic + Cold Tier)
+            # Must be added BEFORE the BatchSpanProcessor to ensure stripping happens before export.
+            tiered_processor = TieredSpanProcessor()
+            provider.add_span_processor(tiered_processor)
+            logger.info("✅ OpenTelemetry: Tiered Observability Processor configured.")
+
+            # 2. Add Hot Tier Exporter (Cloud Trace)
             cloud_exporter = CloudTraceSpanExporter()
             span_processor = BatchSpanProcessor(cloud_exporter)
             provider.add_span_processor(span_processor)
