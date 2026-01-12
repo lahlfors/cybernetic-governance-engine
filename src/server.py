@@ -45,6 +45,12 @@ def health_check():
 async def query_agent(req: QueryRequest):
     token = user_context.set(req.user_id)
     try:
+        # ISO 42001: A.7.2 Accountability - Tag trace with User Identity
+        current_span = trace.get_current_span()
+        if current_span:
+            current_span.set_attribute("enduser.id", req.user_id)
+            current_span.set_attribute("thread.id", req.thread_id)
+
         # 1. NeMo Security
         is_safe, msg = await validate_with_nemo(req.prompt, rails)
         if not is_safe:
