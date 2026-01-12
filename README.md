@@ -97,6 +97,9 @@ cd cybernetic-governance-engine
 uv sync
 ```
 
+> **Note:** If you encounter `401 Unauthorized` errors during `uv sync` (common in corporate environments), standard PyPI access might be blocked or overridden. Ensure you have valid credentials (e.g., `gcert`) or configure `uv` to use the public PyPI index explicitly.
+
+
 ### 3. Configuration
 
 Copy the example environment file and configure your Google Cloud credentials:
