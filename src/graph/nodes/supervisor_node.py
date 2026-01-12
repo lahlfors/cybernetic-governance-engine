@@ -6,7 +6,7 @@ routing by intercepting its route_request tool call.
 """
 
 from src.graph.nodes.adapters import run_adk_agent
-from src.agents.root_agent import root_agent
+from src.agents.supervisor.agent import root_agent
 
 
 def supervisor_node(state):

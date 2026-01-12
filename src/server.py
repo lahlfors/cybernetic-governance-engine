@@ -10,10 +10,10 @@ from opentelemetry.instrumentation.langchain import LangchainInstrumentor
 
 # Initialize Vertex AI before importing agents
 import vertexai
-project_id = os.environ.get("GOOGLE_CLOUD_PROJECT", "laah-cybernetics")
-location = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
-vertexai.init(project=project_id, location=location)
-print(f"✅ Vertex AI initialized: project={project_id}, location={location}")
+from config.settings import Config
+
+vertexai.init(project=Config.GOOGLE_CLOUD_PROJECT, location=Config.GOOGLE_CLOUD_LOCATION)
+print(f"✅ Vertex AI initialized: project={Config.GOOGLE_CLOUD_PROJECT}, location={Config.GOOGLE_CLOUD_LOCATION}")
 
 from src.utils.nemo_manager import load_rails, validate_with_nemo
 from src.graph.graph import create_graph
@@ -29,8 +29,7 @@ app = FastAPI(title="Governed Financial Advisor (Graph Orchestrated)")
 # --- GLOBAL SINGLETONS ---
 rails = load_rails()
 # Use localhost as default Redis URL if not set
-redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
-graph = create_graph(redis_url=redis_url)
+graph = create_graph(redis_url=Config.REDIS_URL)
 
 class QueryRequest(BaseModel):
     prompt: str
@@ -74,5 +73,4 @@ async def query_agent(req: QueryRequest):
         user_context.reset(token)
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=Config.PORT)

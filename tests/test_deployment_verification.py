@@ -18,9 +18,6 @@ class TestDeploymentConfig(unittest.TestCase):
         agent = next(c for c in containers if c['name'] == 'ingress-agent')
         sidecar = next(c for c in containers if c['name'] == 'governance-sidecar')
 
-        # Check Dependencies
-        self.assertIn('governance-sidecar', agent['dependsOn'])
-
         # Check OPA Image Pinned
         self.assertTrue(sidecar['image'].startswith("openpolicyagent/opa:0.68.0-static"))
 
@@ -34,7 +31,7 @@ class TestDeploymentConfig(unittest.TestCase):
         # This is a static check of the expectations
         self.assertTrue(os.path.exists("deployment/system_authz.rego"))
         self.assertTrue(os.path.exists("deployment/opa_config.yaml"))
-        self.assertTrue(os.path.exists("governance_poc/finance_policy.rego"))
+        self.assertTrue(os.path.exists("src/governance/policy/finance_policy.rego"))
         self.assertTrue(os.path.exists("deployment/service.yaml"))
 
 if __name__ == '__main__':

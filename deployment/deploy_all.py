@@ -301,8 +301,8 @@ def main():
     create_secret(project_id, "system-authz-policy", file_path="deployment/system_authz.rego")
 
     # Finance Policy
-    if os.path.exists("governance_poc/finance_policy.rego"):
-        policy_path = "governance_poc/finance_policy.rego"
+    if os.path.exists("src/governance/policy/finance_policy.rego"):
+        policy_path = "src/governance/policy/finance_policy.rego"
     elif os.path.exists("deployment/finance_policy.rego"):
         policy_path = "deployment/finance_policy.rego"
     else:

@@ -17,6 +17,18 @@ class Config:
     GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
     DEFAULT_MODEL = MODEL_FAST
 
+    # Cloud Run / Infrastructure
+    GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "laah-cybernetics")
+    GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+    PORT = int(os.getenv("PORT", 8080))
+
+    # Data Stores
+    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+
+    # Governance
+    OPA_URL = os.getenv("OPA_URL", "http://localhost:8181/v1/data/finance/decision")
+    OPA_AUTH_TOKEN = os.getenv("OPA_AUTH_TOKEN")
+
     @staticmethod
     def get_llm_config(profile="default"):
         return {
@@ -24,5 +36,3 @@ class Config:
             "temperature": 0.0,
             "google_api_key": Config.GOOGLE_API_KEY
         }
-
-
