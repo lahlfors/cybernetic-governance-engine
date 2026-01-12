@@ -18,7 +18,7 @@ from src.utils.prompt_utils import Prompt, PromptData, Content, Part
 
 FINANCIAL_COORDINATOR_PROMPT_OBJ = Prompt(
     prompt_data=PromptData(
-        model="gemini-2.5-pro",
+        model=MODEL_NAME,
         contents=[
             Content(
                 parts=[

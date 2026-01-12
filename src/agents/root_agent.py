@@ -18,6 +18,7 @@ from google.adk.agents import LlmAgent
 from src.tools.router import route_request
 from src.utils.telemetry import configure_telemetry
 from .prompt import get_financial_coordinator_instruction
+from config.settings import MODEL_NAME
 import logging
 
 logger = logging.getLogger("FinancialCoordinator")
@@ -32,11 +33,9 @@ from .governed_trader import governed_trading_agent
 from .risk_analyst import risk_analyst_agent
 
 
-MODEL = "gemini-2.5-pro"
-
 financial_coordinator = LlmAgent(
     name="financial_coordinator",
-    model=MODEL,
+    model=MODEL_NAME,
     description=(
         "guide users through a structured process to receive financial "
         "advice by orchestrating a series of expert subagents. help them "

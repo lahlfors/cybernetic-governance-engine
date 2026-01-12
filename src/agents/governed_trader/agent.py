@@ -23,12 +23,12 @@ from google.adk.tools import FunctionTool, transfer_to_agent
 from src.tools.trades import propose_trade, execute_trade
 from src.utils.prompt_utils import Prompt, PromptData, Content, Part
 
-MODEL = "gemini-2.5-pro"
+from config.settings import MODEL_FAST, MODEL_REASONING
 
 # --- TRADING ANALYST (WORKER) PROMPT ---
 TRADING_ANALYST_PROMPT_OBJ = Prompt(
     prompt_data=PromptData(
-        model="gemini-2.5-pro",
+        model=MODEL_FAST,
         contents=[
             Content(
                 parts=[
@@ -155,7 +155,7 @@ def get_trading_analyst_instruction() -> str:
 # --- VERIFIER PROMPT ---
 VERIFIER_PROMPT_OBJ = Prompt(
     prompt_data=PromptData(
-        model="gemini-2.5-pro",
+        model=MODEL_REASONING,  # Safety-critical: use reasoning model
         contents=[
             Content(
                 parts=[
@@ -203,7 +203,7 @@ def get_verifier_instruction() -> str:
 
 # --- WORKER AGENT (Trading Analyst) ---
 worker_agent = LlmAgent(
-    model=MODEL,
+    model=MODEL_FAST,  # Fast path for strategy generation
     name="worker_agent",
     instruction=get_trading_analyst_instruction(),
     output_key="proposed_trading_strategies_output",
@@ -227,7 +227,7 @@ def submit_risk_assessment(risk_packet: RiskPacket) -> str:
 
 verifier_agent = LlmAgent(
     name="verifier_agent",
-    model=MODEL,
+    model=MODEL_REASONING,  # Safety-critical: use reasoning model
     instruction=get_verifier_instruction(),
     tools=[FunctionTool(execute_trade), FunctionTool(submit_risk_assessment)],
 )

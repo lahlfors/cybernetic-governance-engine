@@ -3,10 +3,19 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Tiered Model Configuration (from .env)
+# Fast path: Supervisor, Data Analyst, Execution Analyst
+MODEL_FAST = os.getenv("MODEL_FAST", "gemini-2.0-flash")
+
+# Reasoning path: Risk Analyst, Verifier, Consensus (safety-critical)
+MODEL_REASONING = os.getenv("MODEL_REASONING", "gemini-2.5-pro")
+
+# Legacy alias for backward compatibility
+MODEL_NAME = MODEL_FAST
+
 class Config:
     GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-    # Default to a fast model for the Supervisor
-    DEFAULT_MODEL = os.getenv("MODEL_NAME", "gemini-2.5-flash")
+    DEFAULT_MODEL = MODEL_FAST
 
     @staticmethod
     def get_llm_config(profile="default"):
@@ -15,3 +24,5 @@ class Config:
             "temperature": 0.0,
             "google_api_key": Config.GOOGLE_API_KEY
         }
+
+

@@ -17,10 +17,11 @@
 from google.adk import Agent
 from google.adk.tools import transfer_to_agent
 from src.utils.prompt_utils import Prompt, PromptData, Content, Part
+from config.settings import MODEL_FAST
 
 EXECUTION_ANALYST_PROMPT_OBJ = Prompt(
     prompt_data=PromptData(
-        model="gemini-2.5-pro",
+        model=MODEL_FAST,
         contents=[
             Content(
                 parts=[
@@ -151,12 +152,12 @@ IMMEDIATELY AFTER generating this execution plan, you MUST call `transfer_to_age
 def get_execution_analyst_instruction() -> str:
     return EXECUTION_ANALYST_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
 
-MODEL = "gemini-2.5-pro"
 
 execution_analyst_agent = Agent(
-    model=MODEL,
+    model=MODEL_FAST,  # Fast path for execution planning
     name="execution_analyst_agent",
     instruction=get_execution_analyst_instruction(),
     output_key="execution_plan_output",
     tools=[transfer_to_agent],
 )
+
