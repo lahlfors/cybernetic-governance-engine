@@ -110,9 +110,16 @@ cp .env.example .env
 
 Edit `.env` with your settings:
 ```bash
+# Model Configuration (Tiered)
+MODEL_FAST=gemini-2.0-flash       # Fast path: Supervisor, Data Analyst
+MODEL_REASONING=gemini-2.5-pro    # Reasoning path: Verifier, Risk Analyst
+
+# Vertex AI Configuration
 GOOGLE_GENAI_USE_VERTEXAI=1
 GOOGLE_CLOUD_PROJECT=<YOUR_PROJECT_ID>
 GOOGLE_CLOUD_LOCATION=<YOUR_REGION>  # e.g., us-central1
+
+# Policy Engine
 OPA_URL=http://localhost:8181/v1/data/finance/allow
 ```
 
@@ -206,6 +213,11 @@ The suite tests for:
 *   ✅ Prompt Injection
 
 👉 **See [tests/red_team/README.md](tests/red_team/README.md) for full documentation.**
+
+### Compliance (ISO 42001)
+
+The system is designed to meet **ISO/IEC 42001** standards for AI Management Systems.
+👉 **See [ISO_42001_COMPLIANCE.md](ISO_42001_COMPLIANCE.md) for the Telemetry Audit Map.**
 
 ## Deployment
 
