@@ -176,15 +176,33 @@ Cloud Run services deployed with authentication enabled require an identity toke
     Open `http://localhost:8080` in your browser.
 
 4.  **Test the Backend directly:**
-    ```bash
-    # Health check
-    curl localhost:8081/health
-
-    # Query the agent
     curl -X POST localhost:8081/agent/query \
       -H "Content-Type: application/json" \
       -d '{"prompt": "Hello"}'
     ```
+
+## 8. Security Verification (Red Teaming)
+
+This project includes a comprehensive **Red Team Test Suite** to verify the robustness of guardrails against adversarial attacks.
+
+To run the automated security tests against a deployed agent:
+
+```bash
+# 1. Proxy the backend service (if on Cloud Run) to port 8082
+gcloud run services proxy governed-financial-advisor --project <PROJECT_ID> --region <REGION> --port 8082
+
+# 2. Run the test suite
+python3 tests/red_team/run_red_team.py
+```
+
+The suite tests for:
+*   ✅ Jailbreaks (DAN, Roleplay)
+*   ✅ Role Escalation
+*   ✅ Verifier Bypass
+*   ✅ Illegal Financial Advice
+*   ✅ Prompt Injection
+
+👉 **See [tests/red_team/README.md](tests/red_team/README.md) for full documentation.**
 
 ## Deployment
 
