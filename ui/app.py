@@ -52,7 +52,7 @@ def query_agent(prompt: str) -> str:
                 "user_id": st.session_state.user_id 
             },
             headers=headers,
-            timeout=120
+            timeout=300  # Match Cloud Run timeout for complex operations
         )
 # ...
         
