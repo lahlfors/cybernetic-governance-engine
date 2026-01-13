@@ -137,10 +137,9 @@ Layer 6: Ephemeral Isolation (The Physics Layer)
 Technique: Micro-Virtualization (Sandboxing)
 Concept: Blast Radius Containment
 
-The final layer assumes all prior controls have failed. The agent has generated malicious code, it passed syntax and policy checks, and tricked the guardrails. The safety mechanism of last resort is Physics—isolating the execution environment. We utilize Ephemeral Runtimes such as AWS Firecracker or gVisor.
+The final layer assumes all prior controls have failed. The agent has generated malicious code, it passed syntax and policy checks, and tricked the guardrails. The safety mechanism of last resort is Physics—isolating the execution environment. We utilize Ephemeral Runtimes provided by Google Cloud Run, specifically leveraging gVisor.
 
-AWS Firecracker: Launches code in a microVM (Virtual Machine) that boots in milliseconds. The VM has no network access to the host, possesses limited resources, and is destroyed immediately after the function returns. This ensures that even if the agent executes malware, it runs in a "disposable universe" that ceases to exist moments later.
-gVisor: An application kernel for containers that intercepts system calls. It provides a distinct security boundary between the application and the host OS, preventing "container escape" attacks where an agent might try to access the underlying server's kernel to gain persistence.
+Google Cloud Run (gVisor): Uses a user-space kernel (gVisor) to intercept system calls, providing a distinct security boundary between the application and the host OS. This prevents "container escape" attacks where an agent might try to access the underlying server's kernel to gain persistence. Each execution runs in a sandboxed environment that is isolated and ephemeral, effectively mitigating the risk of persistent threats.
 
 This prevents Persistent Threats (the agent installing a backdoor) and Lateral Movement (the agent scanning the internal network). By eliminating the persistence of the environment, we break the "Cyber Kill Chain" effectively.
 
@@ -194,7 +193,7 @@ The implementation of this architecture should follow a phased approach, validat
 
 Phase 1: Foundation (Schemas & Policy): Establish the deterministic boundaries. Deploy OPA sidecars and enforce Pydantic schemas for all tool calls.
 Phase 2: Semantic & Verification: Integrate NeMo Guardrails for intent filtering and implement Chain-of-Verification loops for critical reasoning tasks.
-Phase 3: Isolation: Migrate tool execution to Firecracker MicroVMs (Target State). *Note: Current implementation utilizes Google Cloud Run (gVisor) for container-level isolation.*
+Phase 3: Isolation: Enforce strict isolation via Google Cloud Run (gVisor) execution environments (Target State). *Note: Current implementation utilizes Google Cloud Run (gVisor) for container-level isolation.*
 Phase 4: Red Teaming & Validation:
 - AgentHarm: Use this benchmark to measure the agent's refusal rate against 110 distinct harmful behaviors (e.g., fraud, cybercrime). Aim for a Refusal Rate > 95% and a Harm Score < 5%.
 - SafetyBench: Use this multiple-choice benchmark to evaluate the model's latent safety knowledge across 7 categories of concern.
