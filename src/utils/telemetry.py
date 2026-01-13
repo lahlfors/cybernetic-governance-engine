@@ -4,6 +4,8 @@ Telemetry configuration for GCP Cloud Logging and Cloud Trace.
 import logging
 import os
 import contextlib
+import random
+from typing import Any, Dict
 
 # Configure logging first
 logging.basicConfig(
@@ -13,6 +15,38 @@ logging.basicConfig(
 logger = logging.getLogger("FinancialAdvisor")
 
 _telemetry_configured = False
+
+def smart_sampling(span: Any) -> bool:
+    """
+    Applies Semantic Sampling Logic for the Cold Tier.
+
+    Logic:
+    - RISKY (Blocked/Altered): 100%
+    - WRITE (Tools/Execution): 100%
+    - READ (Chat): 1%
+    """
+    attributes = span.attributes or {}
+
+    # A. RISKY: Guardrail intervention (BLOCKED or ALTERED)
+    outcome = attributes.get("guardrail.outcome")
+    if outcome in ["BLOCKED", "ALTERED"]:
+        return True
+
+    # B. WRITE: Tool execution
+    # Check for 'gen_ai.tool.name' or if span name implies execution
+    if "gen_ai.tool.name" in attributes:
+        return True
+
+    # Heuristic for write nodes if not explicitly using tool attribute
+    if "execute" in span.name.lower() or "write" in span.name.lower():
+        return True
+
+    # C. READ: Default (Chat) -> 1%
+    # We assume if it's not Write/Risky, it's Read/Chat
+    if random.random() < 0.01:
+        return True
+
+    return False
 
 def configure_telemetry():
     """
@@ -32,22 +66,33 @@ def configure_telemetry():
         # Try to configure Google Cloud Trace
         try:
             from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
-            from src.infrastructure.telemetry.tiered_processor import TieredSpanProcessor
+            from src.infrastructure.telemetry.processors.genai_cost_optimizer import GenAICostOptimizerProcessor
+            from src.infrastructure.telemetry.exporters.parquet_exporter import ParquetSpanExporter
             
             # Set up tracer provider
             provider = TracerProvider()
             trace.set_tracer_provider(provider)
             
-            # 1. Add TieredSpanProcessor (Logic + Cold Tier)
-            # Must be added BEFORE the BatchSpanProcessor to ensure stripping happens before export.
-            tiered_processor = TieredSpanProcessor()
-            provider.add_span_processor(tiered_processor)
-            logger.info("✅ OpenTelemetry: Tiered Observability Processor configured.")
-
-            # 2. Add Hot Tier Exporter (Cloud Trace)
+            # 1. Define Exporters
+            # Hot Tier: Cloud Trace
             cloud_exporter = CloudTraceSpanExporter()
-            span_processor = BatchSpanProcessor(cloud_exporter)
-            provider.add_span_processor(span_processor)
+            hot_processor = BatchSpanProcessor(cloud_exporter)
+
+            # Cold Tier: Local Parquet
+            parquet_exporter = ParquetSpanExporter()
+            cold_processor = BatchSpanProcessor(parquet_exporter)
+
+            # 2. Configure Optimizer Processor
+            optimizer = GenAICostOptimizerProcessor(
+                hot_processor=hot_processor,
+                cold_processor=cold_processor,
+                pricing_rule=smart_sampling
+            )
+
+            # 3. Add to Provider
+            provider.add_span_processor(optimizer)
+
+            logger.info("✅ OpenTelemetry: Tiered Observability (Cost Optimizer) configured.")
             logger.info("✅ OpenTelemetry: Google Cloud Trace Exporter configured.")
             
             # Instrument the requests library for HTTP tracing
@@ -124,4 +169,3 @@ def record_completion(span, completion: str):
     """Helper to add completion to the current span."""
     if span:
         span.set_attribute("gen_ai.content.completion", completion)
-

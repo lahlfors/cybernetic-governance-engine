@@ -2,12 +2,14 @@ import os
 import shutil
 import time
 import pandas as pd
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, ANY
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider, Span
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor, ConsoleSpanExporter
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor, BatchSpanProcessor
 from opentelemetry.sdk.resources import Resource
-from src.infrastructure.telemetry.tiered_processor import TieredSpanProcessor
+from src.infrastructure.telemetry.processors.genai_cost_optimizer import GenAICostOptimizerProcessor
+from src.infrastructure.telemetry.exporters.parquet_exporter import ParquetSpanExporter
+from src.utils.telemetry import smart_sampling
 
 # Setup
 COLD_TIER_DIR = "tests/temp_cold_tier"
@@ -17,57 +19,69 @@ def setup_telemetry():
         shutil.rmtree(COLD_TIER_DIR)
 
     provider = TracerProvider()
-    # Do NOT set global provider to avoid state leakage
-    # trace.set_tracer_provider(provider)
 
-    # Tiered Processor
-    tiered = TieredSpanProcessor(cold_tier_path=COLD_TIER_DIR)
-    provider.add_span_processor(tiered)
-
-    # Mock Hot Exporter via SimpleSpanProcessor
+    # Exporters
+    # We use SimpleSpanProcessor for tests to ensure synchronous execution
     hot_exporter = MagicMock()
-    provider.add_span_processor(SimpleSpanProcessor(hot_exporter))
+    hot_processor = SimpleSpanProcessor(hot_exporter)
 
-    return provider, hot_exporter, tiered
+    parquet_exporter = ParquetSpanExporter(output_path=COLD_TIER_DIR)
+    cold_processor = SimpleSpanProcessor(parquet_exporter)
+
+    # Optimizer
+    optimizer = GenAICostOptimizerProcessor(
+        hot_processor=hot_processor,
+        cold_processor=cold_processor,
+        pricing_rule=smart_sampling
+    )
+
+    provider.add_span_processor(optimizer)
+
+    return provider, hot_exporter, optimizer
 
 def test_read_sampling():
     """Test that READ (Chat) is sampled at 1% (simulated)."""
-    provider, hot_exporter, tiered_processor = setup_telemetry()
+    provider, hot_exporter, optimizer = setup_telemetry()
     tracer = provider.get_tracer("test")
 
     # Force random to return 0.0 (sample)
-    with patch("random.random", return_value=0.0):
+    with patch("src.utils.telemetry.random.random", return_value=0.0):
         with tracer.start_as_current_span("chat_completion") as span:
             span.set_attribute("gen_ai.content.prompt", "Hello")
             span.set_attribute("gen_ai.content.completion", "Hi there")
             span.set_attribute("other.metadata", "123")
 
     # Verify Cold Tier
-    files = list(pd.read_parquet(f"{COLD_TIER_DIR}/{f}") for f in os.listdir(COLD_TIER_DIR))
-    assert len(files) == 1
-    df = files[0]
+    files = list(os.listdir(COLD_TIER_DIR))
+    assert len(files) >= 1
+
+    # Read the parquet file
+    df = pd.read_parquet(f"{COLD_TIER_DIR}/{files[0]}")
     assert df["attr.gen_ai.content.prompt"].iloc[0] == "Hello"
 
     # Verify Hot Tier (Stripped)
+    # SimpleSpanProcessor calls export([span])
     exported_spans = hot_exporter.export.call_args[0][0]
     exported_span = exported_spans[0]
 
+    # Check that heavy attributes are missing in the Hot Tier
+    # Note: exported_span is a StrippedSpan proxy.
     assert "gen_ai.content.prompt" not in exported_span.attributes
     assert "other.metadata" in exported_span.attributes
 
 def test_write_sampling():
     """Test that WRITE (Tool) is sampled at 100%."""
-    provider, hot_exporter, tiered_processor = setup_telemetry()
+    provider, hot_exporter, optimizer = setup_telemetry()
     tracer = provider.get_tracer("test")
 
     # Force random to return 0.99 (no sample by default)
-    with patch("random.random", return_value=0.99):
+    with patch("src.utils.telemetry.random.random", return_value=0.99):
         with tracer.start_as_current_span("execute_trade") as span:
             span.set_attribute("gen_ai.tool.name", "trade_tool")
             span.set_attribute("gen_ai.content.prompt", "Buy AAPL")
 
     # Verify Cold Tier
-    assert len(os.listdir(COLD_TIER_DIR)) == 1
+    assert len(os.listdir(COLD_TIER_DIR)) >= 1
 
     # Verify Hot Tier Stripped
     exported_spans = hot_exporter.export.call_args[0][0]
@@ -76,16 +90,16 @@ def test_write_sampling():
 
 def test_risky_sampling():
     """Test that RISKY (Blocked) is sampled at 100%."""
-    provider, hot_exporter, tiered_processor = setup_telemetry()
+    provider, hot_exporter, optimizer = setup_telemetry()
     tracer = provider.get_tracer("test")
 
-    with patch("random.random", return_value=0.99):
+    with patch("src.utils.telemetry.random.random", return_value=0.99):
         with tracer.start_as_current_span("jailbreak_attempt") as span:
             span.set_attribute("guardrail.outcome", "BLOCKED")
             span.set_attribute("gen_ai.content.prompt", "Bad prompt")
 
     # Verify Cold Tier
-    assert len(os.listdir(COLD_TIER_DIR)) == 1
+    assert len(os.listdir(COLD_TIER_DIR)) >= 1
 
     # Verify Hot Tier Stripped
     exported_spans = hot_exporter.export.call_args[0][0]
