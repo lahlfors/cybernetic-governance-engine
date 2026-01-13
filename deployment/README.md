@@ -7,7 +7,7 @@ This directory contains the configuration and scripts to deploy the Financial Ad
 The system is deployed as a **single Cloud Run Service** that follows the multi-container sidecar pattern:
 
 1.  **Ingress Container (Financial Advisor):**
-    *   Hosts the monolithic Agent application (`src.agents.supervisor.agent.root_agent`).
+    *   Hosts the monolithic Agent application (`src.agents.financial_advisor.agent.root_agent`).
     *   Includes the root `financial_coordinator` and all sub-agents (`data_analyst`, `execution_analyst`, `governed_trader`, `risk_analyst`) running in the same process.
     *   Exposes the HTTP API on port 8080.
     *   Enforces governance by calling the local OPA sidecar before executing sensitive tools.

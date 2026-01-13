@@ -102,7 +102,7 @@ workflow.add_conditional_edges("risk_analyst", risk_router, {
 
 ```
 src/agents/
-├── supervisor/
+├── financial_advisor/
 │   ├── agent.py            # Coordinator (Root Agent)
 │   └── callbacks.py        # OTel Interceptor (ISO 42001)
 ├── data_analyst/agent.py   # Market research agent
