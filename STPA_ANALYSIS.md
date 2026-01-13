@@ -97,7 +97,7 @@ Concept: Attribute-Based Access Control (ABAC)
 
 Once syntax is confirmed, the system must verify authorization. This layer enforces "Hard Constraints"—logic that requires zero probability of failure. We replace ad-hoc rule engines with Open Policy Agent (OPA), the CNCF (Cloud Native Computing Foundation) standard for cloud-native policy enforcement.
 
-Using Rego, OPA's declarative query language, organizations define immutable policies that are decoupled from the agent's code. Examples include:
+Using Rego, OPA's declarative query language, organizations define immutable policies that are decoupled from the agent's code. The `src/governance/client.py` module implements the PDP client that queries the OPA server. Examples include:
 "Agents with role:junior cannot call DELETE on prod_db."
 "Financial transfers > $10,000 require human_approval."
 "No external API calls are permitted to non-allowlisted domains."
@@ -137,10 +137,9 @@ Layer 6: Ephemeral Isolation (The Physics Layer)
 Technique: Micro-Virtualization (Sandboxing)
 Concept: Blast Radius Containment
 
-The final layer assumes all prior controls have failed. The agent has generated malicious code, it passed syntax and policy checks, and tricked the guardrails. The safety mechanism of last resort is Physics—isolating the execution environment. We utilize Ephemeral Runtimes such as AWS Firecracker or gVisor.
+The final layer assumes all prior controls have failed. The agent has generated malicious code, it passed syntax and policy checks, and tricked the guardrails. The safety mechanism of last resort is Physics—isolating the execution environment. We utilize Ephemeral Runtimes provided by Google Cloud Run, specifically leveraging gVisor.
 
-AWS Firecracker: Launches code in a microVM (Virtual Machine) that boots in milliseconds. The VM has no network access to the host, possesses limited resources, and is destroyed immediately after the function returns. This ensures that even if the agent executes malware, it runs in a "disposable universe" that ceases to exist moments later.
-gVisor: An application kernel for containers that intercepts system calls. It provides a distinct security boundary between the application and the host OS, preventing "container escape" attacks where an agent might try to access the underlying server's kernel to gain persistence.
+Google Cloud Run (gVisor): Uses a user-space kernel (gVisor) to intercept system calls, providing a distinct security boundary between the application and the host OS. This prevents "container escape" attacks where an agent might try to access the underlying server's kernel to gain persistence. Each execution runs in a sandboxed environment that is isolated and ephemeral, effectively mitigating the risk of persistent threats.
 
 This prevents Persistent Threats (the agent installing a backdoor) and Lateral Movement (the agent scanning the internal network). By eliminating the persistence of the environment, we break the "Cyber Kill Chain" effectively.
 
@@ -161,7 +160,7 @@ Implementation: System 4 is the domain of STPA Hazard Analysis. It is responsibl
 System 3: Control & Optimization (The Now)
 VSM Function: Resource allocation, monitoring internal operations, and audit (The "Inside and Now").
 ISO 42001 Mapping: Clause 8.1 (Operational planning and control) & Clause 9.1 (Monitoring, measurement, analysis).
-Implementation: This is the "Audit Channel" and the runtime orchestration layer. System 3 is the **Supervisor Agent (LangGraph node)** that enforces the budget, monitors "algedonic" signals (pain/pleasure signals like error rates, latency, or toxic output flags), and applies Control Barrier Functions (CBFs) to keep operations within the safe set. It ensures that the operational controls planned in Clause 8.1 are executed and that performance is measured against the metrics defined in Clause 9.1. Crucially, System 3 maintains the "Audit Trail" via tools like OpenTelemetry, ensuring every decision is traceable.
+Implementation: This is the "Audit Channel" and the runtime orchestration layer. System 3 is the **Supervisor Agent (LangGraph node)**—specifically `src/graph/nodes/supervisor_node.py` which wraps the `financial_coordinator` ADK agent. It enforces the budget, monitors "algedonic" signals (pain/pleasure signals like error rates, latency, or toxic output flags), and applies Control Barrier Functions (CBFs) to keep operations within the safe set. It ensures that the operational controls planned in Clause 8.1 are executed and that performance is measured against the metrics defined in Clause 9.1. Crucially, System 3 maintains the "Audit Trail" via tools like OpenTelemetry, ensuring every decision is traceable.
 
 System 2: Coordination (The Stabilizer)
 VSM Function: Preventing oscillation and conflict between operational units.
@@ -171,7 +170,7 @@ Implementation: System 2 is the "Service Mesh" for agents. In a multi-agent syst
 System 1: Operations (The Doers)
 VSM Function: The autonomous units performing value-adding tasks.
 ISO 42001 Mapping: Clause 8.4 (AI System impact assessment) & Clause 8.3 (AI Risk Treatment).
-Implementation: These are the Agentic AI models themselves—the "Skills" or "Workers" (e.g., the Coder, the Analyst, the Customer Support Bot). They operate with Bounded Autonomy, executing tasks within the constraints set by System 3 and the coordination provided by System 2. Their actions are the subject of the AI Risk Treatment (Clause 8.3), where specific controls (like the 5-layer stack) are applied to mitigate the risks inherent in their autonomy.
+Implementation: These are the Agentic AI models themselves—the "Skills" or "Workers": **Data Analyst**, **Execution Analyst**, **Risk Analyst**, and **Governed Trader**. They operate with Bounded Autonomy, executing tasks within the constraints set by System 3 and the coordination provided by System 2. Their actions are the subject of the AI Risk Treatment (Clause 8.3), where specific controls (like the 5-layer stack) are applied to mitigate the risks inherent in their autonomy.
 
 5. Strategic Implications and Compliance Roadmap
 
@@ -194,7 +193,7 @@ The implementation of this architecture should follow a phased approach, validat
 
 Phase 1: Foundation (Schemas & Policy): Establish the deterministic boundaries. Deploy OPA sidecars and enforce Pydantic schemas for all tool calls.
 Phase 2: Semantic & Verification: Integrate NeMo Guardrails for intent filtering and implement Chain-of-Verification loops for critical reasoning tasks.
-Phase 3: Isolation: Migrate tool execution to Firecracker MicroVMs.
+Phase 3: Isolation: Enforce strict isolation via Google Cloud Run (gVisor) execution environments (Target State). *Note: Current implementation utilizes Google Cloud Run (gVisor) for container-level isolation.*
 Phase 4: Red Teaming & Validation:
 - AgentHarm: Use this benchmark to measure the agent's refusal rate against 110 distinct harmful behaviors (e.g., fraud, cybercrime). Aim for a Refusal Rate > 95% and a Harm Score < 5%.
 - SafetyBench: Use this multiple-choice benchmark to evaluate the model's latent safety knowledge across 7 categories of concern.
