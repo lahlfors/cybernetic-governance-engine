@@ -70,11 +70,31 @@ When the Consensus Engine encounters ambiguous scenarios (e.g., complex life eve
 *   **Concept:** This implements "Escalation as a Fallback," ensuring that the automated system has a fail-safe path to human judgment for "Grey Zone" decisions.
 *   **Implementation:** `financial_advisor/consensus.py` (Vote Logic) & `financial_advisor/governance.py` (Routing).
 
-## 3. Observability: GenAI Semantics
-We implement **OpenTelemetry** with **GenAI Semantic Conventions** (v1.37+ draft) to ensure full visibility into the "Black Box" of cognition.
-*   **Attributes:** Captures `gen_ai.content.prompt`, `gen_ai.content.completion`, and `gen_ai.tool.name`.
-*   **Spans:** Each cognitive step (Reasoning, Tool Use, Consensus Check) is a distinct span in the trace.
-*   **Implementation:** `financial_advisor/telemetry.py`
+## 3. Tiered Observability: The Cost of Transparency
+We implement a **Risk-Based Tiered Strategy** for observability, solving the paradox of "Logging everything vs. Paying for everything."
+
+### The Dilemma
+*   **Hot Storage (Datadog/Cloud Trace):** Essential for operational health (latency, error rates) but prohibitively expensive for storing full LLM payloads (prompts/responses).
+*   **Cold Storage (S3/GCS):** Cheap but slow to query. Essential for compliance and forensics ("Why did the agent do that?").
+
+### The Solution: Smart Sampling
+We implement a custom **OpenTelemetry SpanProcessor** (`TieredSpanProcessor`) that routes data based on risk and utility:
+
+| Tier | Destination | Content | Sampling Logic | Purpose |
+|------|-------------|---------|----------------|---------|
+| **Hot** | Cloud Trace | Metadata Only (Latency, Status, TraceID) | 100% | Operational Health |
+| **Cold** | GCS/S3 (Parquet) | Full Payload (Prompts, Reasoning, RAG Chunks) | **Smart Sampled** | Forensics & Compliance |
+
+### Smart Sampling Logic
+The processor applies semantic rules to decide what gets archived to Cold Storage:
+1.  **READ (Chat):** Sample **1%**. Most chat is noise.
+2.  **WRITE (Tools):** Sample **100%**. Any state-changing action (Trade, SQL) is fully archived.
+3.  **RISKY (Guardrails):** Sample **100%**. Any interaction where `guardrail.outcome` is `BLOCKED` or `ALTERED` is preserved for security audit.
+
+### Implementation
+*   **Stripping:** The processor actively *strips* heavy attributes (`gen_ai.content.prompt`, `gen_ai.content.completion`) from the span *before* it is sent to the Hot Exporter, reducing ingestion costs by orders of magnitude.
+*   **Parquet:** Cold traces are written in Parquet format for efficient long-term storage and querying via BigQuery/Athena.
+*   **Source:** `src/infrastructure/telemetry/tiered_processor.py`
 
 ## 4. Implementation Details
 
