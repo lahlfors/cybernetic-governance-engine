@@ -73,7 +73,7 @@ select = [
 ignore = ["E501", "C901"] # ignore line too long, too complex
 
 [tool.ruff.lint.isort]
-known-first-party = ["financial_advisor"]
+known-first-party = ["src"]
 
 [tool.mypy]
 disallow_untyped_calls = true
@@ -114,4 +114,4 @@ module-root = ""
 example_question = "Analyze AAPL"
 
 [tool.agent-starter-pack.settings]
-agent_directory = "financial_advisor"
+agent_directory = "src/agents"

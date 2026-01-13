@@ -16,19 +16,20 @@ The architecture enforces "Defense in Depth" through six distinct layers (0-5):
 ### Layer 0: Conversational Guardrails (NeMo)
 **Goal:** Input/Output Safety & Topical Control.
 We use **NeMo Guardrails** as the first line of defense to ensure the model stays on topic and avoids jailbreaks *before* it even processes a tool call.
-*   **Implementation:** `financial_advisor/nemo_manager.py` & `financial_advisor/rails_config/`
+*   **Implementation:** `src/utils/nemo_manager.py` & `config/rails/`
+*   **Observability (ISO 42001):** A custom `NeMoOTelCallback` intercepts every guardrail intervention (e.g., `self_check_input`) and emits an OpenTelemetry span with `guardrail.outcome` and `iso.control_id="A.6.2.8"`.
 
 ### Layer 1: Session Persistence (Redis)
 **Goal:** Stateful Sessions on Stateless Compute.
 Cloud Run containers are **stateless** (ephemeral). To maintain session continuity, we use **Redis (Cloud Memorystore)** for session state persistence.
 *   **Constraint:** Session state is checkpointed to Redis after each turn.
 *   **Safety:** This ensures consistent behavior even if the compute node was destroyed and recreated.
-*   **Implementation:** `financial_advisor/checkpointer.py` using Redis-backed session storage.
+*   **Implementation:** `src/graph/checkpointer.py` using Redis-backed session storage.
 
 ### Layer 2: The Syntax Trapdoor (Schema)
 **Goal:** Structural Integrity.
 We use strict **Pydantic** models to validate every tool call *before* it reaches the policy engine.
-*   **Implementation:** `financial_advisor/tools/trades.py`
+*   **Implementation:** `src/tools/trades.py`
 *   **Features:**
     *   **UUID Validation:** `transaction_id` must be a valid UUID v4.
     *   **Regex Validation:** Ticker symbols must match `^[A-Z]{1,5}$`.
@@ -45,7 +46,7 @@ We use **Open Policy Agent (OPA)** and **Rego** to decouple policy from code. Th
 *   **Junior Trader:** Limit $5,000. Manual Review $5,000 - $10,000.
 *   **Senior Trader:** Limit $500,000. Manual Review $500,000 - $1,000,000.
 *   **Architecture (Sidecar):** OPA runs as a sidecar container on `localhost`. This eliminates network latency, enabling **real-time** compliance checks critical for high-frequency trading decisions.
-*   **Implementation:** `governance_poc/finance_policy.rego`
+*   **Implementation:** `src/governance/policy/finance_policy.rego`
 
 ### Layer 4: The Semantic Verifier (Intent)
 **Goal:** Semantic Safety & Anti-Hallucination.
@@ -54,21 +55,21 @@ We implement a **Propose-Verify-Execute** pattern:
 2.  **Verifier Agent:** Audits the proposal against the prompt and safety rules.
     *   **Tool:** `submit_risk_assessment`. Enforces a structured `RiskPacket` schema (Risk Score, Flags, Decision).
     *   **Execution:** Only the Verifier can call `execute_trade`.
-*   **Implementation:** `financial_advisor/sub_agents/governed_trader/verifier.py`
+*   **Implementation:** `src/agents/governed_trader/agent.py` (Verifier logic)
 
 ### Layer 5: The Consensus Engine (Adaptive Compute)
 **Goal:** High-Stakes Validation.
 For actions exceeding a high-risk threshold ($10,000), the system triggers an **Ensemble Check**.
 *   **Mechanism:** The `ConsensusEngine` simulates a voting process (mocked for this sample) to ensure unanimous agreement before execution.
 *   **Integration:** Embedded in the `@governed_tool` decorator. If the consensus check fails, the trade is blocked even if OPA approves.
-*   **Implementation:** `financial_advisor/consensus.py`
+*   **Implementation:** `src/governance/consensus.py`
 
 ### Layer 6: Human-in-the-Loop (Escalation)
 **Goal:** The Grey Zone & Constructive Friction.
 When the Consensus Engine encounters ambiguous scenarios (e.g., complex life events, borderline risk), it returns an `ESCALATE` vote instead of a hard `REJECT`.
 *   **Mechanism:** The system halts execution and returns a `MANUAL_REVIEW` status.
 *   **Concept:** This implements "Escalation as a Fallback," ensuring that the automated system has a fail-safe path to human judgment for "Grey Zone" decisions.
-*   **Implementation:** `financial_advisor/consensus.py` (Vote Logic) & `financial_advisor/governance.py` (Routing).
+*   **Implementation:** `src/governance/consensus.py` (Vote Logic) & `src/governance/client.py` (Routing).
 
 ## 3. Tiered Observability: The Cost of Transparency
 We implement a **Risk-Based Tiered Strategy** for observability, solving the paradox of "Logging everything vs. Paying for everything."
@@ -105,7 +106,7 @@ Instead, we use **LangGraph** to implement a rigid State Graph that separates co
 *   **Risk Refinement Loop:** If the Risk Analyst node returns a `REJECTED_REVISE` status, the graph *automatically* routes back to the Execution Analyst. The system injects the specific risk feedback into the prompt, forcing the planner to self-correct before the trade can proceed. This ensures that no unsafe plan can reach the Execution state.
 
 ### Governance Decorator
-The `@governed_tool` decorator (`financial_advisor/governance.py`) intercepts all tool executions.
+The `@governed_tool` decorator (`src/governance/client.py`) intercepts all tool executions.
 1.  Validates Pydantic Schema (Layer 1).
 2.  Queries OPA Sidecar (Layer 2).
 3.  Triggers Consensus Engine if applicable (Layer 4).
