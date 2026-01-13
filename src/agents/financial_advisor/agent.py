@@ -19,6 +19,7 @@ from src.tools.router import route_request
 from src.utils.telemetry import configure_telemetry
 from .prompt import get_financial_coordinator_instruction
 from config.settings import MODEL_NAME
+from .callbacks import otel_interceptor_callback
 import logging
 
 logger = logging.getLogger("FinancialCoordinator")
@@ -26,11 +27,11 @@ logger = logging.getLogger("FinancialCoordinator")
 # Initialize GCP observability (logging and tracing)
 configure_telemetry()
 
-from .data_analyst import data_analyst_agent
+from src.agents.data_analyst import data_analyst_agent
 
-from .execution_analyst import execution_analyst_agent
-from .governed_trader import governed_trading_agent
-from .risk_analyst import risk_analyst_agent
+from src.agents.execution_analyst import execution_analyst_agent
+from src.agents.governed_trader import governed_trading_agent
+from src.agents.risk_analyst import risk_analyst_agent
 
 
 financial_coordinator = LlmAgent(
@@ -44,6 +45,8 @@ financial_coordinator = LlmAgent(
     ),
     instruction=get_financial_coordinator_instruction(),
     output_key="financial_coordinator_output",
+    # Callback to inject OTel attributes (ISO 42001 Transparency)
+    after_model_callback=otel_interceptor_callback,
     # Explicitly register sub-agents for hierarchy, but do not expose them as tools directly.
     sub_agents=[
         data_analyst_agent,

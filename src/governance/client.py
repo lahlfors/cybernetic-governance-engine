@@ -8,6 +8,7 @@ from opentelemetry import trace
 from src.utils.telemetry import genai_span
 from src.governance.consensus import consensus_engine
 from src.governance.safety import safety_filter
+from config.settings import Config
 
 # Configure logging
 logger = logging.getLogger("GovernanceLayer")
@@ -22,9 +23,9 @@ class OPAClient:
     def __init__(self):
         # Default to localhost for standalone testing, but allow override for Docker/Cloud
         # Pointing to 'decision' rule instead of 'allow'
-        self.url = os.environ.get("OPA_URL", "http://localhost:8181/v1/data/finance/decision")
+        self.url = Config.OPA_URL
         # Fetch authentication token if available
-        self.auth_token = os.environ.get("OPA_AUTH_TOKEN")
+        self.auth_token = Config.OPA_AUTH_TOKEN
 
     def evaluate_policy(self, input_data: Dict[str, Any]) -> str:
         """

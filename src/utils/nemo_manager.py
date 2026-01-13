@@ -5,8 +5,10 @@ import os
 import nest_asyncio
 from nemoguardrails import LLMRails, RailsConfig
 from nemoguardrails.llm.providers import register_llm_provider
+from nemoguardrails.context import streaming_handler_var
 from langchain_core.language_models.llms import LLM
 from typing import Any, List, Optional
+from src.infrastructure.telemetry.nemo_exporter import NeMoOTelCallback
 
 
 class GeminiLLM(LLM):
@@ -133,14 +135,21 @@ async def validate_with_nemo(user_input: str, rails: LLMRails) -> tuple[bool, st
     Validates user input using NeMo Guardrails.
     Returns (is_safe: bool, response: str).
     """
+    # 1. Initialize ISO 42001 OTel callback
+    handler = NeMoOTelCallback()
+
+    # 2. Set the global context variable for custom actions to capture events
+    token = streaming_handler_var.set(handler)
+
     try:
         # Check for 'self_check_input' or similar rails
         # We perform a generation call which triggers the input rails
         # If blocked, the response will be a refusal message.
-        res = await rails.generate_async(messages=[{
-            "role": "user",
-            "content": user_input
-        }])
+        # 3. Call generate_async with the handler
+        res = await rails.generate_async(
+            messages=[{"role": "user", "content": user_input}],
+            streaming_handler=handler
+        )
 
         # Heuristic: Check if the response indicates a block
         # NeMo typically returns a predefined message if blocked by a rail
@@ -167,3 +176,6 @@ async def validate_with_nemo(user_input: str, rails: LLMRails) -> tuple[bool, st
         # Here we allow the graph to proceed if NeMo crashes,
         # relying on the Graph's internal safety.
         return True, ""
+    finally:
+        # Clean up the context variable
+        streaming_handler_var.reset(token)

@@ -13,6 +13,7 @@ The following table maps ISO 42001 controls to specific trace attributes capture
 | :--- | :--- | :--- | :--- | :--- |
 | **A.10.1** | **Transparency & Explainability** | `governance.check` | `governance.decision`=`ALLOW`\|`DENY` | ✅ **Fully Compliant**. Every tool execution is strictly correlated with a policy decision. |
 | **A.8.4** | **AI System Impact Assessment** | `consensus.check` | `consensus.votes`=`['APPROVE', 'REJECT']` | ✅ **Compliant**. High-stakes decisions record the internal "debate" and voting logic of the safety agents. |
+| **A.6.2.8** | **Event Logging** | `guardrail.intervention` | `guardrail.outcome`=`BLOCKED`\|`ALLOWED` | ✅ **Fully Compliant**. NeMo Guardrails exporter captures every policy intervention (e.g., jailbreak attempt) with precise attribution. |
 | **A.4.2** | **Risk Management** | `consensus.check` | `consensus.decision`=`ESCALATE` | ✅ **Compliant**. Risk escalations are explicitly traced as distinct events. |
 | **A.6.3** | **Data Management (Input)** | `genai_span` | `gen_ai.content.prompt` | ⚠️ **Partial**. Prompts are captured, but full input data validity is implicit in Pydantic validation (which logs errors but not successful data structures). |
 | **A.9.2** | **System Reliability** | `exception` | `status.code`=`ERROR` | ✅ **Compliant**. Exceptions in governance logic are recorded with full stack traces. |
