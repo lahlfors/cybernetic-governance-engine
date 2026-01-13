@@ -102,7 +102,9 @@ workflow.add_conditional_edges("risk_analyst", risk_router, {
 
 ```
 src/agents/
-├── root_agent.py           # Coordinator with route_request tool
+├── supervisor/
+│   ├── agent.py            # Coordinator (Root Agent)
+│   └── callbacks.py        # OTel Interceptor (ISO 42001)
 ├── data_analyst/agent.py   # Market research agent
 ├── execution_analyst/agent.py  # Strategy planning agent
 ├── risk_analyst/agent.py   # Risk evaluation agent
@@ -200,7 +202,7 @@ graph LR
 │  │   Main Container    │    │    OPA Sidecar (Layer 2)   │  │
 │  │   ───────────────   │    │    ────────────────────    │  │
 │  │   FastAPI Server    │◀──▶│    Policy Enforcement      │  │
-│  │   LangGraph         │    │    trade_policy.rego       │  │
+│  │   LangGraph         │    │    finance_policy.rego     │  │
 │  │   ADK Agents        │    └────────────────────────────┘  │
 │  │   NeMo Guardrails   │                                     │
 │  └──────────┬──────────┘                                     │

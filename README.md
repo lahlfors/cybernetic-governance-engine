@@ -129,7 +129,7 @@ You **must** have OPA running to execute trades. The system fails closed if OPA 
 
 ```bash
 # Run OPA in the background with the provided policy bundle
-opa run -s -b governance_poc --addr :8181 &
+opa run -s -b src/governance/policy --addr :8181 &
 ```
 
 ### 5. Run the Agent (Local Development)
