@@ -61,4 +61,5 @@ financial_coordinator = LlmAgent(
 )
 
 root_agent = financial_coordinator
+agent = financial_coordinator
 

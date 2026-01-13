@@ -25,3 +25,9 @@ agents_log/
 
 # Project Specific
 opa
+
+# Traces
+*.parquet
+trace_*.parquet
+logs/cold_tier/
+tests/temp_*/
