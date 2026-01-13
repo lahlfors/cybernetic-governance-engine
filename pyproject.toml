@@ -1,8 +1,8 @@
 [project]
-name = "financial-advisor"
+name = "governed-financial-advisor"
 version = "0.1.0"
 description = "AI-driven agent designed to facilitate the exploration of the financial advisor landscape"
-authors = [{ name = "Antonio Gulli", email = "gulli@google.com" }]
+authors = [{ name = "Lars Ahlfors", email = "laah@google.com" }]
 license = "Apache-2.0"
 readme = "README.md"
 dependencies = [
@@ -15,7 +15,6 @@ dependencies = [
     "opentelemetry-instrumentation-requests>=0.58b0",
     "nemoguardrails>=0.17.0",
     "nest-asyncio>=1.6.0",
-    "langchain-openai>=0.3.35",
     "langchain-google-genai>=2.1.12",
     "langchain-google-vertexai>=2.0.0",
     "redis>=5.0.0",

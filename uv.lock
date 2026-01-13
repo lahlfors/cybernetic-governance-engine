@@ -715,94 +715,6 @@ wheels = [
 ]
 
 [[package]]
-name = "financial-advisor"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "google-adk" },
-    { name = "google-cloud-aiplatform", extra = ["adk", "agent-engines"] },
-    { name = "google-genai" },
-    { name = "langchain-google-genai" },
-    { name = "langchain-google-vertexai" },
-    { name = "langchain-openai" },
-    { name = "langgraph" },
-    { name = "langgraph-checkpoint-redis" },
-    { name = "nemoguardrails" },
-    { name = "nest-asyncio" },
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-exporter-gcp-trace" },
-    { name = "opentelemetry-instrumentation-fastapi" },
-    { name = "opentelemetry-instrumentation-langchain" },
-    { name = "opentelemetry-instrumentation-requests" },
-    { name = "opentelemetry-sdk" },
-    { name = "pydantic" },
-    { name = "python-dotenv" },
-    { name = "redis" },
-    { name = "yfinance" },
-]
-
-[package.optional-dependencies]
-lint = [
-    { name = "codespell" },
-    { name = "mypy" },
-    { name = "ruff" },
-    { name = "types-pyyaml" },
-    { name = "types-requests" },
-]
-
-[package.dev-dependencies]
-deployment = [
-    { name = "absl-py" },
-]
-dev = [
-    { name = "agent-starter-pack" },
-    { name = "google-adk", extra = ["eval"] },
-    { name = "nest-asyncio" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "codespell", marker = "extra == 'lint'", specifier = ">=2.2.0" },
-    { name = "google-adk", specifier = ">=1.0.0" },
-    { name = "google-cloud-aiplatform", extras = ["adk", "agent-engines"], specifier = ">=1.93.0" },
-    { name = "google-genai", specifier = ">=1.9.0" },
-    { name = "langchain-google-genai", specifier = ">=2.1.12" },
-    { name = "langchain-google-vertexai", specifier = ">=2.0.0" },
-    { name = "langchain-openai", specifier = ">=0.3.35" },
-    { name = "langgraph" },
-    { name = "langgraph-checkpoint-redis" },
-    { name = "mypy", marker = "extra == 'lint'", specifier = ">=1.15.0" },
-    { name = "nemoguardrails", specifier = ">=0.17.0" },
-    { name = "nest-asyncio", specifier = ">=1.6.0" },
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-exporter-gcp-trace" },
-    { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.58b0" },
-    { name = "opentelemetry-instrumentation-langchain" },
-    { name = "opentelemetry-instrumentation-requests", specifier = ">=0.58b0" },
-    { name = "opentelemetry-sdk" },
-    { name = "pydantic", specifier = ">=2.10.6" },
-    { name = "python-dotenv", specifier = ">=1.0.1" },
-    { name = "redis", specifier = ">=5.0.0" },
-    { name = "ruff", marker = "extra == 'lint'", specifier = ">=0.4.6" },
-    { name = "types-pyyaml", marker = "extra == 'lint'", specifier = ">=6.0.12.20240917" },
-    { name = "types-requests", marker = "extra == 'lint'", specifier = ">=2.32.0.20240914" },
-    { name = "yfinance" },
-]
-provides-extras = ["lint"]
-
-[package.metadata.requires-dev]
-deployment = [{ name = "absl-py", specifier = ">=2.2.1" }]
-dev = [
-    { name = "agent-starter-pack", specifier = ">=0.14.1" },
-    { name = "google-adk", extras = ["eval"], specifier = ">=1.0.0" },
-    { name = "nest-asyncio", specifier = ">=1.6.0" },
-    { name = "pytest", specifier = ">=8.3.2" },
-    { name = "pytest-asyncio", specifier = ">=0.23.7" },
-]
-
-[[package]]
 name = "flatbuffers"
 version = "25.12.19"
 source = { registry = "https://pypi.org/simple" }
@@ -1446,6 +1358,96 @@ grpc = [
 ]
 
 [[package]]
+name = "governed-financial-advisor"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "google-adk" },
+    { name = "google-cloud-aiplatform", extra = ["adk", "agent-engines"] },
+    { name = "google-genai" },
+    { name = "langchain-google-genai" },
+    { name = "langchain-google-vertexai" },
+    { name = "langgraph" },
+    { name = "langgraph-checkpoint-redis" },
+    { name = "nemoguardrails" },
+    { name = "nest-asyncio" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-gcp-trace" },
+    { name = "opentelemetry-instrumentation-fastapi" },
+    { name = "opentelemetry-instrumentation-langchain" },
+    { name = "opentelemetry-instrumentation-requests" },
+    { name = "opentelemetry-sdk" },
+    { name = "pandas" },
+    { name = "pyarrow" },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "redis" },
+    { name = "yfinance" },
+]
+
+[package.optional-dependencies]
+lint = [
+    { name = "codespell" },
+    { name = "mypy" },
+    { name = "ruff" },
+    { name = "types-pyyaml" },
+    { name = "types-requests" },
+]
+
+[package.dev-dependencies]
+deployment = [
+    { name = "absl-py" },
+]
+dev = [
+    { name = "agent-starter-pack" },
+    { name = "google-adk", extra = ["eval"] },
+    { name = "nest-asyncio" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "codespell", marker = "extra == 'lint'", specifier = ">=2.2.0" },
+    { name = "google-adk", specifier = ">=1.0.0" },
+    { name = "google-cloud-aiplatform", extras = ["adk", "agent-engines"], specifier = ">=1.93.0" },
+    { name = "google-genai", specifier = ">=1.9.0" },
+    { name = "langchain-google-genai", specifier = ">=2.1.12" },
+    { name = "langchain-google-vertexai", specifier = ">=2.0.0" },
+    { name = "langgraph" },
+    { name = "langgraph-checkpoint-redis" },
+    { name = "mypy", marker = "extra == 'lint'", specifier = ">=1.15.0" },
+    { name = "nemoguardrails", specifier = ">=0.17.0" },
+    { name = "nest-asyncio", specifier = ">=1.6.0" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-gcp-trace" },
+    { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.58b0" },
+    { name = "opentelemetry-instrumentation-langchain" },
+    { name = "opentelemetry-instrumentation-requests", specifier = ">=0.58b0" },
+    { name = "opentelemetry-sdk" },
+    { name = "pandas", specifier = ">=2.0.0" },
+    { name = "pyarrow", specifier = ">=14.0.0" },
+    { name = "pydantic", specifier = ">=2.10.6" },
+    { name = "python-dotenv", specifier = ">=1.0.1" },
+    { name = "redis", specifier = ">=5.0.0" },
+    { name = "ruff", marker = "extra == 'lint'", specifier = ">=0.4.6" },
+    { name = "types-pyyaml", marker = "extra == 'lint'", specifier = ">=6.0.12.20240917" },
+    { name = "types-requests", marker = "extra == 'lint'", specifier = ">=2.32.0.20240914" },
+    { name = "yfinance" },
+]
+provides-extras = ["lint"]
+
+[package.metadata.requires-dev]
+deployment = [{ name = "absl-py", specifier = ">=2.2.1" }]
+dev = [
+    { name = "agent-starter-pack", specifier = ">=0.14.1" },
+    { name = "google-adk", extras = ["eval"], specifier = ">=1.0.0" },
+    { name = "nest-asyncio", specifier = ">=1.6.0" },
+    { name = "pytest", specifier = ">=8.3.2" },
+    { name = "pytest-asyncio", specifier = ">=0.23.7" },
+]
+
+[[package]]
 name = "graphviz"
 version = "0.21"
 source = { registry = "https://pypi.org/simple" }
@@ -1927,20 +1929,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/76/5f/55a5b568104c32e265970d4217083d76252c2140f532f382bb42f35886a8/langchain_google_vertexai-3.2.1.tar.gz", hash = "sha256:8913e8aa7ca300eb7d9b8681ba2487dad787debe2511a903a249dc03709720d2", size = 360287, upload-time = "2026-01-05T21:47:58.287Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/60/90/e2b1493df6ad06a7c1194f6d8238ddbd7fedc0cfe1e32d1c3980903c9d05/langchain_google_vertexai-3.2.1-py3-none-any.whl", hash = "sha256:57a25680290060c896fb740bdaafa987e0518b599f793b3dfb2d07a7aec97bd8", size = 103650, upload-time = "2026-01-05T21:47:57.136Z" },
-]
-
-[[package]]
-name = "langchain-openai"
-version = "1.1.7"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "langchain-core" },
-    { name = "openai" },
-    { name = "tiktoken" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/38/b7/30bfc4d1b658a9ee524bcce3b0b2ec9c45a11c853a13c4f0c9da9882784b/langchain_openai-1.1.7.tar.gz", hash = "sha256:f5ec31961ed24777548b63a5fe313548bc6e0eb9730d6552b8c6418765254c81", size = 1039134, upload-time = "2026-01-07T19:44:59.728Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/64/a1/50e7596aca775d8c3883eceeaf47489fac26c57c1abe243c00174f715a8a/langchain_openai-1.1.7-py3-none-any.whl", hash = "sha256:34e9cd686aac1a120d6472804422792bf8080a2103b5d21ee450c9e42d053815", size = 84753, upload-time = "2026-01-07T19:44:58.629Z" },
 ]
 
 [[package]]

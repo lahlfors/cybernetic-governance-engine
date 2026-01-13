@@ -236,3 +236,8 @@ See **[deployment/README.md](deployment/README.md)** for detailed deployment ins
 
 <img src="financial-advisor.png" alt="Financial Advisor Architecture" width="800"/>
 
+## License
+
+This project is licensed under the Apache 2.0 License - see the `LICENSE` file for details.
+
+**FSA Code Guidance:** This solution uses open-source dependencies compliant with Google FSA policies (Apache 2.0, MIT). The codebase is designed for internal prototyping and requires formal review before customer distribution or production use.
