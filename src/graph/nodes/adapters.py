@@ -99,16 +99,28 @@ def risk_analyst_node(state):
     last_plan = state["messages"][-1].content
     res = run_adk_agent(risk_analyst_agent, f"Evaluate this plan: {last_plan}")
 
-    # Heuristic: Parse the Risk Agent's text output to drive the Loop
-    text = res.answer
-    status = "APPROVED"
-    if any(k in text.lower() for k in ["high risk", "reject", "unsafe", "denied"]):
-        status = "REJECTED_REVISE"
+    # Response is now a JSON string adhering to RiskAssessment schema
+    # We parse it to drive the loop logic robustly
+    import json
+    try:
+        data = json.loads(res.answer)
+        status = "APPROVED" if data.get("verdict") == "APPROVE" else "REJECTED_REVISE"
+        # We return the detailed report as the message text, but keep the JSON structured data for context if needed
+        text_output = data.get("detailed_analysis_report", res.answer)
+        feedback = data.get("reasoning_summary", "") + "\n" + "\n".join(data.get("detected_unsafe_actions", []))
+    except json.JSONDecodeError:
+        # Fallback if model fails to produce valid JSON (rare with constrained decoding)
+        print("--- [Risk Analyst] WARNING: JSON Decode Error, falling back to heuristic ---")
+        text_output = res.answer
+        status = "APPROVED"
+        if any(k in text_output.lower() for k in ["high risk", "reject", "unsafe", "denied"]):
+            status = "REJECTED_REVISE"
+        feedback = text_output
 
     return {
-        "messages": [("ai", text)],
+        "messages": [("ai", text_output)],
         "risk_status": status,
-        "risk_feedback": text
+        "risk_feedback": feedback
     }
 
 

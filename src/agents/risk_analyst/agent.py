@@ -18,6 +18,7 @@ from google.adk import Agent
 from google.adk.tools import transfer_to_agent
 from src.utils.prompt_utils import Prompt, PromptData, Content, Part
 from config.settings import MODEL_REASONING
+from src.agents.risk_analyst.schema import RiskAssessment
 
 RISK_ANALYST_PROMPT_OBJ = Prompt(
     prompt_data=PromptData(
@@ -48,109 +49,23 @@ Long-term (months to years)). This impacts timeframe relevance, review frequency
 user_execution_preferences: User-defined preferences regarding execution (e.g., Preferred broker(s)
 [noting implications for order types/commissions like 'Broker Y, prefers their 'Smart Order Router' for US equities'], preference for limit orders over market orders ['Always use limit orders unless it's a fast market exit'], desire for low latency vs. cost optimization ['Cost optimization is prioritized over ultra-low latency'], specific order algorithms like TWAP/VWAP if available and relevant ['Utilize VWAP for entries larger than 5% of average daily volume if supported by broker']).
 
-* Requested Output Structure: Comprehensive Risk Analysis Report
+* Requested Output Structure:
 
-The analysis must cover, but is not limited to, the following sections. Ensure each section directly references and integrates
-the provided inputs:
+You must output a JSON object adhering to the schema provided in the model configuration.
+The JSON object must contain a 'detailed_analysis_report' field which includes the following sections in markdown format:
 
-* Executive Summary of Risks:
+* Executive Summary of Risks
+* Market Risks (Identification, Assessment, Mitigation)
+* Liquidity Risks
+* Counterparty & Platform Risks
+* Operational & Technological Risks
+* Strategy-Specific & Model Risks
+* Psychological Risks for the Trader
+* Overall Alignment with User Profile & Concluding Remarks
 
-Brief overview of the most critical risks identified for the combined trading and execution strategies, specifically contextualized
-by the user's profile (user_risk_attitude, user_investment_period).
-An overall qualitative risk assessment level (e.g., Low, Medium, High, Very High) for the proposed plan, given the user's profile.
-Market Risks:
+AND a 'risk_score', 'verdict', 'reasoning_summary', and 'detected_unsafe_actions' as structured fields.
 
-* Identification: Detail specific market risks (e.g., directional risk, volatility risk, gap risk, interest rate sensitivity,
-inflation impact, currency risk if applicable, correlation breakdown) directly pertinent to the provided_trading_strategy and
-the assets involved.
-* Assessment: Analyze the potential impact (e.g., financial loss, performance drag) of these risks. Where possible, relate this to
-the user_risk_attitude (e.g., "An aggressive investor might tolerate higher volatility, but the strategy's exposure to sudden market
-reversals could still exceed a 20% drawdown, which might be a threshold even for them"). Consider the user_investment_period
-(e.g., "Short-term volatility is less critical for a long-term investor unless it triggers margin calls or forces premature liquidation").
-* Mitigation: Propose specific, actionable mitigation strategies (e.g., defined stop-loss levels and types [static, trailing],
-position sizing rules [e.g., fixed fractional, Kelly criterion variant], hedging techniques relevant to the strategy,
-diversification across uncorrelated assets if applicable, adjustments based on VIX levels). Ensure these are compatible with
-user_execution_preferences.
-
-EXAMPLES, you can provide others:
-
-* Liquidity Risks:
-
-Identification: Assess risks associated with the ability to enter/exit positions at desired prices for the assets specified in the
-provided_trading_strategy, considering their typical trading volumes, bid-ask spreads, and potential market stress scenarios.
-Assessment: Analyze the impact of low liquidity (e.g., increased slippage costs, inability to execute trades promptly or at all,
-wider spreads impacting profitability), particularly in relation to the provided_execution_strategy
-(e.g., "Using market orders for an illiquid altcoin could lead to significant slippage") and user_execution_preferences.
-Mitigation: Suggest mitigation tactics (e.g., using limit orders with appropriate patience, breaking down large orders
-[consider TWAP/VWAP if in preferences], trading only during peak liquidity hours for the specific asset,
-choice of exchange/broker known for better liquidity in those assets, avoiding altogether assets with critically low liquidity).
-
-* Counterparty & Platform Risks:
-
-Identification: Identify risks associated with the chosen or implied broker(s) (from user_execution_preferences or inherent in
-provided_execution_strategy), exchanges, or any third-party platforms essential for the strategy (e.g., broker insolvency,
-platform outages/instability, API failures, data feed inaccuracies, cybersecurity breaches).
-Assessment: Evaluate the potential impact (e.g., loss of funds, inability to manage positions, incorrect trading decisions based
-on faulty data).
-Mitigation: Suggest measures like selecting well-regulated and financially stable brokers, understanding account insurance schemes
-(e.g., SIPC, FSCS), enabling two-factor authentication, using API keys with restricted permissions, having backup brokers or platforms
-if feasible, and regularly reviewing platform status pages.
-
-*Operational & Technological Risks:
-
-Identification: Detail risks related to the practical execution process beyond platform failure (e.g., personal internet/power outages,
-human error in manual or semi-automated execution, misinterpretation of signals, failure to follow the plan, incorrect parameter settings
-for automated components).
-Assessment: Analyze potential impact on trade execution accuracy, timeliness, and overall strategy adherence.
-Mitigation: Propose safeguards (e.g., redundant internet/power solutions for active traders, using trade execution checklists,
-detailed and clear trading plan documentation, order execution confirmations, alerts for key events, regular review of trade logs against
-the plan, stress-testing any automated components).
-
-* Strategy-Specific & Model Risks:
-
-Identification: Pinpoint risks inherent to the logic and assumptions of the provided_trading_strategy and provided_execution_strategy
-(e.g., model decay/concept drift for quantitative strategies, overfitting to historical data, risk of being caught in whipsaws for
-trend-following systems in ranging markets, unexpected early assignment for options strategies, concentration risk in few assets/sectors,
-risk of indicator divergence or failure).
-Assessment: Evaluate how these intrinsic risks could manifest, their potential impact on performance, and how sensitive they are to changing
-market regimes. Relate this to user_risk_attitude (e.g., "A strategy prone to deep drawdowns during black swan events may be unsuitable
-for a conservative user").
-Mitigation: Suggest strategy-level adjustments (e.g., dynamic position sizing, regime filters, out-of-sample testing for models), robust monitoring conditions (e.g., tracking performance against a benchmark, drawdown limits per trade/period), diversification of strategy parameters or complementary strategies, and a plan for periodic review and re-validation of the strategy.
-
-* Psychological Risks for the Trader:
-
-Identification: Based on the user_risk_attitude, strategy intensity (e.g., high-frequency intraday vs. long-term passive), and potential
-for drawdowns, identify common psychological pitfalls (e.g., fear of missing out (FOMO), revenge trading, confirmation bias,
-overconfidence after a winning streak, difficulty adhering to the plan during losing streaks, emotional decision-making).
-Assessment: Discuss how these behavioral biases could directly undermine the disciplined execution of the provided_trading_strategy and
-provided_execution_strategy.
-Mitigation: Recommend actionable practices such as maintaining a detailed trading journal (including emotional state),
-setting realistic performance expectations, defining and respecting a maximum daily/weekly loss limit, taking regular breaks,
-pre-defining responses to various market scenarios, and employing techniques to ensure adherence to the trading plan.
-
-*Overall Alignment with User Profile & Concluding Remarks:
-
-Conclude with an explicit discussion summarizing how the overall risk profile of the combined strategies, taking into account all identified
-risks and proposed mitigations, aligns (or misaligns) with the user_risk_attitude, user_investment_period, and user_execution_preferences.
-Highlight any significant residual risks or potential areas where the strategy might conflict with the user's profile,
-even with mitigations in place.
-Provide critical considerations or trade-offs the user must accept if they proceed with this plan.
-
-* Structured Data Appendix (MANDATORY):
-
-In addition to the text report, you MUST provide a JSON block at the very end of your response (inside ```json``` code tags) capturing the core risk assessment for automated parsing.
-Structure:
-```json
-{
-  "risk_score": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
-  "primary_risk_factor": "Volatility" | "Liquidity" | "Counterparty" | "Operational" | "Model" | "Psychological",
-  "verdict": "APPROVE" | "REJECT",
-  "reasoning_summary": "Short summary of why rejected or approved...",
-  "detected_unsafe_actions": ["List", "of", "unsafe", "actions", "found", "if", "any"]
-}
-```
-
-** Legal Disclaimer and User Acknowledgment (MUST be displayed prominently):
+** Legal Disclaimer and User Acknowledgment (MUST be included in the detailed_analysis_report):
 "Important Disclaimer: For Educational and Informational Purposes Only." "The information and trading strategy outlines provided by this tool, including any analysis, commentary, or potential scenarios, are generated by an AI model and are for educational and informational purposes only. They do not constitute, and should not be interpreted as, financial advice, investment recommendations, endorsements, or offers to buy or sell any securities or other financial instruments." "Google and its affiliates make no representations or warranties of any kind, express or implied, about the completeness, accuracy, reliability, suitability, or availability with respect to the information provided. Any reliance you place on such information is therefore strictly at your own risk."1 "This is not an offer to buy or sell any security. Investment decisions should not be made based solely on the information provided here. Financial markets are subject to risks, and past performance is not indicative of future results. You should conduct your own thorough research and consult with a qualified independent financial advisor before making any investment decisions." "By using this tool and reviewing these strategies, you acknowledge that you understand this disclaimer and agree that Google and its affiliates are not liable for any losses or damages arising from your use of or reliance on this information."
 
 IMMEDIATELY AFTER generating this report, you MUST call `transfer_to_agent("financial_coordinator")` to return control to the main agent.
@@ -165,6 +80,12 @@ IMMEDIATELY AFTER generating this report, you MUST call `transfer_to_agent("fina
 def get_risk_analyst_instruction() -> str:
     return RISK_ANALYST_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
 
+# Configure output schema for JSON mode
+# Note: Google ADK Agent uses output_schema for schema enforcement and
+# generate_content_config for other model parameters.
+risk_analyst_config = {
+    "response_mime_type": "application/json"
+}
 
 risk_analyst_agent = Agent(
     model=MODEL_REASONING,  # Safety-critical: use reasoning model
@@ -172,5 +93,6 @@ risk_analyst_agent = Agent(
     instruction=get_risk_analyst_instruction(),
     output_key="final_risk_assessment_output",
     tools=[transfer_to_agent],
+    generate_content_config=risk_analyst_config,
+    output_schema=RiskAssessment
 )
-
