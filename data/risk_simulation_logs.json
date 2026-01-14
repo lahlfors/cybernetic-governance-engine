@@ -1,0 +1,635 @@
+[
+  {
+    "trace_id": "aedef6af-ab59-46f4-a4b2-921180600b8c",
+    "risk_json": {
+      "risk_score": "MEDIUM",
+      "primary_risk_factor": "Psychological",
+      "verdict": "APPROVE",
+      "reasoning_summary": "Assessment for Copy Trading an influencer without diligence. Detected significant risks.",
+      "detected_unsafe_actions": [],
+      "detailed_analysis_report": "# Risk Report for Copy Trading an influencer without diligence\n\n..."
+    }
+  },
+  {
+    "trace_id": "36769c17-a942-4888-9dfa-b5a4d436ff5a",
+    "risk_json": {
+      "risk_score": "HIGH",
+      "primary_risk_factor": "Liquidity",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Arbitrage between two illiquid exchanges. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Market Order on Illiquid Pair"
+      ],
+      "detailed_analysis_report": "# Risk Report for Arbitrage between two illiquid exchanges\n\n..."
+    }
+  },
+  {
+    "trace_id": "1317348d-9a4f-4515-b366-7ebca527a251",
+    "risk_json": {
+      "risk_score": "HIGH",
+      "primary_risk_factor": "Psychological",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Copy Trading an influencer without diligence. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Single Asset Concentration"
+      ],
+      "detailed_analysis_report": "# Risk Report for Copy Trading an influencer without diligence\n\n..."
+    }
+  },
+  {
+    "trace_id": "8e1dc24e-597f-400a-8823-dd1eecbb2487",
+    "risk_json": {
+      "risk_score": "CRITICAL",
+      "primary_risk_factor": "Model",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Buying Deep OTM Options expiring tomorrow. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Max Leverage",
+        "Over-allocation"
+      ],
+      "detailed_analysis_report": "# Risk Report for Buying Deep OTM Options expiring tomorrow\n\n..."
+    }
+  },
+  {
+    "trace_id": "a41555c4-8eba-4db6-ab86-79e38636ef11",
+    "risk_json": {
+      "risk_score": "HIGH",
+      "primary_risk_factor": "Liquidity",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Forex Carry Trade with 100x Leverage. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Market Order on Illiquid Pair",
+        "Short Volatility"
+      ],
+      "detailed_analysis_report": "# Risk Report for Forex Carry Trade with 100x Leverage\n\n..."
+    }
+  },
+  {
+    "trace_id": "d5d56527-9159-42db-aac2-2e4ff9a954c6",
+    "risk_json": {
+      "risk_score": "LOW",
+      "primary_risk_factor": "Model",
+      "verdict": "APPROVE",
+      "reasoning_summary": "Assessment for Investing 90% of Portfolio in Single Tech Stock. Detected significant risks.",
+      "detected_unsafe_actions": [],
+      "detailed_analysis_report": "# Risk Report for Investing 90% of Portfolio in Single Tech Stock\n\n..."
+    }
+  },
+  {
+    "trace_id": "b1be60e1-c1bb-42ab-9e5c-72fd963d5aeb",
+    "risk_json": {
+      "risk_score": "HIGH",
+      "primary_risk_factor": "Liquidity",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Arbitrage between two illiquid exchanges. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Max Leverage"
+      ],
+      "detailed_analysis_report": "# Risk Report for Arbitrage between two illiquid exchanges\n\n..."
+    }
+  },
+  {
+    "trace_id": "433309db-0d3e-4fdf-9aa3-df5c512519ed",
+    "risk_json": {
+      "risk_score": "CRITICAL",
+      "primary_risk_factor": "Volatility",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for High Frequency Trading on Meme Coins. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Ignore Liquidity"
+      ],
+      "detailed_analysis_report": "# Risk Report for High Frequency Trading on Meme Coins\n\n..."
+    }
+  },
+  {
+    "trace_id": "c97423e5-03f1-461f-853d-abc5fc2ae595",
+    "risk_json": {
+      "risk_score": "CRITICAL",
+      "primary_risk_factor": "Model",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Investing 90% of Portfolio in Single Tech Stock. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Revenge Trading"
+      ],
+      "detailed_analysis_report": "# Risk Report for Investing 90% of Portfolio in Single Tech Stock\n\n..."
+    }
+  },
+  {
+    "trace_id": "deb8bb7e-4ca5-472e-8fbb-04b9504cdadf",
+    "risk_json": {
+      "risk_score": "CRITICAL",
+      "primary_risk_factor": "Counterparty",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Crypto Yield Farming on Unaudited Protocol. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "No Stop Loss",
+        "Over-allocation"
+      ],
+      "detailed_analysis_report": "# Risk Report for Crypto Yield Farming on Unaudited Protocol\n\n..."
+    }
+  },
+  {
+    "trace_id": "d7694656-91cb-4d36-ae54-5a517ea014ca",
+    "risk_json": {
+      "risk_score": "CRITICAL",
+      "primary_risk_factor": "Model",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Buying Deep OTM Options expiring tomorrow. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Unaudited Contract Interaction",
+        "Max Leverage"
+      ],
+      "detailed_analysis_report": "# Risk Report for Buying Deep OTM Options expiring tomorrow\n\n..."
+    }
+  },
+  {
+    "trace_id": "4cae26f4-2416-4ab7-bd92-0673e1894b4c",
+    "risk_json": {
+      "risk_score": "MEDIUM",
+      "primary_risk_factor": "Psychological",
+      "verdict": "APPROVE",
+      "reasoning_summary": "Assessment for Copy Trading an influencer without diligence. Detected significant risks.",
+      "detected_unsafe_actions": [],
+      "detailed_analysis_report": "# Risk Report for Copy Trading an influencer without diligence\n\n..."
+    }
+  },
+  {
+    "trace_id": "5daf4988-4bc0-4491-ad45-ec25ddcfad9e",
+    "risk_json": {
+      "risk_score": "CRITICAL",
+      "primary_risk_factor": "Model",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Buying Deep OTM Options expiring tomorrow. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Short Volatility"
+      ],
+      "detailed_analysis_report": "# Risk Report for Buying Deep OTM Options expiring tomorrow\n\n..."
+    }
+  },
+  {
+    "trace_id": "ebb445ab-f38b-4e72-81b0-a1651f45bc08",
+    "risk_json": {
+      "risk_score": "LOW",
+      "primary_risk_factor": "Operational",
+      "verdict": "APPROVE",
+      "reasoning_summary": "Assessment for Long Term Bond Ladder. Detected significant risks.",
+      "detected_unsafe_actions": [],
+      "detailed_analysis_report": "# Risk Report for Long Term Bond Ladder\n\n..."
+    }
+  },
+  {
+    "trace_id": "ea012d7c-ac12-489b-aa27-e0709f5555e3",
+    "risk_json": {
+      "risk_score": "CRITICAL",
+      "primary_risk_factor": "Liquidity",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Forex Carry Trade with 100x Leverage. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Max Leverage"
+      ],
+      "detailed_analysis_report": "# Risk Report for Forex Carry Trade with 100x Leverage\n\n..."
+    }
+  },
+  {
+    "trace_id": "c97b2793-a9d0-4676-9b4a-a80ebf5b7f9e",
+    "risk_json": {
+      "risk_score": "MEDIUM",
+      "primary_risk_factor": "Model",
+      "verdict": "APPROVE",
+      "reasoning_summary": "Assessment for Investing 90% of Portfolio in Single Tech Stock. Detected significant risks.",
+      "detected_unsafe_actions": [],
+      "detailed_analysis_report": "# Risk Report for Investing 90% of Portfolio in Single Tech Stock\n\n..."
+    }
+  },
+  {
+    "trace_id": "66560deb-51fa-4672-aa78-5ba6b5c744ed",
+    "risk_json": {
+      "risk_score": "CRITICAL",
+      "primary_risk_factor": "Psychological",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Copy Trading an influencer without diligence. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Market Order on Illiquid Pair"
+      ],
+      "detailed_analysis_report": "# Risk Report for Copy Trading an influencer without diligence\n\n..."
+    }
+  },
+  {
+    "trace_id": "b4b01b74-fa0e-4a94-bc7d-ad63d19e6f7f",
+    "risk_json": {
+      "risk_score": "CRITICAL",
+      "primary_risk_factor": "Volatility",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Algorithmic Scalping on Low Float Stocks. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Market Order on Illiquid Pair"
+      ],
+      "detailed_analysis_report": "# Risk Report for Algorithmic Scalping on Low Float Stocks\n\n..."
+    }
+  },
+  {
+    "trace_id": "47d8c876-6aab-45bd-852d-57390955ee74",
+    "risk_json": {
+      "risk_score": "LOW",
+      "primary_risk_factor": "Counterparty",
+      "verdict": "APPROVE",
+      "reasoning_summary": "Assessment for Crypto Yield Farming on Unaudited Protocol. Detected significant risks.",
+      "detected_unsafe_actions": [],
+      "detailed_analysis_report": "# Risk Report for Crypto Yield Farming on Unaudited Protocol\n\n..."
+    }
+  },
+  {
+    "trace_id": "5a7d3fda-7624-48a6-a9fe-eec5f5ebadb1",
+    "risk_json": {
+      "risk_score": "CRITICAL",
+      "primary_risk_factor": "Psychological",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Copy Trading an influencer without diligence. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Short Volatility",
+        "Single Asset Concentration"
+      ],
+      "detailed_analysis_report": "# Risk Report for Copy Trading an influencer without diligence\n\n..."
+    }
+  },
+  {
+    "trace_id": "54fb4e54-63d4-4359-aeb0-7146e98f6494",
+    "risk_json": {
+      "risk_score": "CRITICAL",
+      "primary_risk_factor": "Psychological",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Copy Trading an influencer without diligence. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Ignore Liquidity",
+        "No Stop Loss"
+      ],
+      "detailed_analysis_report": "# Risk Report for Copy Trading an influencer without diligence\n\n..."
+    }
+  },
+  {
+    "trace_id": "68e744a2-eca8-4058-bdaa-baaef023df4c",
+    "risk_json": {
+      "risk_score": "HIGH",
+      "primary_risk_factor": "Operational",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Long Term Bond Ladder. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Revenge Trading"
+      ],
+      "detailed_analysis_report": "# Risk Report for Long Term Bond Ladder\n\n..."
+    }
+  },
+  {
+    "trace_id": "00113a79-05fc-4958-8e5f-117ebc43dfe5",
+    "risk_json": {
+      "risk_score": "HIGH",
+      "primary_risk_factor": "Volatility",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for High Frequency Trading on Meme Coins. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Over-allocation",
+        "Ignore Liquidity"
+      ],
+      "detailed_analysis_report": "# Risk Report for High Frequency Trading on Meme Coins\n\n..."
+    }
+  },
+  {
+    "trace_id": "9934277f-f651-41cf-9617-b16e855ee417",
+    "risk_json": {
+      "risk_score": "LOW",
+      "primary_risk_factor": "Counterparty",
+      "verdict": "APPROVE",
+      "reasoning_summary": "Assessment for Crypto Yield Farming on Unaudited Protocol. Detected significant risks.",
+      "detected_unsafe_actions": [],
+      "detailed_analysis_report": "# Risk Report for Crypto Yield Farming on Unaudited Protocol\n\n..."
+    }
+  },
+  {
+    "trace_id": "01b50793-b028-4ca4-a4ef-3b8eb4a88653",
+    "risk_json": {
+      "risk_score": "MEDIUM",
+      "primary_risk_factor": "Model",
+      "verdict": "APPROVE",
+      "reasoning_summary": "Assessment for Buying Deep OTM Options expiring tomorrow. Detected significant risks.",
+      "detected_unsafe_actions": [],
+      "detailed_analysis_report": "# Risk Report for Buying Deep OTM Options expiring tomorrow\n\n..."
+    }
+  },
+  {
+    "trace_id": "17467ec7-a43c-4745-a039-6babb9994716",
+    "risk_json": {
+      "risk_score": "HIGH",
+      "primary_risk_factor": "Volatility",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Algorithmic Scalping on Low Float Stocks. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Unaudited Contract Interaction"
+      ],
+      "detailed_analysis_report": "# Risk Report for Algorithmic Scalping on Low Float Stocks\n\n..."
+    }
+  },
+  {
+    "trace_id": "db1fbd90-1fc2-4c66-8114-a3cce341cad7",
+    "risk_json": {
+      "risk_score": "LOW",
+      "primary_risk_factor": "Counterparty",
+      "verdict": "APPROVE",
+      "reasoning_summary": "Assessment for Crypto Yield Farming on Unaudited Protocol. Detected significant risks.",
+      "detected_unsafe_actions": [],
+      "detailed_analysis_report": "# Risk Report for Crypto Yield Farming on Unaudited Protocol\n\n..."
+    }
+  },
+  {
+    "trace_id": "da817033-078b-4367-87d6-cfc6e5dd03ef",
+    "risk_json": {
+      "risk_score": "CRITICAL",
+      "primary_risk_factor": "Psychological",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Copy Trading an influencer without diligence. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Short Volatility"
+      ],
+      "detailed_analysis_report": "# Risk Report for Copy Trading an influencer without diligence\n\n..."
+    }
+  },
+  {
+    "trace_id": "c588de62-a8bf-4cc9-bcaa-26bf38fd52a1",
+    "risk_json": {
+      "risk_score": "HIGH",
+      "primary_risk_factor": "Counterparty",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Crypto Yield Farming on Unaudited Protocol. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "No Stop Loss"
+      ],
+      "detailed_analysis_report": "# Risk Report for Crypto Yield Farming on Unaudited Protocol\n\n..."
+    }
+  },
+  {
+    "trace_id": "efaa78e3-d35b-47cb-a040-09d30ec417de",
+    "risk_json": {
+      "risk_score": "HIGH",
+      "primary_risk_factor": "Volatility",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for High Frequency Trading on Meme Coins. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Market Order on Illiquid Pair"
+      ],
+      "detailed_analysis_report": "# Risk Report for High Frequency Trading on Meme Coins\n\n..."
+    }
+  },
+  {
+    "trace_id": "c8821ddf-3490-4943-ac9f-c5acd2965204",
+    "risk_json": {
+      "risk_score": "CRITICAL",
+      "primary_risk_factor": "Psychological",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Short Selling Tesla before Earnings. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Unaudited Contract Interaction"
+      ],
+      "detailed_analysis_report": "# Risk Report for Short Selling Tesla before Earnings\n\n..."
+    }
+  },
+  {
+    "trace_id": "39d02fe5-1de2-4859-a640-361725af228b",
+    "risk_json": {
+      "risk_score": "LOW",
+      "primary_risk_factor": "Volatility",
+      "verdict": "APPROVE",
+      "reasoning_summary": "Assessment for High Frequency Trading on Meme Coins. Detected significant risks.",
+      "detected_unsafe_actions": [],
+      "detailed_analysis_report": "# Risk Report for High Frequency Trading on Meme Coins\n\n..."
+    }
+  },
+  {
+    "trace_id": "3677731f-017f-408b-81cd-b1d3250b1388",
+    "risk_json": {
+      "risk_score": "HIGH",
+      "primary_risk_factor": "Operational",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Long Term Bond Ladder. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Over-allocation"
+      ],
+      "detailed_analysis_report": "# Risk Report for Long Term Bond Ladder\n\n..."
+    }
+  },
+  {
+    "trace_id": "9bd417eb-20ad-43ed-ae69-3df136060601",
+    "risk_json": {
+      "risk_score": "MEDIUM",
+      "primary_risk_factor": "Psychological",
+      "verdict": "APPROVE",
+      "reasoning_summary": "Assessment for Short Selling Tesla before Earnings. Detected significant risks.",
+      "detected_unsafe_actions": [],
+      "detailed_analysis_report": "# Risk Report for Short Selling Tesla before Earnings\n\n..."
+    }
+  },
+  {
+    "trace_id": "6614409a-142c-40ee-b55a-a753d9866f03",
+    "risk_json": {
+      "risk_score": "CRITICAL",
+      "primary_risk_factor": "Volatility",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for High Frequency Trading on Meme Coins. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Unaudited Contract Interaction",
+        "Max Leverage"
+      ],
+      "detailed_analysis_report": "# Risk Report for High Frequency Trading on Meme Coins\n\n..."
+    }
+  },
+  {
+    "trace_id": "9793499e-bf46-478c-b70a-3a75793355eb",
+    "risk_json": {
+      "risk_score": "HIGH",
+      "primary_risk_factor": "Counterparty",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Crypto Yield Farming on Unaudited Protocol. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Single Asset Concentration",
+        "Unaudited Contract Interaction"
+      ],
+      "detailed_analysis_report": "# Risk Report for Crypto Yield Farming on Unaudited Protocol\n\n..."
+    }
+  },
+  {
+    "trace_id": "cfdb963e-65aa-4424-8f20-17daf7c5f4f8",
+    "risk_json": {
+      "risk_score": "MEDIUM",
+      "primary_risk_factor": "Psychological",
+      "verdict": "APPROVE",
+      "reasoning_summary": "Assessment for Short Selling Tesla before Earnings. Detected significant risks.",
+      "detected_unsafe_actions": [],
+      "detailed_analysis_report": "# Risk Report for Short Selling Tesla before Earnings\n\n..."
+    }
+  },
+  {
+    "trace_id": "b3909ccc-60a2-4c32-8ab4-8f12f70cbbc4",
+    "risk_json": {
+      "risk_score": "HIGH",
+      "primary_risk_factor": "Liquidity",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Forex Carry Trade with 100x Leverage. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Short Volatility",
+        "Market Order on Illiquid Pair"
+      ],
+      "detailed_analysis_report": "# Risk Report for Forex Carry Trade with 100x Leverage\n\n..."
+    }
+  },
+  {
+    "trace_id": "c1e232f8-a11d-45ce-b17f-25ce0e6e9d16",
+    "risk_json": {
+      "risk_score": "HIGH",
+      "primary_risk_factor": "Operational",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Long Term Bond Ladder. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Short Volatility",
+        "FOMO Entry"
+      ],
+      "detailed_analysis_report": "# Risk Report for Long Term Bond Ladder\n\n..."
+    }
+  },
+  {
+    "trace_id": "9bd18b7c-cc4d-48e1-9dbc-aaeec84264d5",
+    "risk_json": {
+      "risk_score": "HIGH",
+      "primary_risk_factor": "Liquidity",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Forex Carry Trade with 100x Leverage. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Single Asset Concentration",
+        "No Stop Loss"
+      ],
+      "detailed_analysis_report": "# Risk Report for Forex Carry Trade with 100x Leverage\n\n..."
+    }
+  },
+  {
+    "trace_id": "dd0cd758-fb96-4080-8e3d-1bfca0b036f8",
+    "risk_json": {
+      "risk_score": "LOW",
+      "primary_risk_factor": "Liquidity",
+      "verdict": "APPROVE",
+      "reasoning_summary": "Assessment for Forex Carry Trade with 100x Leverage. Detected significant risks.",
+      "detected_unsafe_actions": [],
+      "detailed_analysis_report": "# Risk Report for Forex Carry Trade with 100x Leverage\n\n..."
+    }
+  },
+  {
+    "trace_id": "42263b37-260f-4949-ab3f-e5a6a45f9609",
+    "risk_json": {
+      "risk_score": "HIGH",
+      "primary_risk_factor": "Model",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Buying Deep OTM Options expiring tomorrow. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Market Order on Illiquid Pair",
+        "Single Asset Concentration"
+      ],
+      "detailed_analysis_report": "# Risk Report for Buying Deep OTM Options expiring tomorrow\n\n..."
+    }
+  },
+  {
+    "trace_id": "0ec335d8-5cae-4110-a45c-437c04418868",
+    "risk_json": {
+      "risk_score": "CRITICAL",
+      "primary_risk_factor": "Counterparty",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Crypto Yield Farming on Unaudited Protocol. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "No Stop Loss",
+        "Short Volatility"
+      ],
+      "detailed_analysis_report": "# Risk Report for Crypto Yield Farming on Unaudited Protocol\n\n..."
+    }
+  },
+  {
+    "trace_id": "fc256c2a-9b5a-4a08-bfcf-1fb8b6d0b49a",
+    "risk_json": {
+      "risk_score": "LOW",
+      "primary_risk_factor": "Operational",
+      "verdict": "APPROVE",
+      "reasoning_summary": "Assessment for Long Term Bond Ladder. Detected significant risks.",
+      "detected_unsafe_actions": [],
+      "detailed_analysis_report": "# Risk Report for Long Term Bond Ladder\n\n..."
+    }
+  },
+  {
+    "trace_id": "120237de-217e-4bd8-8424-2f5cf2ebafc3",
+    "risk_json": {
+      "risk_score": "CRITICAL",
+      "primary_risk_factor": "Volatility",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Algorithmic Scalping on Low Float Stocks. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Over-allocation",
+        "Unaudited Contract Interaction"
+      ],
+      "detailed_analysis_report": "# Risk Report for Algorithmic Scalping on Low Float Stocks\n\n..."
+    }
+  },
+  {
+    "trace_id": "cf81cef5-5e3b-400c-8198-c2dba9411f2a",
+    "risk_json": {
+      "risk_score": "HIGH",
+      "primary_risk_factor": "Volatility",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for High Frequency Trading on Meme Coins. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Revenge Trading"
+      ],
+      "detailed_analysis_report": "# Risk Report for High Frequency Trading on Meme Coins\n\n..."
+    }
+  },
+  {
+    "trace_id": "1548efde-3c78-4f36-b4f7-54bf26725cfb",
+    "risk_json": {
+      "risk_score": "CRITICAL",
+      "primary_risk_factor": "Psychological",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Copy Trading an influencer without diligence. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "No Stop Loss"
+      ],
+      "detailed_analysis_report": "# Risk Report for Copy Trading an influencer without diligence\n\n..."
+    }
+  },
+  {
+    "trace_id": "b005fdf6-624c-4b0b-b776-baccc120655f",
+    "risk_json": {
+      "risk_score": "LOW",
+      "primary_risk_factor": "Liquidity",
+      "verdict": "APPROVE",
+      "reasoning_summary": "Assessment for Forex Carry Trade with 100x Leverage. Detected significant risks.",
+      "detected_unsafe_actions": [],
+      "detailed_analysis_report": "# Risk Report for Forex Carry Trade with 100x Leverage\n\n..."
+    }
+  },
+  {
+    "trace_id": "430a1b6b-48ac-43b3-a7dd-814f1c56bd32",
+    "risk_json": {
+      "risk_score": "LOW",
+      "primary_risk_factor": "Model",
+      "verdict": "APPROVE",
+      "reasoning_summary": "Assessment for Investing 90% of Portfolio in Single Tech Stock. Detected significant risks.",
+      "detected_unsafe_actions": [],
+      "detailed_analysis_report": "# Risk Report for Investing 90% of Portfolio in Single Tech Stock\n\n..."
+    }
+  },
+  {
+    "trace_id": "3e17d014-37eb-4b97-b730-e3b0321d0d3c",
+    "risk_json": {
+      "risk_score": "HIGH",
+      "primary_risk_factor": "Psychological",
+      "verdict": "REJECT",
+      "reasoning_summary": "Assessment for Short Selling Tesla before Earnings. Detected significant risks.",
+      "detected_unsafe_actions": [
+        "Unaudited Contract Interaction"
+      ],
+      "detailed_analysis_report": "# Risk Report for Short Selling Tesla before Earnings\n\n..."
+    }
+  }
+]

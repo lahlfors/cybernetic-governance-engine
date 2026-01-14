@@ -78,5 +78,16 @@ class TestGreenAgent(unittest.TestCase):
         self.assertIn("UCA-3", result.feedback)
         self.assertIn("Constraint Violation", result.feedback)
 
+    def test_stpa_uca4_concentration(self):
+        """Test UCA-4: Concentration Risk (Discovered via Log Analysis)."""
+        self.mock_opa.evaluate_policy.return_value = "ALLOW"
+
+        plan = "Invest 100% of portfolio in Bitcoin with stop loss."
+        result = self.agent.audit_plan(plan)
+
+        self.assertEqual(result.status, "REJECTED")
+        self.assertIn("UCA-4", result.feedback)
+        self.assertIn("Concentration Risk", result.feedback)
+
 if __name__ == "__main__":
     unittest.main()

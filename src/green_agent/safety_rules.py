@@ -56,4 +56,14 @@ class SafetyCheck:
                 severity="CRITICAL"
             ))
 
+        # UCA-4: Concentration Risk (Discovered via Log Analysis)
+        # Context: Allocating too much capital to a single asset.
+        concentration_terms = ["100% of portfolio", "90% of portfolio", "single asset", "entire portfolio", "full allocation"]
+        if any(term in plan_lower for term in concentration_terms):
+             violations.append(SafetyViolation(
+                rule_id="UCA-4",
+                description="Concentration Risk: Plan allocates excessive capital (>90%) to a single asset/strategy.",
+                severity="HIGH"
+            ))
+
         return violations

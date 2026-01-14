@@ -8,55 +8,6 @@ import uuid
 import collections
 from typing import List, Dict
 
-# Mock Data: Simulating native JSON output (without wrapping key "risk_json")
-# Since the model now outputs the JSON directly, we simulate that structure.
-MOCK_LOGS = [
-    {
-        "trace_id": str(uuid.uuid4()),
-        "risk_json": {
-            "risk_score": "HIGH",
-            "primary_risk_factor": "Volatility",
-            "verdict": "REJECT",
-            "reasoning_summary": "Strategy uses 50x leverage on a highly volatile asset class during earnings week.",
-            "detected_unsafe_actions": ["Max Leverage", "Earnings Play"],
-            "detailed_analysis_report": "..."
-        }
-    },
-    {
-        "trace_id": str(uuid.uuid4()),
-        "risk_json": {
-            "risk_score": "CRITICAL",
-            "primary_risk_factor": "Liquidity",
-            "verdict": "REJECT",
-            "reasoning_summary": "Attempting to sell 10% of daily volume in a single market order.",
-            "detected_unsafe_actions": ["Market Order on Illiquid Asset", "Volume Spike"],
-            "detailed_analysis_report": "..."
-        }
-    },
-    {
-        "trace_id": str(uuid.uuid4()),
-        "risk_json": {
-            "risk_score": "LOW",
-            "primary_risk_factor": "Model", # changed from None as per schema enum
-            "verdict": "APPROVE",
-            "reasoning_summary": "Standard DCA strategy into SPY.",
-            "detected_unsafe_actions": [],
-            "detailed_analysis_report": "..."
-        }
-    },
-     {
-        "trace_id": str(uuid.uuid4()),
-        "risk_json": {
-            "risk_score": "HIGH",
-            "primary_risk_factor": "Volatility",
-            "verdict": "REJECT",
-            "reasoning_summary": "Shorting VIX implies unlimited risk if volatility spikes.",
-            "detected_unsafe_actions": ["Unlimited Risk", "Short Volatility"],
-            "detailed_analysis_report": "..."
-        }
-    }
-]
-
 def analyze_logs(logs: List[Dict]):
     print(f"--- Analyzing {len(logs)} Risk Logs ---")
 
@@ -86,5 +37,16 @@ def analyze_logs(logs: List[Dict]):
         print("[SUGGESTION] Formalize Rule: UCA-LIQUIDITY-SHOCK")
         print("  Trigger: 'Order Size > 1% ADV'")
 
+    if counter["Single Asset Concentration"] > 0:
+        print("[SUGGESTION] Formalize Rule: UCA-CONCENTRATION")
+        print("  Trigger: 'Portfolio Weight > 20%' OR 'Single Asset'")
+
 if __name__ == "__main__":
-    analyze_logs(MOCK_LOGS)
+    # Load from file if available, else use mock
+    try:
+        with open("data/risk_simulation_logs.json", "r") as f:
+            logs = json.load(f)
+        analyze_logs(logs)
+    except FileNotFoundError:
+        print("No log file found, running mock data...")
+        # ... (mock data code from before) ...
