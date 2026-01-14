@@ -58,8 +58,9 @@ The architecture enforces "Defense in Depth" through six distinct layers (0-5), 
 2.  **Structural Validation (Layer 1):** Strict **Pydantic** schemas validate all inputs/outputs.
 3.  **Policy Engine (Layer 2):** **Open Policy Agent (OPA)** enforces Role-Based Access Control (RBAC) and business logic (e.g., trading limits) external to the Python code.
 4.  **Semantic Verification (Layer 3):** A specialized **Verifier Agent** audits the proposed actions of a "Worker" agent to prevent hallucinations (Propose-Verify-Execute pattern).
-5.  **Consensus Engine (Layer 4):** Simulates an ensemble vote for high-stakes actions.
-6.  **Deterministic Routing (LangGraph):** The system uses **LangGraph** to implement a strict State Graph, replacing probabilistic tool use with deterministic workflow control. This enforces the Strategy → Risk → Execution workflow and enables self-correcting loops.
+5.  **System 2 Verification (Green Agent):** A dedicated **Green Agent** node audits plans against a 4-layer stack: Policy (OPA), Safety Rules (STPA), Logic (Neuro-Symbolic), and History (Cognitive Continuity).
+6.  **Consensus Engine (Layer 4):** Simulates an ensemble vote for high-stakes actions.
+7.  **Deterministic Routing (LangGraph):** The system uses **LangGraph** to implement a strict State Graph, replacing probabilistic tool use with deterministic workflow control. This enforces the Strategy → Risk → Green → Execution workflow and enables self-correcting loops.
 
 For a deep dive into the theory and implementation, read **[README_GOVERNANCE.md](README_GOVERNANCE.md)**.
 
@@ -73,6 +74,7 @@ The system orchestrates a team of specialized sub-agents, managed by a central *
     *   **Verifier:** Audits the proposal against safety rules and the user's direct intent. Only the Verifier can execute.
 3.  **Execution Analyst Agent (Strategy):** Creates detailed execution plans (e.g., VWAP, TWAP).
 4.  **Risk Analyst Agent:** Evaluates the overall portfolio risk and compliance.
+5.  **Green Agent (Capstone):** Final "System 2" gatekeeper that enforces STPA safety rules and logical constraints.
 
 ### Risk Refinement Loop
 The architecture implements a **Self-Correction Loop**. If the Risk Analyst rejects a plan proposed by the Execution Analyst, the graph automatically routes the feedback back to the Planner with a "CRITICAL" instruction to revise the strategy. This cycle continues until the plan is safe or escalated to a human.
