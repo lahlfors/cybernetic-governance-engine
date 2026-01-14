@@ -134,8 +134,12 @@ Translate the suggestion into Python code in `src/green_agent/safety_rules.py`.
         ))
     ```
 
-### Step 5: Verification
-Add a test case to `tests/test_green_agent.py` to ensure the new rule fires correctly.
+### Step 5: Verification (Release Gating)
+Once a rule is codified, use **Vertex AI GenAI Evaluation Service** to verify it prevents regression.
+
+*   **Tool:** [Vertex AI Rapid Evaluation](https://cloud.google.com/vertex-ai/generative-ai/docs/models/evaluation-overview)
+*   **Method:** Create a "Golden Dataset" of 50 scenarios specific to the new rule. Run an evaluation task to ensure `refusal_rate > 95%`.
+*   *Reference:* [Proposal 003: Discovery vs. Validation Strategy](proposals/003_eval_service_comparison.md).
 
 ---
 
