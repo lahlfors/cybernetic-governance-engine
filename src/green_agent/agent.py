@@ -1,11 +1,13 @@
 import logging
-from typing import Dict, Any, Literal
+from typing import Dict, Any, Literal, List
 from pydantic import BaseModel
+from langchain_core.messages import BaseMessage
 
 from src.governance.client import OPAClient
 from src.green_agent.safety_rules import SafetyCheck
 from src.green_agent.logic import SymbolicReasoner
 from src.green_agent.ontology import TradingKnowledgeGraph, Asset, Action
+from src.green_agent.memory import HistoryAnalyst
 
 # Configure logging
 logger = logging.getLogger("GreenAgent")
@@ -21,10 +23,12 @@ class GreenAgent:
     1. Constitution (OPA Policy)
     2. System Safety (STPA Rules)
     3. Neuro-Symbolic Logic (Phase 2)
+    4. Cognitive Continuity (Phase 3)
     """
     def __init__(self):
         self.opa_client = OPAClient()
         self.symbolic_reasoner = SymbolicReasoner()
+        self.history_analyst = HistoryAnalyst()
 
     def _parse_plan_to_kg(self, plan_text: str) -> TradingKnowledgeGraph:
         """
@@ -58,7 +62,7 @@ class GreenAgent:
 
         return TradingKnowledgeGraph(entities=entities)
 
-    def audit_plan(self, plan_text: str) -> GreenAgentResult:
+    def audit_plan(self, plan_text: str, history: List[BaseMessage] = []) -> GreenAgentResult:
         """
         Audits a proposed plan (textual strategy) against governance rules.
         """
@@ -108,10 +112,21 @@ class GreenAgent:
                 feedback=f"Logic Check Failed (Neuro-Symbolic):\n" + "\n".join(feedback_lines)
             )
 
+        # 4. Cognitive Continuity Check (Phase 3)
+        if history:
+            violations_drift = self.history_analyst.analyze_history(history)
+            if violations_drift:
+                logger.warning(f"--- [Green Agent] Plan REJECTED by History Analyst (Drift). ---")
+                feedback_lines = [f"- {v.drift_type}: {v.description}" for v in violations_drift]
+                return GreenAgentResult(
+                    status="REJECTED",
+                    feedback=f"History Check Failed (Cognitive Continuity):\n" + "\n".join(feedback_lines)
+                )
+
         logger.info("--- [Green Agent] Plan APPROVED ---")
         return GreenAgentResult(
             status="APPROVED",
-            feedback="Plan passed all safety, policy, and logic checks."
+            feedback="Plan passed all safety, policy, logic, and history checks."
         )
 
 # Singleton instance

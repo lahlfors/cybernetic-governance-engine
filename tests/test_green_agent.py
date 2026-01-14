@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import MagicMock, patch
+from langchain_core.messages import HumanMessage
 from src.green_agent.agent import GreenAgent, GreenAgentResult
 from src.green_agent.safety_rules import SafetyCheck, SafetyViolation
 
@@ -60,18 +61,27 @@ class TestGreenAgent(unittest.TestCase):
         self.assertIn("Logic Check Failed", result.feedback)
         self.assertIn("HighVolShortHedge", result.feedback)
 
-    def test_logic_illiquid_market_buy(self):
-        """Test Phase 2 Logic: Buying illiquid penny stock."""
+    # --- Phase 3 Tests (History/Drift) ---
+
+    def test_history_cumulative_risk_creep(self):
+        """Test Phase 3: Boiling Frog attack (repeatedly asking for leverage)."""
         self.mock_opa.evaluate_policy.return_value = "ALLOW"
 
-        # "Buy penny stock" triggers Asset(Penny, liq=2) and Action(Buy).
-        # "stop loss" satisfies STPA.
-        plan = "Buy penny stock with stop loss."
-        result = self.agent.audit_plan(plan)
+        plan = "Buy SPY with a stop loss." # Innocent plan
+
+        # Mock history showing pattern of risk-seeking
+        history = [
+            HumanMessage(content="Can I use 2x leverage?"),
+            HumanMessage(content="What about 3x margin?"),
+            HumanMessage(content="I want to borrow for this trade."),
+            HumanMessage(content="Just a little leverage?")
+        ]
+
+        result = self.agent.audit_plan(plan, history=history)
 
         self.assertEqual(result.status, "REJECTED")
-        self.assertIn("Logic Check Failed", result.feedback)
-        self.assertIn("IlliquidMarketOrder", result.feedback)
+        self.assertIn("History Check Failed", result.feedback)
+        self.assertIn("CumulativeRiskCreep", result.feedback)
 
 if __name__ == "__main__":
     unittest.main()
