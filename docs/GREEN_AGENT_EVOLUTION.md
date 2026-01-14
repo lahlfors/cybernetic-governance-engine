@@ -136,3 +136,13 @@ Translate the suggestion into Python code in `src/green_agent/safety_rules.py`.
 
 ### Step 5: Verification
 Add a test case to `tests/test_green_agent.py` to ensure the new rule fires correctly.
+
+---
+
+## Automated Rule Discovery (Vertex AI)
+For detailed architecture on automating this loop, see: [Proposal 002: Automated Rule Discovery Pipeline](proposals/002_vertex_rule_discovery.md).
+
+We provide a reference pipeline implementation in `src/pipelines/rule_discovery.py` which:
+1.  Generates synthetic logs.
+2.  Clusters rejection reasons.
+3.  Outputs JSON candidates for human review.
