@@ -3,6 +3,7 @@ from typing import Dict, Any, Literal
 from pydantic import BaseModel
 
 from src.governance.client import OPAClient
+from src.green_agent.safety_rules import SafetyCheck
 
 # Configure logging
 logger = logging.getLogger("GreenAgent")
@@ -27,8 +28,6 @@ class GreenAgent:
 
         # 1. Structural/Policy Check via OPA
         # We treat the plan verification as a "verify_plan" action.
-        # In a real scenario, we would parse the plan_text into structured data.
-        # For now, we pass the raw text to OPA to check for prohibited keywords/intents.
         policy_payload = {
             "action": "verify_plan",
             "resource": {
@@ -53,15 +52,16 @@ class GreenAgent:
                 feedback="Policy requires Human Review. Plan cannot be auto-approved."
             )
 
-        # 2. Mock System Safety Check (STPA - Unsafe Control Actions)
-        # Placeholder for Module 4.1 logic.
-        # Simple heuristic: Check for obviously unsafe instructions if not caught by OPA.
-        unsafe_keywords = ["unlimited risk", "ignore stop loss", "all in"]
-        if any(keyword in plan_text.lower() for keyword in unsafe_keywords):
-             logger.warning("--- [Green Agent] Plan REJECTED by Safety Check (STPA) ---")
+        # 2. System Safety Check (STPA)
+        # Using formal UCA definitions from safety_rules.py
+        violations = SafetyCheck.check_unsafe_control_actions(plan_text)
+
+        if violations:
+             logger.warning(f"--- [Green Agent] Plan REJECTED by Safety Check (STPA). Violations: {len(violations)} ---")
+             feedback_lines = [f"- {v.rule_id}: {v.description}" for v in violations]
              return GreenAgentResult(
                 status="REJECTED",
-                feedback="Safety Check Failed: Plan suggests unsafe control actions (e.g., unlimited risk)."
+                feedback=f"Safety Check Failed (STPA):\n" + "\n".join(feedback_lines)
             )
 
         logger.info("--- [Green Agent] Plan APPROVED ---")
