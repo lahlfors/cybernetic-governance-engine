@@ -121,7 +121,10 @@ def execution_analyst_node(state):
     user_msg = state["messages"][-1].content
 
     # INJECT FEEDBACK if the loop pushed us back here
-    if state.get("risk_status") == "REJECTED_REVISE":
+    risk_status = state.get("risk_status")
+    green_status = state.get("green_agent_status")
+
+    if risk_status == "REJECTED_REVISE":
         feedback = state.get("risk_feedback")
         user_msg = (
             f"CRITICAL: Your previous strategy was REJECTED by Risk Management.\n"
@@ -129,6 +132,15 @@ def execution_analyst_node(state):
             f"Task: Generate a REVISED, SAFER strategy based on this feedback."
         )
         print("--- [Loop] Injecting Risk Feedback ---")
+
+    elif green_status == "REJECTED":
+        feedback = state.get("green_agent_feedback")
+        user_msg = (
+            f"CRITICAL: Your previous strategy was REJECTED by the Green Agent (Safety Audit).\n"
+            f"Feedback: {feedback}\n"
+            f"Task: Generate a REVISED, SAFER strategy based on this feedback."
+        )
+        print("--- [Loop] Injecting Green Agent Feedback ---")
 
     res = run_adk_agent(execution_analyst_agent, user_msg)
 

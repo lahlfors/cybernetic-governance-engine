@@ -12,3 +12,7 @@ class AgentState(TypedDict):
     # Risk Loop Control
     risk_status: Literal["UNKNOWN", "APPROVED", "REJECTED_REVISE"]
     risk_feedback: str | None
+
+    # Green Agent (System 2) Control
+    green_agent_status: Literal["UNKNOWN", "APPROVED", "REJECTED", "AUDIT_FAILED"] | None
+    green_agent_feedback: str | None
