@@ -49,6 +49,19 @@ We recommend integrating Vertex AI Evaluation Service specifically for **Step 5 
     *   Run **Rapid Evaluation** to score Green Agent's refusal rate on this dataset.
     *   *Gate:* If Refusal Rate < 95%, fail the release.
 
-## 5. Next Steps
+## 5. Implementation Reference
+
+We have implemented a reference verification script in `src/pipelines/rule_verification.py`.
+
+### Code Usage
+```bash
+# Verify the Green Agent against a Golden Dataset of regulatory violations
+python3 src/pipelines/rule_verification.py --dataset data/golden_regulatory.jsonl --rule UCA-5
+```
+
+### Integration Logic
+This script wraps the `GreenAgent.audit_plan` method and submits it to the **Vertex AI Rapid Evaluation Service** (mocked in the reference for portability). It calculates the `refusal_rate` metric.
+
+## 6. Next Steps
 *   Adopt Proposal 002 for the "Nightly Discovery" job.
-*   Adopt Vertex AI Evaluation for the "Release Gate" CI/CD step.
+*   Adopt Vertex AI Evaluation (`src/pipelines/rule_verification.py`) for the "Release Gate" CI/CD step.

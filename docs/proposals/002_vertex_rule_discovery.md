@@ -58,7 +58,7 @@ The pipeline does **not** automatically commit code. It creates a "Rule Candidat
 ## 5. Implementation Roadmap
 
 1.  **Prerequisite:** Enable Vertex AI API & Pipelines in GCP.
-2.  **Phase 1 (Code Definition):** Create `src/pipelines/rule_discovery.py` defining the DAG.
+2.  **Phase 1 (Code Definition):** [DONE] `src/pipelines/rule_discovery.py` defines the KFP pipeline.
 3.  **Phase 2 (Containerization):** Dockerize the `scripts/` directory to serve as the base image for pipeline steps.
 4.  **Phase 3 (Deployment):** Deploy to Vertex AI Metadata Store.
 
