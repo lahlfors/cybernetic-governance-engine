@@ -31,3 +31,5 @@ opa
 trace_*.parquet
 logs/cold_tier/
 tests/temp_*/
+.new_venv/
+source/
