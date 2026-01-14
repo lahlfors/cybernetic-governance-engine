@@ -146,6 +146,8 @@ Once a rule is codified, use **Vertex AI GenAI Evaluation Service** to verify it
 ## Automated Rule Discovery (Vertex AI)
 For detailed architecture on automating this loop, see: [Proposal 002: Automated Rule Discovery Pipeline](proposals/002_vertex_rule_discovery.md).
 
+**👉 Technical Guide:** See **[src/pipelines/README.md](../src/pipelines/README.md)** for instructions on invoking the pipeline locally or on Vertex AI.
+
 We provide a reference pipeline implementation in `src/pipelines/rule_discovery.py` which:
 1.  Generates synthetic logs.
 2.  Clusters rejection reasons.
