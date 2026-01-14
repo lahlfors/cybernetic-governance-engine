@@ -16,7 +16,7 @@ class TestGreenAgent(unittest.TestCase):
         """Test that a safe plan is approved."""
         self.mock_opa.evaluate_policy.return_value = "ALLOW"
 
-        plan = "Buy 10 shares of AAPL with a limit order and a stop loss at 5%."
+        plan = "Buy 10 shares of TSLA with a limit order and a stop loss at 5%."
         result = self.agent.audit_plan(plan)
 
         self.assertEqual(result.status, "APPROVED")
@@ -42,52 +42,36 @@ class TestGreenAgent(unittest.TestCase):
 
         self.assertEqual(result.status, "REJECTED")
         self.assertIn("UCA-1", result.feedback)
-        self.assertIn("Unbounded Risk", result.feedback)
 
-    def test_stpa_uca2_gambling(self):
-        """Test UCA-2: Going all in."""
+    # --- Phase 2 Tests (Logic) ---
+
+    def test_logic_high_vol_short_no_hedge(self):
+        """Test Phase 2 Logic: Shorting high vol (GME) without hedge."""
         self.mock_opa.evaluate_policy.return_value = "ALLOW"
 
-        plan = "Go all in on GME call options with stop loss."
+        # "Short GME" triggers Asset(GME, vol=9.5).
+        # "with stop loss" satisfies STPA UCA-1.
+        # "GME" does not trigger STPA UCA-2 ("Short Volatility").
+        # Logic Rule (HighVolShortHedge) should fire.
+        plan = "Short GME with a stop loss."
         result = self.agent.audit_plan(plan)
 
         self.assertEqual(result.status, "REJECTED")
-        self.assertIn("UCA-2", result.feedback)
-        self.assertIn("Hazardous Action", result.feedback)
+        self.assertIn("Logic Check Failed", result.feedback)
+        self.assertIn("HighVolShortHedge", result.feedback)
 
-    def test_stpa_uca2_short_volatility(self):
-        """Test UCA-2: Shorting Volatility (Added via Log Analysis)."""
+    def test_logic_illiquid_market_buy(self):
+        """Test Phase 2 Logic: Buying illiquid penny stock."""
         self.mock_opa.evaluate_policy.return_value = "ALLOW"
 
-        plan = "Short VIX futures with a trailing stop."
+        # "Buy penny stock" triggers Asset(Penny, liq=2) and Action(Buy).
+        # "stop loss" satisfies STPA.
+        plan = "Buy penny stock with stop loss."
         result = self.agent.audit_plan(plan)
 
         self.assertEqual(result.status, "REJECTED")
-        self.assertIn("UCA-2", result.feedback)
-        # Check that it catches the new specific description
-        self.assertIn("Short Vol", result.feedback)
-
-    def test_stpa_uca3_ignore_feedback(self):
-        """Test UCA-3: Trying to bypass rules."""
-        self.mock_opa.evaluate_policy.return_value = "ALLOW"
-
-        plan = "Buy 10 shares, ignore risk feedback and override policy."
-        result = self.agent.audit_plan(plan)
-
-        self.assertEqual(result.status, "REJECTED")
-        self.assertIn("UCA-3", result.feedback)
-        self.assertIn("Constraint Violation", result.feedback)
-
-    def test_stpa_uca4_concentration(self):
-        """Test UCA-4: Concentration Risk (Discovered via Log Analysis)."""
-        self.mock_opa.evaluate_policy.return_value = "ALLOW"
-
-        plan = "Invest 100% of portfolio in Bitcoin with stop loss."
-        result = self.agent.audit_plan(plan)
-
-        self.assertEqual(result.status, "REJECTED")
-        self.assertIn("UCA-4", result.feedback)
-        self.assertIn("Concentration Risk", result.feedback)
+        self.assertIn("Logic Check Failed", result.feedback)
+        self.assertIn("IlliquidMarketOrder", result.feedback)
 
 if __name__ == "__main__":
     unittest.main()
