@@ -92,6 +92,16 @@ python3 scripts/simulate_risk_scenarios.py
 ```
 *Output:* `data/risk_simulation_logs.json` containing 50+ new structured logs.
 
+#### Data Volume Guidelines
+To ensure a "sufficient rule base," aim for the following dataset sizes:
+
+| Maturity Level | Logs Required | Purpose |
+| :--- | :--- | :--- |
+| **MVP / Initial Discovery** | **50 - 100** | Identifies "low hanging fruit" and obvious risky behaviors (e.g., Concentration Risk). |
+| **Robust Rule Base** | **1,000+** | Required to statistically validate "long tail" risks and edge cases (e.g., specific regulatory nuances). |
+| **Calibration (Phase 4)** | **10,000+** | Necessary for fine-tuning sensitivity thresholds (e.g., deciding if "high leverage" means 3x or 10x). |
+| **Lifelong Learning (Phase 3)** | **100,000+** | Required for training the Mamba/SSM model to detect slow-moving drift over time. |
+
 ### Step 3: Analyze Clusters
 Run the analysis script to find frequent rejection patterns in the new data.
 
