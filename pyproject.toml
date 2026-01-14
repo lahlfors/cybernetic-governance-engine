@@ -42,7 +42,6 @@ dev = [
 
 deployment = [
     "absl-py>=2.2.1",
-    "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]
@@ -104,9 +103,6 @@ asyncio_default_fixture_loop_scope = "function"
 [build-system]
 requires = ["uv_build>=0.8.14,<0.9.0"]
 build-backend = "uv_build"
-
-[tool.uv]
-index = [{ url = "https://pypi.org/simple", default = true }]
 
 [tool.uv.build-backend]
 module-root = ""

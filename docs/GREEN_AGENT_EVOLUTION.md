@@ -152,3 +152,29 @@ We provide a reference pipeline implementation in `src/pipelines/rule_discovery.
 1.  Generates synthetic logs.
 2.  Clusters rejection reasons.
 3.  Outputs JSON candidates for human review.
+
+---
+
+## Phase 4.4: Observability & Compliance Auditing
+The Green Agent is instrumented with **OpenTelemetry** to create a verifiable audit trail for every decision.
+
+### Trace Attributes
+Every `audit_plan` execution generates a span `green_agent.audit_plan` with the following attributes:
+
+| Attribute | Description | Example |
+| :--- | :--- | :--- |
+| `green_agent.status` | Final verdict. | `REJECTED` |
+| `green_agent.failure_layer` | Which defense layer caught the risk. | `2_Safety_STPA` |
+| `green_agent.rule_id` | Specific rule triggered. | `UCA-4` or `HighVolShortHedge` |
+| `green_agent.plan_text_length` | Complexity proxy. | `150` |
+
+### Audit Reporting
+To satisfy ISO 42001 Control A.6.2.8 (Event Logging), the Governance Engineer can query these traces to reconstruct the exact sequence of events:
+> "Plan X was blocked by Layer 3 (Logic) because it violated rule 'HighVolShortHedge'."
+
+## Safety Guarantee: The Deterministic Core
+Unlike the "Risk Analyst" which uses an LLM to reason (and thus can hallucinate), the **Green Agent** is architected as a **Deterministic Code Execution Unit**.
+
+*   **Zero LLM Calls:** The decision logic (`audit_plan`) runs purely on Python code, OPA Policy (Rego), and Predicate Logic.
+*   **Why this matters:** It resolves the "Recursive Hallucination" problem. The verifier cannot be "tricked" by persuasive language because it does not read for meaning; it reads for constraints.
+*   *Reference:* [ADR 002: Prevention of Hallucination](decisions/002_green_agent_determinism.md).
