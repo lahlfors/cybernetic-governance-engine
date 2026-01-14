@@ -42,6 +42,12 @@ This document describes the hybrid architecture of the Cybernetic Governance Eng
 
 **The Insight**: Use LangGraph for what it does best (deterministic control flow, conditional routing, loops) and ADK for what it does best (LLM-powered reasoning, tool use, multi-turn conversations).
 
+### Why Two Risk Layers?
+We explicitly retain **both** the Risk Analyst and Green Agent.
+*   **Risk Analyst (System 1):** Evaluates *Market Risk* (viability, profitability). "Is this a good idea?"
+*   **Green Agent (System 2):** Evaluates *Safety Risk* (compliance, control). "Is this allowed?"
+*   *Reference:* [ADR 001: Risk Analyst vs. Green Agent](docs/decisions/001_risk_analyst_vs_green_agent.md)
+
 ---
 
 ## Request Flow
