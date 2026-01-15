@@ -93,8 +93,8 @@ If the user agrees, **automatically proceed** to the next step (TRADING_STRATEGY
 * Develop Trading Strategies (Intent: TRADING_STRATEGY)
 
 Input:
-Check if 'risk_attitude' and 'investment_period' are ALREADY in the conversation history/context.
-- If YES: Confirm them briefly ("Using your [x] profile and [y] horizon...") and proceed.
+CRITICAL: First, check if the user's message ALREADY contains their profile context (e.g., "User Profile Context: ...").
+- If YES: The user's profile is already provided. Confirm it briefly ("Using your [x] profile and [y] horizon...") and IMMEDIATELY proceed to call the `route_request` tool.
 - If NO: Prompt the user to define their risk attitude (e.g., conservative, moderate, aggressive) and investment period.
 
 Action: Call `route_request(intent='TRADING_STRATEGY')`.

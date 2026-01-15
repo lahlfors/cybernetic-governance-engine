@@ -13,4 +13,8 @@ class AgentState(TypedDict):
     risk_status: Literal["UNKNOWN", "APPROVED", "REJECTED_REVISE"]
     risk_feedback: str | None
 
+    # User Profile
+    risk_attitude: str | None
+    investment_period: str | None
+
     execution_plan_output: str | dict | None # Holds the structured plan
