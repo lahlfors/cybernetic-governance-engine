@@ -19,12 +19,14 @@ from src.utils.nemo_manager import load_rails, validate_with_nemo
 from src.graph.graph import create_graph
 from src.utils.context import user_context
 from src.utils.telemetry import configure_telemetry
+from src.demo.router import demo_router
 
 # Observability
 configure_telemetry()
 LangchainInstrumentor().instrument() # Traces Graph nodes (including Agent calls)
 
 app = FastAPI(title="Governed Financial Advisor (Graph Orchestrated)")
+app.include_router(demo_router)
 
 # --- GLOBAL SINGLETONS ---
 rails = load_rails()
@@ -38,7 +40,11 @@ class QueryRequest(BaseModel):
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "service": "financial-advisor-graph-agent"}
+    return {
+        "status": "ok",
+        "service": "financial-advisor-graph-agent",
+        "project_id": Config.GOOGLE_CLOUD_PROJECT
+    }
 
 @app.post("/agent/query")
 async def query_agent(req: QueryRequest):
@@ -46,9 +52,12 @@ async def query_agent(req: QueryRequest):
     try:
         # ISO 42001: A.7.2 Accountability - Tag trace with User Identity
         current_span = trace.get_current_span()
+        trace_id = None
         if current_span:
             current_span.set_attribute("enduser.id", req.user_id)
             current_span.set_attribute("thread.id", req.thread_id)
+            # Capture trace_id for UI
+            trace_id = f"{current_span.get_span_context().trace_id:032x}"
 
         # 1. NeMo Security
         is_safe, msg = await validate_with_nemo(req.prompt, rails)
@@ -63,7 +72,10 @@ async def query_agent(req: QueryRequest):
         )
         
         # Extract the last message content
-        return {"response": res["messages"][-1].content}
+        return {
+            "response": res["messages"][-1].content,
+            "trace_id": trace_id
+        }
 
     except Exception as e:
         print(f"❌ Error invoking agent graph: {e}")

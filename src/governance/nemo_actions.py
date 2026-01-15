@@ -2,6 +2,7 @@ import logging
 import time
 from typing import Dict, Any, List, Optional
 from src.governance.safety import safety_filter
+from src.demo.state import demo_state
 
 # Import generated actions if available
 try:
@@ -52,6 +53,11 @@ def check_data_latency(context: Dict[str, Any] = {}, event: Dict[str, Any] = {})
     tick_timestamp = float(context.get("tick_timestamp", time.time()))
     now = time.time()
     latency_ms = (now - tick_timestamp) * 1000.0
+
+    # Inject simulated latency from Demo State
+    if demo_state.simulated_latency > 0:
+        logger.info(f"🧪 Demo Mode: Injecting {demo_state.simulated_latency}ms simulated latency.")
+        latency_ms += demo_state.simulated_latency
 
     if latency_ms < 0: latency_ms = 0
 

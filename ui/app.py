@@ -40,9 +40,12 @@ if "user_id" not in st.session_state:
     else:
         st.session_state.user_id = str(uuid.uuid4())
 
+if "project_id" not in st.session_state:
+    st.session_state.project_id = "unknown"
+
 # ...
 
-def query_agent(prompt: str) -> str:
+def query_agent(prompt: str):
     # ...
     try:
         response = requests.post(
@@ -58,12 +61,13 @@ def query_agent(prompt: str) -> str:
         
         # Handle specific status codes
         if response.status_code == 403:
-            return "⚠️ Authentication failed. The UI cannot access the backend service. Please check service account permissions."
+            return "⚠️ Authentication failed. The UI cannot access the backend service. Please check service account permissions.", None
         
         response.raise_for_status()
-        return response.json().get("response", "No response received.")
+        data = response.json()
+        return data.get("response", "No response received."), data.get("trace_id")
     except requests.exceptions.RequestException as e:
-        return f"Error communicating with agent: {str(e)}"
+        return f"Error communicating with agent: {str(e)}", None
 
 # --- Streamlit UI ---
 st.set_page_config(
@@ -107,10 +111,89 @@ with st.sidebar:
         health = requests.get(f"{BACKEND_URL}/health", headers=headers, timeout=5)
         if health.status_code == 200:
             st.success("✅ Connected")
+            data = health.json()
+            if "project_id" in data:
+                st.session_state.project_id = data["project_id"]
         else:
             st.error(f"⚠️ Status: {health.status_code}")
     except:
         st.warning("⚠️ Cannot reach backend")
+
+    # --- DEMO CONTROL PANEL ---
+    st.divider()
+    st.header("🛠️ Demo Control Panel")
+
+    # 1. Scenario Selector
+    st.subheader("Scenario Injection")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("✅ Normal Operation"):
+            try:
+                requests.post(f"{BACKEND_URL}/demo/reset", headers=headers)
+                st.toast("System Reset to Normal")
+            except: st.error("Failed to reset")
+
+    with col2:
+        if st.button("🐢 High Latency (>200ms)"):
+            try:
+                requests.post(f"{BACKEND_URL}/demo/context", json={"latency": 250.0, "risk_profile": "Balanced"}, headers=headers)
+                st.toast("Injecting 250ms Latency")
+            except: st.error("Failed to set latency")
+
+    # 2. Green Stack Pipeline Trigger
+    st.subheader("Green Stack Governance")
+
+    col_p1, col_p2 = st.columns(2)
+    with col_p1:
+        if st.button("🚀 Run Local Discovery"):
+            try:
+                requests.post(f"{BACKEND_URL}/demo/pipeline", json={"strategy": "High Frequency Momentum", "mode": "local"}, headers=headers)
+                st.toast("Local Discovery Started")
+            except: st.error("Failed to start local")
+
+    with col_p2:
+        if st.button("☁️ Run Vertex AI Pipeline"):
+            try:
+                requests.post(f"{BACKEND_URL}/demo/pipeline", json={"strategy": "High Frequency Momentum", "mode": "vertex"}, headers=headers)
+                st.toast("Vertex Submission Initiated")
+            except: st.error("Failed to submit to Vertex")
+
+    # 3. Live Demo Status
+    try:
+        status_res = requests.get(f"{BACKEND_URL}/demo/status", headers=headers, timeout=2)
+        if status_res.status_code == 200:
+            status = status_res.json()
+
+            # Latency Status
+            lat = status.get("latency", 0)
+            if lat > 0:
+                st.warning(f"⚠️ Simulated Latency: {lat}ms")
+            else:
+                st.info("⚡ Latency: Normal")
+
+            # Pipeline Status
+            p_status = status.get("pipeline", {})
+            st.caption(f"Pipeline ({p_status.get('mode', 'idle')}): {p_status.get('status')} - {p_status.get('message')}")
+
+            # Trace Link (Local)
+            p_trace = status.get("trace_id")
+            if p_trace and p_status.get('mode') == 'local' and st.session_state.project_id != "unknown":
+                url = f"https://console.cloud.google.com/traces/list?project={st.session_state.project_id}&tid={p_trace}"
+                st.markdown(f"🔍 [View Pipeline Trace]({url})")
+
+            # Dashboard Link (Vertex)
+            dashboard_url = p_status.get("dashboard_url")
+            if dashboard_url:
+                st.markdown(f"☁️ [View Vertex Pipeline]({dashboard_url})")
+
+            # Generated Rules
+            rules = status.get("rules")
+            if rules:
+                with st.expander("📜 View Generated Rules"):
+                    st.code(rules, language="python")
+    except:
+        st.caption("Status: Offline")
+
 
 # Initialize chat history
 if "messages" not in st.session_state:
@@ -131,11 +214,16 @@ if prompt := st.chat_input("Ask about market analysis, strategies, or trading...
     # Get agent response
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
-            response = query_agent(prompt)
+            response, trace_id = query_agent(prompt)
         st.markdown(response)
-    
+
+        # Show Trace Link
+        if trace_id and st.session_state.project_id != "unknown":
+            url = f"https://console.cloud.google.com/traces/list?project={st.session_state.project_id}&tid={trace_id}"
+            st.caption(f"🔍 [View Trace]({url})")
+
     # Add assistant response to history
-    st.session_state.messages.append({"role": "assistant", "content": response})
+    st.session_state.messages.append({"role": "assistant", "content": response, "trace_id": trace_id})
 
 # Footer
 st.divider()

@@ -1,6 +1,6 @@
 
 define flow check authorization
-  user ask "execute trade" or "write database" or "delete database"
+  user ask "execute trade"
   $allowed = execute src.governance.nemo_actions.check_approval_token
   if not $allowed
     bot refuse to respond
