@@ -1,0 +1,32 @@
+
+define flow check authorization
+  user ask "execute trade"
+  $allowed = execute src.governance.nemo_actions.check_approval_token
+  if not $allowed
+    bot refuse to respond
+    stop
+
+define flow check latency
+  user ask "execute trade"
+  $allowed = execute src.governance.nemo_actions.check_data_latency
+  if not $allowed
+    bot refuse to respond
+    stop
+
+define flow check financial risk
+  user ask "execute trade"
+  $drawdown_ok = execute src.governance.nemo_actions.check_drawdown_limit
+  if not $drawdown_ok
+    bot refuse to respond
+    stop
+  $slippage_ok = execute src.governance.nemo_actions.check_slippage_risk
+  if not $slippage_ok
+    bot refuse to respond
+    stop
+
+define flow check atomic execution
+  user ask "execute multi-leg trade"
+  $atomic_ok = execute src.governance.nemo_actions.check_atomic_execution
+  if not $atomic_ok
+    bot refuse to respond
+    stop

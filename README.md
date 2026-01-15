@@ -43,6 +43,21 @@ This system implements a **Hybrid Manager-Worker Architecture** that separates c
 
 👉 **For a deep dive, see [ARCHITECTURE.md](ARCHITECTURE.md)**
 
+## Governance & Safety (Green Stack)
+
+This repository implements the advanced **Green Stack Governance Architecture**, separating cognition from control to satisfy ISO 42001 and STPA requirements.
+
+👉 **Architecture Guide: [docs/GREEN_STACK_ARCHITECTURE.md](docs/GREEN_STACK_ARCHITECTURE.md)**
+
+### The 4-Layer Safety Loop
+1.  **Define (Risk Agent):** An offline "A2 Discovery" agent continuously scans for financial risks (e.g., Slippage, Drawdown) and defines Unsafe Control Actions (UCAs).
+2.  **Verify (Evaluator Agent):** A dedicated "Proctor" subsystem audits agent traces against the STPA safety ontology and simulates adversarial attacks (Red Teaming). **[See Evaluator Agent Docs](src/evaluator_agent/README.md)**
+3.  **Bridge (Transpiler):** A policy transpiler automatically converts discovered risks into executable code.
+4.  **Enforce (NeMo Guardrails):** Real-time, deterministic Python actions intercept tool calls in <10ms to block unsafe actions. **[See Governance Logic Docs](src/governance/README.md)**
+
+### Automated Pipeline
+The entire risk discovery and rule deployment loop is automated via **Vertex AI Pipelines**.
+👉 **Pipeline Docs: [src/pipelines/README.md](src/pipelines/README.md)**
 
 ## High-Reliability Architecture
 

@@ -12,6 +12,8 @@ ENV/
 env.bak/
 venv.bak/
 .deploy_venv/
+.new_venv/
+source/
 
 # IDEs
 .vscode/
@@ -25,6 +27,7 @@ agents_log/
 
 # Project Specific
 opa
+verification_*.txt
 
 # Traces
 *.parquet
