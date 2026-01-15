@@ -2,7 +2,7 @@ from typing import Dict, Any, List, Optional
 import logging
 from .ontology import TradingKnowledgeGraph, Constraint
 
-logger = logging.getLogger("GreenAgent.Logic")
+logger = logging.getLogger("EvaluatorAgent.Logic")
 
 class SymbolicReasoner:
     """

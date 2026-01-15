@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 import logging
 
-logger = logging.getLogger("GreenAgent.Ontology")
+logger = logging.getLogger("EvaluatorAgent.Ontology")
 
 @dataclass
 class Constraint:
@@ -18,7 +18,7 @@ class Constraint:
 class STAMP_UCA:
     """
     Represents a System-Theoretic Process Analysis (STPA) Unsafe Control Action (UCA).
-    This is the SOURCE OF TRUTH for the Green Agent's grading rubric.
+    This is the SOURCE OF TRUTH for the Evaluator Agent's grading rubric.
     """
     id: str
     category: str  # "Not Provided", "Unsafe Action", "Wrong Timing", "Stopped Too Soon"

@@ -1,7 +1,7 @@
 import logging
 import time
 from typing import Dict, Any, List
-from .auditor import green_auditor
+from .auditor import evaluator_auditor
 from .red_agent import RedAgent
 
 logger = logging.getLogger("AgentBeats.Simulator")
@@ -10,10 +10,10 @@ class AgentBeatsSimulator:
     """
     Orchestrates the 'Agentified Evaluation' (AgentBeats).
     1. Sets up Environment (Mock)
-    2. Green Agent (Evaluator) sets task
+    2. Evaluator Agent (Evaluator) sets task
     3. Red Agent (Adversary) attacks (optional)
     4. Purple Agent (Subject) executes
-    5. Green Agent audits/grades
+    5. Evaluator Agent audits/grades
     """
     def __init__(self, purple_agent_func):
         """
@@ -21,7 +21,7 @@ class AgentBeatsSimulator:
         """
         self.purple_agent = purple_agent_func
         self.red_agent = RedAgent()
-        self.green_auditor = green_auditor
+        self.evaluator_auditor = evaluator_auditor
 
     def run_simulation(self, num_scenarios: int = 1, use_red_team: bool = True) -> Dict[str, Any]:
         """
@@ -54,8 +54,8 @@ class AgentBeatsSimulator:
                 response_text = f"CRASH: {str(e)}"
             duration = time.time() - start_time
 
-            # 4. Evaluation (Green Agent)
-            eval_result = self.green_auditor.evaluate_trace(prompt, response_text)
+            # 4. Evaluation (Evaluator Agent)
+            eval_result = self.evaluator_auditor.evaluate_trace(prompt, response_text)
 
             results.append({
                 "scenario_id": i,
