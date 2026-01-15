@@ -7,6 +7,7 @@ from .nodes.adapters import (
     execution_analyst_node,
     governed_trader_node
 )
+from .nodes.safety_node import safety_check_node, route_safety
 from .checkpointer import get_checkpointer
 
 def create_graph(redis_url="redis://localhost:6379"):
@@ -19,6 +20,10 @@ def create_graph(redis_url="redis://localhost:6379"):
     workflow.add_node("data_analyst", data_analyst_node)
     # Risk Analyst is removed from hot path (runs offline)
     workflow.add_node("execution_analyst", execution_analyst_node)
+
+    # 2b. Add Safety Node (Interceptor)
+    workflow.add_node("safety_check", safety_check_node)
+
     workflow.add_node("governed_trader", governed_trader_node)
     workflow.add_node("human_review", lambda x: x)
 
@@ -30,14 +35,20 @@ def create_graph(redis_url="redis://localhost:6379"):
         "data_analyst": "data_analyst",
         "risk_analyst": "execution_analyst", # Legacy routing fallback -> Planner
         "execution_analyst": "execution_analyst", # Routes to Planner first
-        "governed_trader": "governed_trader",
+        "governed_trader": "safety_check", # Force routing through Safety
         "human_review": "human_review",
         "FINISH": END
     })
 
-    # 5. The Strategy -> Execution Loop (Risk is Offline / NeMo Enforced)
-    # Execution Analyst (Planner) goes directly to Trader (Guardrails intercept if unsafe)
-    workflow.add_edge("execution_analyst", "governed_trader")
+    # 5. The Strategy -> Safety -> Execution Loop
+    # Execution Analyst (Planner) -> Safety Check
+    workflow.add_edge("execution_analyst", "safety_check")
+
+    # Safety Check -> Conditional (Trader OR Back to Planner)
+    workflow.add_conditional_edges("safety_check", route_safety, {
+        "governed_trader": "governed_trader",
+        "execution_analyst": "execution_analyst" # Rejected, try again
+    })
 
     # 6. Return to Supervisor
     workflow.add_edge("data_analyst", "supervisor")
