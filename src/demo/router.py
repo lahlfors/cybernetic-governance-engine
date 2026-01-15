@@ -1,13 +1,12 @@
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 from src.demo.state import demo_state
-from src.demo.pipeline_manager import run_discovery_locally, submit_vertex_pipeline
+from src.demo.pipeline_manager import submit_vertex_pipeline
 
 demo_router = APIRouter(prefix="/demo", tags=["demo"])
 
 class PipelineRequest(BaseModel):
     strategy: str
-    mode: str = "local" # 'local' or 'vertex'
 
 class ContextRequest(BaseModel):
     latency: float
@@ -15,13 +14,9 @@ class ContextRequest(BaseModel):
 
 @demo_router.post("/pipeline")
 async def start_pipeline(req: PipelineRequest, background_tasks: BackgroundTasks):
-    """Starts the governance pipeline (Local or Vertex) in the background."""
-    if req.mode == "vertex":
-        background_tasks.add_task(submit_vertex_pipeline, req.strategy)
-        return {"status": "started", "mode": "vertex", "message": "Submitting to Vertex AI..."}
-    else:
-        background_tasks.add_task(run_discovery_locally, req.strategy)
-        return {"status": "started", "mode": "local", "message": "Starting Local Discovery..."}
+    """Starts the governance pipeline (Vertex AI Only) in the background."""
+    background_tasks.add_task(submit_vertex_pipeline, req.strategy)
+    return {"status": "started", "mode": "vertex", "message": "Submitting to Vertex AI..."}
 
 @demo_router.get("/status")
 def get_status():

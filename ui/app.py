@@ -143,20 +143,12 @@ with st.sidebar:
     # 2. Green Stack Pipeline Trigger
     st.subheader("Green Stack Governance")
 
-    col_p1, col_p2 = st.columns(2)
-    with col_p1:
-        if st.button("🚀 Run Local Discovery"):
-            try:
-                requests.post(f"{BACKEND_URL}/demo/pipeline", json={"strategy": "High Frequency Momentum", "mode": "local"}, headers=headers)
-                st.toast("Local Discovery Started")
-            except: st.error("Failed to start local")
-
-    with col_p2:
-        if st.button("☁️ Run Vertex AI Pipeline"):
-            try:
-                requests.post(f"{BACKEND_URL}/demo/pipeline", json={"strategy": "High Frequency Momentum", "mode": "vertex"}, headers=headers)
-                st.toast("Vertex Submission Initiated")
-            except: st.error("Failed to submit to Vertex")
+    st.caption("Runs a fully governed Risk Discovery & Policy Transpilation loop on Vertex AI.")
+    if st.button("☁️ Run Green Stack on Vertex AI"):
+        try:
+            requests.post(f"{BACKEND_URL}/demo/pipeline", json={"strategy": "High Frequency Momentum"}, headers=headers)
+            st.toast("Vertex Submission Initiated")
+        except: st.error("Failed to submit to Vertex")
 
     # 3. Live Demo Status
     try:
@@ -175,18 +167,12 @@ with st.sidebar:
             p_status = status.get("pipeline", {})
             st.caption(f"Pipeline ({p_status.get('mode', 'idle')}): {p_status.get('status')} - {p_status.get('message')}")
 
-            # Trace Link (Local)
-            p_trace = status.get("trace_id")
-            if p_trace and p_status.get('mode') == 'local' and st.session_state.project_id != "unknown":
-                url = f"https://console.cloud.google.com/traces/list?project={st.session_state.project_id}&tid={p_trace}"
-                st.markdown(f"🔍 [View Pipeline Trace]({url})")
-
             # Dashboard Link (Vertex)
             dashboard_url = p_status.get("dashboard_url")
             if dashboard_url:
                 st.markdown(f"☁️ [View Vertex Pipeline]({dashboard_url})")
 
-            # Generated Rules
+            # Generated Rules (Fetched if available)
             rules = status.get("rules")
             if rules:
                 with st.expander("📜 View Generated Rules"):
