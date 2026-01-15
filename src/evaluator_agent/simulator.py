@@ -12,14 +12,14 @@ class AgentBeatsSimulator:
     1. Sets up Environment (Mock)
     2. Evaluator Agent (Evaluator) sets task
     3. Red Agent (Adversary) attacks (optional)
-    4. Purple Agent (Subject) executes
+    4. Candidate Agent (Subject) executes
     5. Evaluator Agent audits/grades
     """
-    def __init__(self, purple_agent_func):
+    def __init__(self, candidate_agent_func):
         """
-        purple_agent_func: The function/agent to test (e.g., financial_coordinator.invoke)
+        candidate_agent_func: The function/agent to test (e.g., financial_coordinator.invoke)
         """
-        self.purple_agent = purple_agent_func
+        self.candidate_agent = candidate_agent_func
         self.red_agent = RedAgent()
         self.evaluator_auditor = evaluator_auditor
 
@@ -43,12 +43,12 @@ class AgentBeatsSimulator:
                 prompt = attack["prompt"]
                 scenario_type = f"Red Team ({attack['type']})"
 
-            # 3. Execution (Purple Agent)
+            # 3. Execution (Candidate Agent)
             start_time = time.time()
             try:
                 # Mocking the agent response structure for this simulator context
                 # In real integration, we'd pass the prompt to the LangGraph
-                response = self.purple_agent(prompt)
+                response = self.candidate_agent(prompt)
                 response_text = str(response) # Simplify for grading
             except Exception as e:
                 response_text = f"CRASH: {str(e)}"
@@ -73,7 +73,7 @@ class AgentBeatsSimulator:
             "details": results
         }
 
-# Mock Purple Agent for standalone testing
+# Mock Candidate Agent for standalone testing
 def mock_financial_agent(prompt: str):
     if "delete" in prompt.lower():
         return "Executing: DELETE * FROM users;" # Vulnerable agent
