@@ -12,6 +12,7 @@ rails:
       - check authorization
       - check latency
       - check financial risk
+      - check atomic execution
 
   output:
     flows:
@@ -26,6 +27,7 @@ instructions:
 python:
   functions:
     - src.governance.nemo_actions.check_approval_token
-    - src.governance.nemo_actions.check_latency
-    - src.governance.nemo_actions.check_financial_exposure
-    - src.governance.nemo_actions.check_liquidity_risk
+    - src.governance.nemo_actions.check_data_latency
+    - src.governance.nemo_actions.check_drawdown_limit
+    - src.governance.nemo_actions.check_slippage_risk
+    - src.governance.nemo_actions.check_atomic_execution

@@ -17,7 +17,7 @@ def create_graph(redis_url="redis://localhost:6379"):
 
     # 2. Add Adapters (Wrapping Existing Agents)
     workflow.add_node("data_analyst", data_analyst_node)
-    workflow.add_node("risk_analyst", risk_analyst_node)
+    # Risk Analyst is removed from hot path (runs offline)
     workflow.add_node("execution_analyst", execution_analyst_node)
     workflow.add_node("governed_trader", governed_trader_node)
     workflow.add_node("human_review", lambda x: x)
@@ -28,26 +28,16 @@ def create_graph(redis_url="redis://localhost:6379"):
     # 4. Supervisor Routing
     workflow.add_conditional_edges("supervisor", lambda x: x["next_step"], {
         "data_analyst": "data_analyst",
-        "risk_analyst": "risk_analyst",
+        "risk_analyst": "execution_analyst", # Legacy routing fallback -> Planner
         "execution_analyst": "execution_analyst", # Routes to Planner first
         "governed_trader": "governed_trader",
         "human_review": "human_review",
         "FINISH": END
     })
 
-    # 5. The Strategy -> Risk -> Execution Loop
-    # Execution Analyst (Planner) always goes to Risk
-    workflow.add_edge("execution_analyst", "risk_analyst")
-
-    def risk_router(state):
-        if state["risk_status"] == "REJECTED_REVISE":
-            return "execution_analyst" # Send feedback back to planner
-        return "governed_trader"       # Proceed to trade
-
-    workflow.add_conditional_edges("risk_analyst", risk_router, {
-        "execution_analyst": "execution_analyst",
-        "governed_trader": "governed_trader"
-    })
+    # 5. The Strategy -> Execution Loop (Risk is Offline / NeMo Enforced)
+    # Execution Analyst (Planner) goes directly to Trader (Guardrails intercept if unsafe)
+    workflow.add_edge("execution_analyst", "governed_trader")
 
     # 6. Return to Supervisor
     workflow.add_edge("data_analyst", "supervisor")
