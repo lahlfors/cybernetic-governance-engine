@@ -7,7 +7,6 @@ from .nodes.adapters import (
     execution_analyst_node,
     governed_trader_node
 )
-from .nodes.green_agent_node import green_agent_node
 from .checkpointer import get_checkpointer
 
 def create_graph(redis_url="redis://localhost:6379"):
@@ -20,7 +19,6 @@ def create_graph(redis_url="redis://localhost:6379"):
     workflow.add_node("data_analyst", data_analyst_node)
     workflow.add_node("risk_analyst", risk_analyst_node)
     workflow.add_node("execution_analyst", execution_analyst_node)
-    workflow.add_node("green_agent", green_agent_node)
     workflow.add_node("governed_trader", governed_trader_node)
     workflow.add_node("human_review", lambda x: x)
 
@@ -37,30 +35,18 @@ def create_graph(redis_url="redis://localhost:6379"):
         "FINISH": END
     })
 
-    # 5. The Strategy -> Risk -> Green Agent (Audit) -> Execution Loop
+    # 5. The Strategy -> Risk -> Execution Loop
     # Execution Analyst (Planner) always goes to Risk
     workflow.add_edge("execution_analyst", "risk_analyst")
 
     def risk_router(state):
         if state["risk_status"] == "REJECTED_REVISE":
             return "execution_analyst" # Send feedback back to planner
-        return "green_agent"           # Proceed to System 2 Audit
+        return "governed_trader"       # Proceed to trade
 
     workflow.add_conditional_edges("risk_analyst", risk_router, {
         "execution_analyst": "execution_analyst",
-        "green_agent": "green_agent"
-    })
-
-    # 6. Green Agent Routing
-    def green_agent_router(state):
-        if state["green_agent_status"] == "APPROVED":
-            return "governed_trader"
-        else:
-            return "execution_analyst" # Send feedback back to planner
-
-    workflow.add_conditional_edges("green_agent", green_agent_router, {
-        "governed_trader": "governed_trader",
-        "execution_analyst": "execution_analyst"
+        "governed_trader": "governed_trader"
     })
 
     # 6. Return to Supervisor

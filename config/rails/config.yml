@@ -1,17 +1,17 @@
 # NeMo Guardrails Configuration
 
 models:
-  # Model name here is used by NeMo config, but can be overridden via
-  # GUARDRAILS_MODEL_NAME env var in nemo_manager.py for deployment flexibility
   - type: main
     engine: gemini
     model: gemini-2.0-flash
 
-# Input/output rails configuration
 rails:
   input:
     flows:
       - self check input
+      - check authorization
+      - check latency
+
   output:
     flows:
       - self check output
@@ -21,3 +21,8 @@ instructions:
     content: |
       You are a helpful financial advisor assistant.
       You must adhere to strict safety guidelines.
+
+python:
+  functions:
+    - src.governance.nemo_actions.check_approval_token
+    - src.governance.nemo_actions.check_latency

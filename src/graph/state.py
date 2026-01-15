@@ -13,7 +13,4 @@ class AgentState(TypedDict):
     risk_status: Literal["UNKNOWN", "APPROVED", "REJECTED_REVISE"]
     risk_feedback: str | None
 
-    # Green Agent (System 2) Control
-    green_agent_status: Literal["UNKNOWN", "APPROVED", "REJECTED_REVISE", "ERROR"]
-    green_agent_feedback: str | None
     execution_plan_output: str | dict | None # Holds the structured plan
