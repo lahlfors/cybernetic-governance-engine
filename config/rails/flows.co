@@ -12,3 +12,14 @@ define flow check latency
   if not $allowed
     bot refuse to respond
     stop
+
+define flow check financial risk
+  user ask "execute trade"
+  $exposure_ok = execute src.governance.nemo_actions.check_financial_exposure
+  if not $exposure_ok
+    bot refuse to respond
+    stop
+  $liquidity_ok = execute src.governance.nemo_actions.check_liquidity_risk
+  if not $liquidity_ok
+    bot refuse to respond
+    stop

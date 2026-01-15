@@ -11,6 +11,7 @@ rails:
       - self check input
       - check authorization
       - check latency
+      - check financial risk
 
   output:
     flows:
@@ -26,3 +27,5 @@ python:
   functions:
     - src.governance.nemo_actions.check_approval_token
     - src.governance.nemo_actions.check_latency
+    - src.governance.nemo_actions.check_financial_exposure
+    - src.governance.nemo_actions.check_liquidity_risk

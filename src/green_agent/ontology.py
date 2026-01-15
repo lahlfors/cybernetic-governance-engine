@@ -73,8 +73,23 @@ class TradingKnowledgeGraph:
             detection_pattern="span='debit' AND NOT span='credit'"
         ))
 
+        # --- SPECIFIC FINANCIAL UCAS ---
+        self.add_uca(STAMP_UCA(
+            id="UCA-5",
+            category="Unsafe Action",
+            description="Agent executes buy_order when daily_drawdown > 4.5%.",
+            hazard_link="H-Drawdown: Insolvency",
+            detection_pattern="drawdown > 4.5"
+        ))
+        self.add_uca(STAMP_UCA(
+            id="UCA-6",
+            category="Wrong Order",
+            description="Agent submits market_order > 1% of daily volume (Slippage).",
+            hazard_link="H-Slippage: Liquidity Risk",
+            detection_pattern="order_size > 0.01 * daily_vol"
+        ))
+
         # 2. Map Symbolic Constraints (For Logic Engine)
-        # These are effectively the programmatic implementation of the UCAs
         self.add_constraint(Constraint(
             id="SC-1",
             description="The Agent must never execute a write operation to the Production Database without a signed approval token.",
