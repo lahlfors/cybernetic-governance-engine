@@ -3,7 +3,7 @@ import logging
 from src.agents.risk_analyst.agent import risk_analyst_agent, RiskAssessment
 from src.governance.transpiler import transpiler
 
-logger = logging.getLogger("GreenAgent.OfflineUpdater")
+logger = logging.getLogger("EvaluatorAgent.OfflineUpdater")
 
 async def run_offline_risk_assessment():
     """
@@ -64,14 +64,18 @@ async def run_offline_risk_assessment():
 
     # 2. Transpile
     logger.info("⚙️ Transpiling Rules...")
-    code_content = transpiler.transpile_policy(ucas)
+    py_code, rego_code = transpiler.transpile_policy(ucas)
 
-    # 3. Write to File
-    output_path = "src/governance/generated_actions.py"
-    with open(output_path, "w") as f:
-        f.write(code_content)
+    # 3. Write to Files
+    py_output_path = "src/governance/generated_actions.py"
+    with open(py_output_path, "w") as f:
+        f.write(py_code)
 
-    logger.info(f"✅ Policy Updated: {output_path}")
+    rego_output_path = "src/governance/policy/generated_rules.rego"
+    with open(rego_output_path, "w") as f:
+        f.write(rego_code)
+
+    logger.info(f"✅ Policy Updated: {py_output_path} and {rego_output_path}")
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

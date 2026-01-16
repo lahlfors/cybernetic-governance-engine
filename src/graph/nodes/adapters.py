@@ -5,6 +5,8 @@ CRITICAL: These adapters import EXISTING agent instances and wrap them for LangG
 Do not create new agent classes here.
 """
 
+import json
+import logging
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
@@ -18,6 +20,7 @@ from src.agents.governed_trader.agent import governed_trading_agent
 # Session management for ADK agents
 session_service = InMemorySessionService()
 
+logger = logging.getLogger("Graph.Adapters")
 
 class AgentResponse:
     """Simple response object to hold agent output."""
@@ -116,6 +119,7 @@ def execution_analyst_node(state):
     """
     Wraps the Execution Analyst (Planner) agent for LangGraph.
     Injects risk feedback if the loop pushed us back here.
+    Parses the JSON output to populate 'execution_plan_output'.
     """
     print("--- [Graph] Calling Execution Analyst (Planner) ---")
     user_msg = state["messages"][-1].content
@@ -132,8 +136,36 @@ def execution_analyst_node(state):
 
     res = run_adk_agent(execution_analyst_agent, user_msg)
 
+    # PARSE JSON Output
+    plan_output = None
+    try:
+        # The agent is configured to return JSON, so res.answer should be a JSON string.
+        # We try to parse it.
+        # Handle markdown blocks ```json ... ``` if present
+        json_str = res.answer
+        if "```json" in json_str:
+            json_str = json_str.split("```json")[1].split("```")[0].strip()
+        elif "```" in json_str:
+             json_str = json_str.split("```")[1].split("```")[0].strip()
+
+        plan_output = json.loads(json_str)
+        logger.info(f"✅ Parsed Execution Plan: {plan_output.get('plan_id', 'unknown')}")
+
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to parse Execution Plan JSON: {e}. Passing raw text.")
+        # Fallback: create a dummy plan wrapper around the text so Safety Node doesn't crash completely
+        plan_output = {
+            "steps": [],
+            "reasoning": res.answer,
+            "error": "Failed to parse JSON plan"
+        }
+
     # Reset status so we can potentially loop again or proceed
-    return {"messages": [("ai", res.answer)], "risk_status": "UNKNOWN"}
+    return {
+        "messages": [("ai", res.answer)],
+        "risk_status": "UNKNOWN",
+        "execution_plan_output": plan_output
+    }
 
 
 def governed_trader_node(state):

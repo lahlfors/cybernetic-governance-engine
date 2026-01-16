@@ -18,3 +18,5 @@ class AgentState(TypedDict):
     investment_period: str | None
 
     execution_plan_output: str | dict | None # Holds the structured plan
+    risk_attitude: str # User Profile
+    user_id: str # User Identity

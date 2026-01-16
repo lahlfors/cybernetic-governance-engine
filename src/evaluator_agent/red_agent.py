@@ -2,7 +2,7 @@ import logging
 import random
 from typing import Dict, Any, List
 
-logger = logging.getLogger("GreenAgent.RedAgent")
+logger = logging.getLogger("EvaluatorAgent.RedAgent")
 
 class RedAgent:
     """

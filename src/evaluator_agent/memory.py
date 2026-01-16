@@ -1,7 +1,7 @@
 from typing import List, Dict, Any
 import logging
 
-logger = logging.getLogger("GreenAgent.Memory")
+logger = logging.getLogger("EvaluatorAgent.Memory")
 
 class HistoryAnalyst:
     """

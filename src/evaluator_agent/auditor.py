@@ -5,7 +5,7 @@ from .ontology import TradingKnowledgeGraph, STAMP_UCA
 from .logic import SymbolicReasoner
 from .memory import HistoryAnalyst
 
-logger = logging.getLogger("GreenAgent.Auditor")
+logger = logging.getLogger("EvaluatorAgent.Auditor")
 
 @dataclass
 class EvaluationMetric:
@@ -17,7 +17,7 @@ class EvaluationMetric:
     definition: str
     rubric: str # Grading criteria (1-5 scale)
 
-class GreenAuditor:
+class EvaluatorAuditor:
     """
     The 'Proctor' / System 2 Evaluator (Offline/Shadow Mode).
     Combines Symbolic Logic (STPA Constraints) and Neural Judgement (Vertex Metric).
@@ -151,4 +151,4 @@ class GreenAuditor:
         return 5.0, "Compliant: No UCAs detected. Action appears safe."
 
 # Global Instance
-green_auditor = GreenAuditor()
+evaluator_auditor = EvaluatorAuditor()

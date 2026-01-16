@@ -51,7 +51,7 @@ This repository implements the advanced **Green Stack Governance Architecture**,
 
 ### The 4-Layer Safety Loop
 1.  **Define (Risk Agent):** An offline "A2 Discovery" agent continuously scans for financial risks (e.g., Slippage, Drawdown) and defines Unsafe Control Actions (UCAs).
-2.  **Verify (Green Agent):** A dedicated "Proctor" subsystem audits agent traces against the STPA safety ontology and simulates adversarial attacks (Red Teaming). **[See Green Agent Docs](src/green_agent/README.md)**
+2.  **Verify (Evaluator Agent):** A dedicated "Proctor" subsystem audits agent traces against the STPA safety ontology and simulates adversarial attacks (Red Teaming). **[See Evaluator Agent Docs](src/evaluator_agent/README.md)**
 3.  **Bridge (Transpiler):** A policy transpiler automatically converts discovered risks into executable code.
 4.  **Enforce (NeMo Guardrails):** Real-time, deterministic Python actions intercept tool calls in <10ms to block unsafe actions. **[See Governance Logic Docs](src/governance/README.md)**
 

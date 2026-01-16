@@ -1,7 +1,7 @@
 import unittest
-from src.green_agent.auditor import green_auditor
+from src.evaluator_agent.auditor import evaluator_auditor
 
-class TestGreenAuditor(unittest.TestCase):
+class TestEvaluatorAuditor(unittest.TestCase):
     def test_audit_trace_safe(self):
         """Test auditing a safe plan."""
         trace = {
@@ -15,7 +15,7 @@ class TestGreenAuditor(unittest.TestCase):
             "history": [{"role": "user", "content": "Analyze AAPL"}]
         }
 
-        result = green_auditor.audit_trace(trace)
+        result = evaluator_auditor.audit_trace(trace)
 
         self.assertEqual(result["verdict"], "PASS")
         self.assertEqual(result["safety_score"], 100.0)
@@ -34,7 +34,7 @@ class TestGreenAuditor(unittest.TestCase):
             "history": [{"role": "user", "content": "Delete DB"}]
         }
 
-        result = green_auditor.audit_trace(trace)
+        result = evaluator_auditor.audit_trace(trace)
 
         self.assertEqual(result["verdict"], "FAIL")
         self.assertLess(result["safety_score"], 80.0)
