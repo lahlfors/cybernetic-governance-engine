@@ -5,19 +5,14 @@ The repository implements a **high-maturity version** of the "Green Stack" archi
 
 However, a significant **architectural divergence** exists: the repository implements a "Hybrid" model (LangGraph + Google ADK with Adapters) rather than the pure LangGraph/NeMo model implied by the text. Additionally, the "Risk Analyst" agent has been moved from the runtime loop to an offline/asynchronous role, replaced by a deterministic "Safety Node" and "Consensus Engine" for runtime enforcement.
 
-## 1. Terminology Map
+## 1. Terminology Deviation & Recommendation
 
-| Specification Term | Repository Implementation | Notes |
-| :--- | :--- | :--- |
-| **Green Stack** | `src/governance/`, `src/graph/nodes/safety_node.py` | The entire safety architecture. |
-| **Controller** | `src/graph/graph.py` + `src/nodes/supervisor_node.py` | Hybrid: LangGraph handles routing, Google ADK handles reasoning. |
-| **Actuators** | `src/agents/*/tools/` | Tools called by agents. |
-| **Sensors** | `src/infrastructure/telemetry/` | OpenTelemetry implementation. |
-| **Green Agent** | `src/agents/risk_analyst/` (Offline) + `src/governance/safety.py` (Runtime) | Split into "Offline Analysis" and "Runtime Enforcement". |
-| **Purple Agent** | `src/agents/governed_trader/` | The functional agent attempting actions. |
-| **Policy Transpiler**| `src/governance/transpiler.py` | Automated STPA -> Rego/Colang converter. |
-| **Safety Interceptor**| `src/graph/nodes/safety_node.py` | Explicit node in the graph. |
-| **Consensus Engine** | `src/governance/consensus.py` | Multi-Agent Debate implementation. |
+The repository uses "Risk Analyst" and "Safety Node" instead of the abstract "Green Agent" terminology found in the specification.
+
+**Recommendation:** The Specification should be updated to align with the Repository's precise terminology:
+*   Replace **"Green Agent" (Discovery Phase)** with **"Risk Analyst"**.
+*   Replace **"Green Agent" (Enforcement Phase)** with **"Safety Node"** and **"Governance Layer"**.
+*   Retain **"Green Stack"** as the name for the overall architectural pattern.
 
 ## 2. Verified Implementation (Matches Specification)
 
@@ -62,18 +57,23 @@ However, a significant **architectural divergence** exists: the repository imple
 
 ## 5. Deep Dive Findings (Response to Specific Questions)
 
-### A. Feedback Loop Mechanics
-*   **Mechanism:** The "Risk Analyst" (Offline) intervenes solely through **Policy Updates**.
-*   **Evidence:** `scripts/offline_risk_update.py` runs the analyst, identifies UCAs, transpiles them, and overwrites `src/governance/generated_actions.py` and `src/governance/policy/generated_rules.rego`.
-*   **Implication:** There is **no "Kill Switch" API**. Critical failures detected offline require a re-deployment (or hot-reload) of the application to enforce the new rules.
+### A. Feedback Loop Mechanics & Race Conditions
+*   **Mechanism:** The "Risk Analyst" (Offline) intervenes solely through **Policy Updates**. `scripts/offline_risk_update.py` directly overwrites `src/governance/generated_actions.py` and `src/governance/policy/generated_rules.rego`.
+*   **Race Conditions:** The script uses direct file I/O (`open(..., 'w')`) without any version control integration (Git) or locking mechanisms. This creates a risk where concurrent runs could corrupt policy files, or updates could break the production build without review. There is **no PR-based workflow** implemented in the code.
 
 ### B. Scope of Financial Risk Checks
 *   **Finding:** The runtime hot path is heavily optimized for **Deterministic Financial Safety** (Latency, Atomic Execution, Slippage, Drawdown, Authorization).
 *   **Gap:** "Semantic Checks" (PII masking, advanced toxicity filters) are **implicit or minimal**. `config/rails/config.yml` enables standard `self check input` flows but does not configure specific PII scrubbing tools (like Presidio) or external toxicity classifiers in the custom actions list. The system prioritizes speed and financial correctness over content moderation in the custom layer.
 
-### C. State Management (Risk Analyst)
-*   **Finding:** The `risk_analyst` agent is **Stateless**.
-*   **Evidence:** `src/agents/risk_analyst/agent.py` and `scripts/offline_risk_update.py` show the agent processing a single payload (`execution_plan_output`) per invocation. It does not query the runtime Redis checkpointer or maintain a separate long-term database in the provided code. It relies entirely on the data context passed to it by the orchestration script.
+### C. State Management & Multistep Risks
+*   **Finding:** The `risk_analyst` agent is **Stateless** and **Ahistorical**.
+*   **Evidence:** `src/agents/risk_analyst/agent.py` inputs are limited to `provided_trading_strategy`, `execution_plan_output`, and `user_risk_attitude`. It does not receive conversation history or past execution logs.
+*   **Implication:** The agent acts as a **Plan Validator**, not a History Auditor. It cannot detect **"Salami Slicing"** or other temporal/cumulative risks (e.g., slow memory leaks, gradual bias drift) because it lacks the longitudinal context to see the pattern across multiple invocations.
+
+### D. Policy Activation Latency
+*   **Assessment:** High Latency.
+*   **Reasoning:** Since updates involve overwriting source code (`.py`) and policy files (`.rego`), applying a new UCA requires a **Service Redeployment** (to rebuild the container with new code) or a complex hot-reload mechanism (not visible in `deployment/`).
+*   **Time-to-Mitigation:** Likely minutes (CI/CD build time + Cloud Run deployment time). This is generally **unsuitable** for high-frequency trading environments where millisecond-level reaction to new threat vectors is required, unless the "Safety Node" has a separate dynamic configuration channel (which is implemented via Redis for CBF, but not for the transpiled logic).
 
 ## 6. Conclusion
 The repository is a **faithful and advanced implementation** of the "Green Stack" philosophy. It deviates primarily in *how* it achieves the goals (using a Hybrid ADK/LangGraph architecture and "Offline" Risk Analyst), but it fulfills the functional safety requirements (CBFs, Consensus, Policy Transpilation, Auditability) with high fidelity.
