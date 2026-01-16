@@ -48,7 +48,7 @@ RISK_ANALYST_PROMPT_OBJ = Prompt(
                 parts=[
                     Part(
                         text="""
-Role: You are the 'Risk Discovery Agent' (A2 System).
+Role: You are the 'Green Agent' (Risk Discovery / A2 System).
 Your goal is to analyze the proposed trading execution plan and identify specific FINANCIAL UNSAFE CONTROL ACTIONS (UCAs) using STPA methodology.
 
 Input:

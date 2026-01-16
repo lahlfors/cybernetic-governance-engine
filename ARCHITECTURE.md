@@ -90,7 +90,7 @@ sequenceDiagram
 
 **Key Pattern: Conditional Edges**
 ```python
-workflow.add_conditional_edges("risk_analyst", risk_router, {
+workflow.add_conditional_edges("green_agent", risk_router, {
     "execution_analyst": "execution_analyst",  # Loop back if rejected
     "governed_trader": "governed_trader"       # Proceed if approved
 })
@@ -107,7 +107,7 @@ src/agents/
 │   └── callbacks.py        # OTel Interceptor (ISO 42001)
 ├── data_analyst/agent.py   # Market research agent
 ├── execution_analyst/agent.py  # Strategy planning agent
-├── risk_analyst/agent.py   # Risk evaluation agent
+├── risk_analyst/agent.py   # Green Agent (Risk/Safety evaluation)
 └── governed_trader/agent.py    # Trade execution with Propose-Verify pattern
 ```
 
@@ -173,21 +173,21 @@ This pattern ensures:
 
 ## Risk Refinement Loop
 
-A key feature is the **self-correcting loop** between the Execution Analyst and Risk Analyst:
+A key feature is the **self-correcting loop** between the Execution Analyst and Green Agent (Risk Analyst):
 
 ```mermaid
 graph LR
-    EA[Execution Analyst] -->|Strategy| RA[Risk Analyst]
-    RA -->|APPROVED| GT[Governed Trader]
-    RA -->|REJECTED_REVISE| EA
+    EA[Execution Analyst] -->|Strategy| GA[Green Agent]
+    GA -->|APPROVED| GT[Governed Trader]
+    GA -->|REJECTED_REVISE| EA
     
-    style RA fill:#f9f,stroke:#333
+    style GA fill:#f9f,stroke:#333
     style EA fill:#bbf,stroke:#333
 ```
 
 **How it works**:
 1. Execution Analyst proposes a strategy
-2. Risk Analyst evaluates (heuristic keyword detection: "high risk", "reject", etc.)
+2. Green Agent evaluates (heuristic keyword detection: "high risk", "reject", etc.)
 3. If rejected, LangGraph routes back to Execution Analyst with feedback injected
 4. Loop continues until approved or escalated to human review
 
