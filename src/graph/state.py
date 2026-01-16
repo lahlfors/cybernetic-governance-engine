@@ -13,9 +13,9 @@ class AgentState(TypedDict):
     risk_status: Literal["UNKNOWN", "APPROVED", "REJECTED_REVISE"]
     risk_feedback: str | None
 
-    # Safety Control (Layer 2)
-    safety_status: Literal["UNKNOWN", "APPROVED", "BLOCKED", "ESCALATED", "SKIPPED"]
-    error: str | None
+    # User Profile
+    risk_attitude: str | None
+    investment_period: str | None
 
     execution_plan_output: str | dict | None # Holds the structured plan
     risk_attitude: str # User Profile
