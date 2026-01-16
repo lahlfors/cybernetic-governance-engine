@@ -57,8 +57,23 @@ However, a significant **architectural divergence** exists: the repository imple
 
 ## 4. Missing Features (Gap Analysis)
 
-*   **Sidecar Deployment Config:** While `client.py` supports connecting to an OPA URL, there are no visible `Dockerfile` or `kubernetes.yaml` files in the source tree that *actually deploy* OPA as a sidecar. The implementation assumes the infrastructure exists.
+*   **Sidecar Deployment Config:** The implementation of the Sidecar pattern is fully realized in `deployment/service.yaml` (Knative/Cloud Run configuration) and orchestrated by `deployment/deploy_all.py`. This contradicts the initial gap finding; the infrastructure code is present but located in the `deployment/` directory rather than the root.
 *   **Green Agent Entry Point:** There is no `src/green_agent/` directory, despite the terminology. The logic is distributed across `src/governance/` and `src/agents/risk_analyst/`.
 
-## 5. Conclusion
+## 5. Deep Dive Findings (Response to Specific Questions)
+
+### A. Feedback Loop Mechanics
+*   **Mechanism:** The "Risk Analyst" (Offline) intervenes solely through **Policy Updates**.
+*   **Evidence:** `scripts/offline_risk_update.py` runs the analyst, identifies UCAs, transpiles them, and overwrites `src/governance/generated_actions.py` and `src/governance/policy/generated_rules.rego`.
+*   **Implication:** There is **no "Kill Switch" API**. Critical failures detected offline require a re-deployment (or hot-reload) of the application to enforce the new rules.
+
+### B. Scope of Financial Risk Checks
+*   **Finding:** The runtime hot path is heavily optimized for **Deterministic Financial Safety** (Latency, Atomic Execution, Slippage, Drawdown, Authorization).
+*   **Gap:** "Semantic Checks" (PII masking, advanced toxicity filters) are **implicit or minimal**. `config/rails/config.yml` enables standard `self check input` flows but does not configure specific PII scrubbing tools (like Presidio) or external toxicity classifiers in the custom actions list. The system prioritizes speed and financial correctness over content moderation in the custom layer.
+
+### C. State Management (Risk Analyst)
+*   **Finding:** The `risk_analyst` agent is **Stateless**.
+*   **Evidence:** `src/agents/risk_analyst/agent.py` and `scripts/offline_risk_update.py` show the agent processing a single payload (`execution_plan_output`) per invocation. It does not query the runtime Redis checkpointer or maintain a separate long-term database in the provided code. It relies entirely on the data context passed to it by the orchestration script.
+
+## 6. Conclusion
 The repository is a **faithful and advanced implementation** of the "Green Stack" philosophy. It deviates primarily in *how* it achieves the goals (using a Hybrid ADK/LangGraph architecture and "Offline" Risk Analyst), but it fulfills the functional safety requirements (CBFs, Consensus, Policy Transpilation, Auditability) with high fidelity.
