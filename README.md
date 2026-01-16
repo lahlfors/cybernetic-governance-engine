@@ -87,7 +87,7 @@ The system orchestrates a team of specialized sub-agents, managed by a central *
     *   **Worker:** Proposes trading strategies based on analysis.
     *   **Verifier:** Audits the proposal against safety rules and the user's direct intent. Only the Verifier can execute.
 3.  **Execution Analyst Agent (Strategy):** Creates detailed execution plans (e.g., VWAP, TWAP).
-4.  **Risk Analyst Agent:** Evaluates the overall portfolio risk and compliance.
+ 4.  **Risk Analyst Agent:** Evaluates the overall portfolio risk and compliance.
 
 ### Risk Refinement Loop
 The architecture implements a **Self-Correction Loop**. If the Risk Analyst rejects a plan proposed by the Execution Analyst, the graph automatically routes the feedback back to the Planner with a "CRITICAL" instruction to revise the strategy. This cycle continues until the plan is safe or escalated to a human.
