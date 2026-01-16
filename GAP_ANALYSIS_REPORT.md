@@ -75,5 +75,16 @@ The repository uses "Risk Analyst" and "Safety Node" instead of the abstract "Gr
 *   **Reasoning:** Since updates involve overwriting source code (`.py`) and policy files (`.rego`), applying a new UCA requires a **Service Redeployment** (to rebuild the container with new code) or a complex hot-reload mechanism (not visible in `deployment/`).
 *   **Time-to-Mitigation:** Likely minutes (CI/CD build time + Cloud Run deployment time). This is generally **unsuitable** for high-frequency trading environments where millisecond-level reaction to new threat vectors is required, unless the "Safety Node" has a separate dynamic configuration channel (which is implemented via Redis for CBF, but not for the transpiled logic).
 
-## 6. Conclusion
+## 6. Remediation Plan
+
+To address the deep-dive findings (Latency, Statelessness, Race Conditions), a formal Remediation Proposal has been created.
+
+👉 **See: [docs/proposals/004_risk_remediation_plan.md](docs/proposals/004_risk_remediation_plan.md)**
+
+**Summary of Proposed Changes:**
+1.  **Dynamic Policy Injection:** Switch OPA Sidecar to use **Bundle Polling** (hot-reload from GCS/S3) instead of local file mounts.
+2.  **Stateful Risk Memory:** Implement a Redis-backed `RiskMemory` class to track temporal transaction patterns (Salami Slicing detection).
+3.  **GitOps Workflow:** Refactor `offline_risk_update.py` to open **Pull Requests** rather than overwriting files directly.
+
+## 7. Conclusion
 The repository is a **faithful and advanced implementation** of the "Green Stack" philosophy. It deviates primarily in *how* it achieves the goals (using a Hybrid ADK/LangGraph architecture and "Offline" Risk Analyst), but it fulfills the functional safety requirements (CBFs, Consensus, Policy Transpilation, Auditability) with high fidelity.
