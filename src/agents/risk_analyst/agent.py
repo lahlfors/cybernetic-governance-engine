@@ -20,24 +20,12 @@ from src.utils.prompt_utils import Prompt, PromptData, Content, Part
 from config.settings import MODEL_REASONING
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
-
-# Define schema for Constraint Logic (Structured)
-class ConstraintLogic(BaseModel):
-    variable: str = Field(description="The variable to check (e.g., 'order_size', 'drawdown', 'latency')")
-    operator: str = Field(description="Comparison operator (e.g., '<', '>', '==')")
-    threshold: str = Field(description="Threshold value or reference (e.g., '0.01 * daily_volume', '200')")
-    condition: Optional[str] = Field(description="Pre-condition (e.g., 'order_type == MARKET')")
-
-# Define schema for Financial UCA Identification
-class ProposedUCA(BaseModel):
-    category: str = Field(description="STPA Category: Unsafe Action, Wrong Timing, Not Provided, Stopped Too Soon")
-    hazard: str = Field(description="The specific financial hazard (e.g., 'H-4: Slippage > 1%')")
-    description: str = Field(description="Description of the unsafe control action")
-    constraint_logic: ConstraintLogic = Field(description="Structured logic for the transpiler")
+from src.governance.stpa import UCA
 
 class RiskAssessment(BaseModel):
     risk_level: str = Field(description="Overall risk level: Low, Medium, High, Critical")
-    identified_ucas: List[ProposedUCA] = Field(description="List of specific Financial UCAs identified")
+    # We use the new UCA model which includes ProcessModelFlaw
+    identified_ucas: List[UCA] = Field(description="List of specific Financial UCAs identified using STPA")
     analysis_text: str = Field(description="Detailed textual analysis of risks")
 
 RISK_ANALYST_PROMPT_OBJ = Prompt(
@@ -57,30 +45,40 @@ Input:
 - user_risk_attitude
 
 Task:
-Analyze the plan for these 4 specific Hazard Types and define UCAs if risk exists:
+Analyze the plan for these 4 specific STPA Failure Modes (UCAType):
 
-1. Unsafe Action Provided (Insolvency/Drawdown):
+1. Unsafe Action Provided (Insolvency/Drawdown) -> Hazard: H-FIN-1 (Insolvency)
    - Check if the strategy risks hitting a hard drawdown limit (e.g., > 4.5% daily).
    - UCA: "Agent executes buy_order when daily_drawdown > 4.5%."
    - Logic: variable="drawdown", operator=">", threshold="4.5", condition="action=='BUY'"
 
-2. Wrong Timing (Stale Data/Front-running):
+2. Wrong Timing (Stale Data/Front-running) -> Hazard: H-2 (Integrity/Latency)
    - Check if the strategy relies on ultra-low latency or is sensitive to stale data.
    - UCA: "Agent executes market_order when tick_timestamp is older than 200ms."
    - Logic: variable="latency", operator=">", threshold="200", condition="order_type=='MARKET'"
 
-3. Wrong Order (Liquidity/Slippage):
+3. Providing Causes Hazard (Liquidity/Slippage) -> Hazard: H-FIN-2 (Liquidity)
    - Check if order size is too large for the asset's volume.
    - UCA: "Agent submits market_order where size > 1% of average_daily_volume."
    - Logic: variable="order_size", operator=">", threshold="0.01 * daily_volume", condition="order_type=='MARKET'"
 
-4. Stopped Too Soon (Atomic Execution Risk):
+4. Stopped Too Soon (Atomic Execution Risk) -> Hazard: H-2 (Integrity)
    - Check if the strategy requires multi-leg execution (e.g., spreads).
    - UCA: "Agent fails to complete leg_2 within 1 second of leg_1."
    - Logic: variable="time_delta_legs", operator=">", threshold="1.0", condition="strategy=='MULTI_LEG'"
 
+Causal Analysis (Process Model Flaw):
+For each UCA, you MUST identify the 'Process Model Flaw'. Why would the agent believe this action is safe?
+- Example: "Believed state: Market is liquid. Actual state: Flash Crash. Missing Feedback: Volume sensor."
+
 Output:
-Return a structured JSON object (RiskAssessment) containing the list of identified UCAs with their structured `constraint_logic`.
+Return a structured JSON object (RiskAssessment) containing the list of identified UCAs.
+Each UCA must have:
+- id (e.g., UCA-1)
+- type (One of: "Not Providing Causes Hazard", "Providing Causes Hazard", "Too Early / Too Late", "Stopped Too Soon / Lasted Too Long")
+- hazard (The System-Level Hazard Enum string)
+- logic (Structured logic for the transpiler)
+- process_model_flaw (The causal explanation)
 
 IMMEDIATELY AFTER generating this report, you MUST call `transfer_to_agent("financial_coordinator")` to return control to the main agent.
 """

@@ -1,6 +1,6 @@
 import logging
 from typing import List, Dict, Any, Tuple
-from src.agents.risk_analyst.agent import ProposedUCA
+from src.governance.stpa import UCA
 
 logger = logging.getLogger("Governance.Transpiler")
 
@@ -12,12 +12,15 @@ class PolicyTranspiler:
     2. Rego Policies (Structural Control)
     """
 
-    def generate_nemo_action(self, uca: ProposedUCA) -> str:
+    def generate_nemo_action(self, uca: UCA) -> str:
         """
-        Transpiles a single UCA into a Python function string using the `constraint_logic`.
+        Transpiles a single UCA into a Python function string using the `logic`.
         """
         logger.info(f"Transpiling UCA to Python: {uca.description}")
-        logic = uca.constraint_logic
+        logic = uca.logic
+
+        if not logic:
+            return f"# No logic definition found for UCA: {uca.description}"
 
         # 1. Slippage / Volume Check
         if logic.variable == "order_size" or "volume" in logic.threshold:
@@ -28,7 +31,7 @@ class PolicyTranspiler:
             return f"""
 def check_slippage_risk(context: Dict[str, Any] = {{}}, event: Dict[str, Any] = {{}}) -> bool:
     '''
-    Enforces {uca.hazard}: Blocks market orders exceeding {threshold_multiplier} of daily volume.
+    Enforces {uca.hazard.value}: Blocks market orders exceeding {threshold_multiplier} of daily volume.
     Condition: {logic.condition}
     '''
     order_type = context.get("order_type", "MARKET")
@@ -36,7 +39,7 @@ def check_slippage_risk(context: Dict[str, Any] = {{}}, event: Dict[str, Any] = 
     daily_vol = float(context.get("daily_volume", 1000000))
 
     if order_type == "MARKET" and order_size > (daily_vol * {threshold_multiplier}):
-        # UCA Detected: {uca.category}
+        # UCA Detected: {uca.type.value}
         return False
 
     return True
@@ -48,7 +51,7 @@ def check_slippage_risk(context: Dict[str, Any] = {{}}, event: Dict[str, Any] = 
             return f"""
 def check_data_latency(context: Dict[str, Any] = {{}}, event: Dict[str, Any] = {{}}) -> bool:
     '''
-    Enforces {uca.hazard}: Blocks trades if data latency > {limit}ms.
+    Enforces {uca.hazard.value}: Blocks trades if data latency > {limit}ms.
     '''
     # Mock check - in prod read from context['market_data_timestamp']
     current_latency = 50 # Mock
@@ -63,7 +66,7 @@ def check_data_latency(context: Dict[str, Any] = {{}}, event: Dict[str, Any] = {
             return f"""
 def check_drawdown_limit(context: Dict[str, Any] = {{}}, event: Dict[str, Any] = {{}}) -> bool:
     '''
-    Enforces {uca.hazard}: Blocks buy orders if drawdown > {limit}%.
+    Enforces {uca.hazard.value}: Blocks buy orders if drawdown > {limit}%.
     '''
     current_drawdown = float(context.get("drawdown_pct", 0))
     if current_drawdown > {limit}:
@@ -76,7 +79,7 @@ def check_drawdown_limit(context: Dict[str, Any] = {{}}, event: Dict[str, Any] =
             return f"""
 def check_atomic_execution(context: Dict[str, Any] = {{}}, event: Dict[str, Any] = {{}}) -> bool:
     '''
-    Enforces {uca.hazard}: Ensures multi-leg trades complete atomically.
+    Enforces {uca.hazard.value}: Ensures multi-leg trades complete atomically.
     '''
     # Simplified mock
     legs_completed = context.get("legs_completed", 0)
@@ -89,12 +92,15 @@ def check_atomic_execution(context: Dict[str, Any] = {{}}, event: Dict[str, Any]
         # Fallback
         return f"# No template found for UCA: {uca.description}"
 
-    def generate_rego_policy(self, uca: ProposedUCA) -> str:
+    def generate_rego_policy(self, uca: UCA) -> str:
         """
         Transpiles a single UCA into a Rego rule block.
         """
         logger.info(f"Transpiling UCA to Rego: {uca.description}")
-        logic = uca.constraint_logic
+        logic = uca.logic
+
+        if not logic:
+            return f"# No logic definition for UCA: {uca.description}"
 
         # Generic Allow Rule Structure
         # allow { not deny }
@@ -107,7 +113,7 @@ def check_atomic_execution(context: Dict[str, Any] = {{}}, event: Dict[str, Any]
                 threshold_multiplier = "0.01"
 
             return f"""
-# Enforce: {uca.hazard}
+# Enforce: {uca.hazard.value}
 # Condition: {logic.condition}
 decision = "DENY" if {{
     input.action == "execute_trade"
@@ -122,7 +128,7 @@ decision = "DENY" if {{
         if logic.variable == "latency":
             limit = logic.threshold
             return f"""
-# Enforce: {uca.hazard}
+# Enforce: {uca.hazard.value}
 # Condition: {logic.condition}
 decision = "DENY" if {{
     input.action == "execute_trade"
@@ -135,7 +141,7 @@ decision = "DENY" if {{
         if logic.variable == "drawdown":
             limit = logic.threshold
             return f"""
-# Enforce: {uca.hazard}
+# Enforce: {uca.hazard.value}
 # Condition: {logic.condition}
 decision = "DENY" if {{
     input.action == "execute_trade"
@@ -148,7 +154,7 @@ decision = "DENY" if {{
         # 4. Atomic Execution Check
         if logic.variable == "time_delta_legs":
              return f"""
-# Enforce: {uca.hazard}
+# Enforce: {uca.hazard.value}
 # Condition: {logic.condition}
 decision = "DENY" if {{
     input.action == "execute_multileg_trade"
@@ -159,14 +165,16 @@ decision = "DENY" if {{
 """
         return f"# No Rego template for UCA: {uca.description}"
 
-    def generate_safety_params(self, ucas: List[ProposedUCA]) -> Dict[str, Any]:
+    def generate_safety_params(self, ucas: List[UCA]) -> Dict[str, Any]:
         """
         Extracts safety parameters from UCAs for dynamic configuration (Phase 3.5).
         Returns a dictionary suitable for 'safety_params.json'.
         """
         params = {}
         for uca in ucas:
-            logic = uca.constraint_logic
+            logic = uca.logic
+            if not logic:
+                continue
 
             # Extract Drawdown Limit
             if logic.variable == "drawdown":
@@ -182,7 +190,7 @@ decision = "DENY" if {{
 
         return params
 
-    def transpile_policy(self, ucas: List[ProposedUCA]) -> Tuple[str, str]:
+    def transpile_policy(self, ucas: List[UCA]) -> Tuple[str, str]:
         """
         Generates both Python and Rego policy artifacts.
         Returns: (python_code, rego_code)

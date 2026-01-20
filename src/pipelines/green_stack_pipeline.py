@@ -26,6 +26,7 @@ def risk_discovery_op(
     from pydantic import BaseModel, Field
     from google.adk import Agent
     from google.adk.tools import transfer_to_agent
+    from enum import Enum
 
     # --- INLINED DEPENDENCIES ---
 
@@ -40,22 +41,51 @@ def risk_discovery_op(
     class Prompt(BaseModel):
         prompt_data: PromptData
 
-    # From src.agents.risk_analyst.agent
+    # --- STPA ONTOLOGY (INLINED) ---
+    class LossType(str, Enum):
+        L1_LOSS_OF_LIFE = "L-1: Loss of life or injury"
+        L2_ASSET_DAMAGE = "L-2: Loss of or damage to vehicle/asset"
+        L3_ENV_DAMAGE = "L-3: Damage to objects outside the vehicle"
+        L4_MISSION_LOSS = "L-4: Loss of mission"
+
+    class HazardType(str, Enum):
+        H1_SEPARATION = "H-1: Violates minimum separation"
+        H2_INTEGRITY = "H-2: Structural/Asset integrity lost"
+        H3_TERRAIN = "H-3: Unsafe distance from terrain"
+        # Financial Extensions
+        H_FIN_INSOLVENCY = "H-FIN-1: Insolvency (Drawdown > Limit)"
+        H_FIN_LIQUIDITY = "H-FIN-2: Liquidity Trap (Slippage)"
+        H_FIN_AUTHORIZATION = "H-FIN-3: Unauthorized Trading"
+
+    class UCAType(str, Enum):
+        NOT_PROVIDED = "Not Providing Causes Hazard"
+        PROVIDED = "Providing Causes Hazard"
+        TIMING_WRONG = "Too Early / Too Late"
+        STOPPED_TOO_SOON = "Stopped Too Soon / Lasted Too Long"
+
     class ConstraintLogic(BaseModel):
         variable: str = Field(description="The variable to check (e.g., 'order_size', 'drawdown', 'latency')")
         operator: str = Field(description="Comparison operator (e.g., '<', '>', '==')")
         threshold: str = Field(description="Threshold value or reference (e.g., '0.01 * daily_volume', '200')")
         condition: Optional[str] = Field(description="Pre-condition (e.g., 'order_type == MARKET')")
 
-    class ProposedUCA(BaseModel):
-        category: str = Field(description="STPA Category: Unsafe Action, Wrong Timing, Not Provided, Stopped Too Soon")
-        hazard: str = Field(description="The specific financial hazard (e.g., 'H-4: Slippage > 1%')")
-        description: str = Field(description="Description of the unsafe control action")
-        constraint_logic: ConstraintLogic = Field(description="Structured logic for the transpiler")
+    class ProcessModelFlaw(BaseModel):
+        believed_state: str = Field(description="What the Agent thought (e.g., 'Market is Stable')")
+        actual_state: str = Field(description="What was true (e.g., 'Flash Crash in progress')")
+        missing_feedback: Optional[str] = Field(None, description="What sensor data was missing or misinterpreted?")
+
+    class UCA(BaseModel):
+        id: str = Field(description="Unique ID, e.g., 'UCA-1'")
+        type: UCAType = Field(description="The STPA Failure Mode")
+        hazard: HazardType = Field(description="The System-Level Hazard this action leads to")
+        description: str = Field(description="Natural language description of the unsafe action")
+        logic: Optional[ConstraintLogic] = None
+        process_model_flaw: Optional[ProcessModelFlaw] = None
+        trace_pattern: Optional[str] = None
 
     class RiskAssessment(BaseModel):
         risk_level: str = Field(description="Overall risk level: Low, Medium, High, Critical")
-        identified_ucas: List[ProposedUCA] = Field(description="List of specific Financial UCAs identified")
+        identified_ucas: List[UCA] = Field(description="List of specific Financial UCAs identified using STPA")
         analysis_text: str = Field(description="Detailed textual analysis of risks")
 
     MODEL_REASONING = "gemini-1.5-pro" # Hardcoded for safety in pipeline
@@ -70,30 +100,34 @@ Input:
 - user_risk_attitude
 
 Task:
-Analyze the plan for these 4 specific Hazard Types and define UCAs if risk exists:
+Analyze the plan for these 4 specific STPA Failure Modes (UCAType):
 
-1. Unsafe Action Provided (Insolvency/Drawdown):
+1. Unsafe Action Provided (Insolvency/Drawdown) -> Hazard: H-FIN-1 (Insolvency)
    - Check if the strategy risks hitting a hard drawdown limit (e.g., > 4.5% daily).
    - UCA: "Agent executes buy_order when daily_drawdown > 4.5%."
    - Logic: variable="drawdown", operator=">", threshold="4.5", condition="action=='BUY'"
 
-2. Wrong Timing (Stale Data/Front-running):
+2. Wrong Timing (Stale Data/Front-running) -> Hazard: H-2 (Integrity/Latency)
    - Check if the strategy relies on ultra-low latency or is sensitive to stale data.
    - UCA: "Agent executes market_order when tick_timestamp is older than 200ms."
    - Logic: variable="latency", operator=">", threshold="200", condition="order_type=='MARKET'"
 
-3. Wrong Order (Liquidity/Slippage):
+3. Providing Causes Hazard (Liquidity/Slippage) -> Hazard: H-FIN-2 (Liquidity)
    - Check if order size is too large for the asset's volume.
    - UCA: "Agent submits market_order where size > 1% of average_daily_volume."
    - Logic: variable="order_size", operator=">", threshold="0.01 * daily_volume", condition="order_type=='MARKET'"
 
-4. Stopped Too Soon (Atomic Execution Risk):
+4. Stopped Too Soon (Atomic Execution Risk) -> Hazard: H-2 (Integrity)
    - Check if the strategy requires multi-leg execution (e.g., spreads).
    - UCA: "Agent fails to complete leg_2 within 1 second of leg_1."
    - Logic: variable="time_delta_legs", operator=">", threshold="1.0", condition="strategy=='MULTI_LEG'"
 
+Causal Analysis (Process Model Flaw):
+For each UCA, you MUST identify the 'Process Model Flaw'. Why would the agent believe this action is safe?
+- Example: "Believed state: Market is liquid. Actual state: Flash Crash. Missing Feedback: Volume sensor."
+
 Output:
-Return a structured JSON object (RiskAssessment) containing the list of identified UCAs with their structured `constraint_logic`.
+Return a structured JSON object (RiskAssessment) containing the list of identified UCAs.
 """
 
     # Initialize Agent
@@ -158,46 +192,78 @@ def policy_transpilation_op(
     import logging
     from typing import List, Dict, Any, Optional
     from pydantic import BaseModel, Field
+    from enum import Enum
 
     logger = logging.getLogger("PolicyTranspiler")
     logger.info("⚙️ Transpiling Policies...")
 
     # --- INLINED SCHEMA ---
+    class LossType(str, Enum):
+        L1_LOSS_OF_LIFE = "L-1: Loss of life or injury"
+        L2_ASSET_DAMAGE = "L-2: Loss of or damage to vehicle/asset"
+        L3_ENV_DAMAGE = "L-3: Damage to objects outside the vehicle"
+        L4_MISSION_LOSS = "L-4: Loss of mission"
+
+    class HazardType(str, Enum):
+        H1_SEPARATION = "H-1: Violates minimum separation"
+        H2_INTEGRITY = "H-2: Structural/Asset integrity lost"
+        H3_TERRAIN = "H-3: Unsafe distance from terrain"
+        H_FIN_INSOLVENCY = "H-FIN-1: Insolvency (Drawdown > Limit)"
+        H_FIN_LIQUIDITY = "H-FIN-2: Liquidity Trap (Slippage)"
+        H_FIN_AUTHORIZATION = "H-FIN-3: Unauthorized Trading"
+
+    class UCAType(str, Enum):
+        NOT_PROVIDED = "Not Providing Causes Hazard"
+        PROVIDED = "Providing Causes Hazard"
+        TIMING_WRONG = "Too Early / Too Late"
+        STOPPED_TOO_SOON = "Stopped Too Soon / Lasted Too Long"
+
     class ConstraintLogic(BaseModel):
         variable: str
         operator: str
         threshold: str
         condition: Optional[str] = None
 
-    class ProposedUCA(BaseModel):
-        category: str
-        hazard: str
+    class ProcessModelFlaw(BaseModel):
+        believed_state: str
+        actual_state: str
+        missing_feedback: Optional[str] = None
+
+    class UCA(BaseModel):
+        id: str
+        type: UCAType
+        hazard: HazardType
         description: str
-        constraint_logic: ConstraintLogic
+        logic: Optional[ConstraintLogic] = None
+        process_model_flaw: Optional[ProcessModelFlaw] = None
+        trace_pattern: Optional[str] = None
 
     class PolicyTranspiler:
-        def generate_nemo_action(self, uca: ProposedUCA) -> str:
+        def generate_nemo_action(self, uca: UCA) -> str:
             logger.info(f"Transpiling UCA: {uca.description}")
-            logic = uca.constraint_logic
+            logic = uca.logic
+
+            if not logic:
+                return f"# No logic definition for UCA: {uca.description}"
 
             if logic.variable == "order_size" or "volume" in logic.threshold:
                 threshold_multiplier = logic.threshold.split("*")[0].strip()
                 if not threshold_multiplier.replace('.', '', 1).isdigit():
                     threshold_multiplier = "0.01"
-                return f"def check_slippage_risk(context, event): return True # {uca.hazard}"
+                return f"def check_slippage_risk(context, event): return True # {uca.hazard.value}"
 
             if logic.variable == "latency":
                 limit = logic.threshold
                 return f"""
 def check_data_latency(context: Dict[str, Any] = {{}}, event: Dict[str, Any] = {{}}) -> bool:
-    '''Enforces {uca.hazard}: Blocks trades if data latency > {limit}ms.'''
+    '''Enforces {uca.hazard.value}: Blocks trades if data latency > {limit}ms.'''
     current_latency = 50 # Mock
     if current_latency > {limit}: return False
     return True
 """
             return f"# No template found for UCA: {uca.description}"
 
-        def transpile_policy(self, ucas: List[ProposedUCA]) -> str:
+        def transpile_policy(self, ucas: List[UCA]) -> str:
             code_blocks = ["# AUTOMATICALLY GENERATED BY GOVERNANCE TRANSPILER", ""]
             for uca in ucas:
                 code_blocks.append(self.generate_nemo_action(uca))
@@ -205,7 +271,12 @@ def check_data_latency(context: Dict[str, Any] = {{}}, event: Dict[str, Any] = {
 
     try:
         raw_ucas = ucas.get("ucas", [])
-        proposed_ucas = [ProposedUCA(**u) for u in raw_ucas]
+        # We need to correctly parse the enums which might be passed as strings from the previous step
+        # The previous step does uca.model_dump(), which keeps Enums as their values if configured, or objects.
+        # But JSON serialization usually stringifies them.
+        # Pydantic should handle string -> Enum conversion if we use the model.
+
+        proposed_ucas = [UCA(**u) for u in raw_ucas]
 
         transpiler = PolicyTranspiler()
         code_content = transpiler.transpile_policy(proposed_ucas)
