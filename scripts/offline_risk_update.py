@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import json
+import os
 from src.agents.risk_analyst.agent import risk_analyst_agent, RiskAssessment
 from src.governance.transpiler import transpiler
 
@@ -65,6 +67,7 @@ async def run_offline_risk_assessment():
     # 2. Transpile
     logger.info("⚙️ Transpiling Rules...")
     py_code, rego_code = transpiler.transpile_policy(ucas)
+    safety_params = transpiler.generate_safety_params(ucas)
 
     # 3. Write to Files
     py_output_path = "src/governance/generated_actions.py"
@@ -74,6 +77,17 @@ async def run_offline_risk_assessment():
     rego_output_path = "src/governance/policy/generated_rules.rego"
     with open(rego_output_path, "w") as f:
         f.write(rego_code)
+
+    # Atomic Write for Safety Params
+    params_output_path = "src/governance/safety_params.json"
+    params_temp_path = params_output_path + ".tmp"
+    try:
+        with open(params_temp_path, "w") as f:
+            json.dump(safety_params, f, indent=2)
+        os.replace(params_temp_path, params_output_path)
+        logger.info(f"✅ Safety Params Updated: {params_output_path}")
+    except Exception as e:
+        logger.error(f"Failed to write safety params: {e}")
 
     logger.info(f"✅ Policy Updated: {py_output_path} and {rego_output_path}")
 
