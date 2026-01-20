@@ -2,25 +2,39 @@ import pytest
 import json
 import os
 import logging
-from src.governance.nemo_actions import check_drawdown_limit, SAFETY_PARAMS_FILE, DEFAULT_DRAWDOWN_LIMIT
+import time
+from unittest import mock
+from src.governance import nemo_actions
+from src.governance.nemo_actions import check_drawdown_limit, DEFAULT_DRAWDOWN_LIMIT
 
 # Configure logging to capture output
 logging.basicConfig(level=logging.INFO)
 
 @pytest.fixture
-def clean_safety_params():
-    """Fixture to ensure a clean safety params file before and after tests."""
-    if os.path.exists(SAFETY_PARAMS_FILE):
-        os.remove(SAFETY_PARAMS_FILE)
-    yield
-    if os.path.exists(SAFETY_PARAMS_FILE):
-        os.remove(SAFETY_PARAMS_FILE)
+def mock_params_file(tmp_path):
+    """
+    Fixture to mock the SAFETY_PARAMS_FILE constant to point to a temp file.
+    This ensures we don't modify the actual source tree.
+    """
+    # Create a temp file
+    p = tmp_path / "safety_params.json"
 
-def test_standard_cbf_logic_default(clean_safety_params):
+    # Patch the constant in the module
+    with mock.patch("src.governance.nemo_actions.SAFETY_PARAMS_FILE", str(p)):
+        # Also reset cache to ensure clean state for each test
+        nemo_actions._safety_params_cache = {}
+        nemo_actions._last_check_time = 0.0
+        yield p
+
+def test_standard_cbf_logic_default(mock_params_file):
     """
     Test Case 1: Standard CBF Logic using Default Limit.
-    No file exists, so it should use DEFAULT_DRAWDOWN_LIMIT (0.05).
+    File doesn't exist yet (or is empty), so it should use DEFAULT_DRAWDOWN_LIMIT (0.05).
     """
+    # Ensure file doesn't exist
+    if mock_params_file.exists():
+        mock_params_file.unlink()
+
     # 4% Drawdown (0.04) < 0.05 -> Safe
     context_safe = {"drawdown_pct": 4.0}
     assert check_drawdown_limit(context_safe) is True
@@ -29,15 +43,14 @@ def test_standard_cbf_logic_default(clean_safety_params):
     context_unsafe = {"drawdown_pct": 6.0}
     assert check_drawdown_limit(context_unsafe) is False
 
-def test_hot_reload_dynamic_limit(clean_safety_params):
+def test_hot_reload_dynamic_limit_with_cache(mock_params_file):
     """
-    Test Case 2: Hot-Reload.
-    Update the file and verify the limit changes at runtime.
+    Test Case 2: Hot-Reload with Caching.
+    Update the file and verify the limit changes after TTL expiry.
     """
     # 1. Write a strict limit (1% = 0.01)
     strict_params = {"drawdown_limit": 0.01}
-    with open(SAFETY_PARAMS_FILE, "w") as f:
-        json.dump(strict_params, f)
+    mock_params_file.write_text(json.dumps(strict_params))
 
     # 2. Check 2% Drawdown (0.02)
     # Default (0.05) would allow it, but Strict (0.01) should block it.
@@ -46,49 +59,52 @@ def test_hot_reload_dynamic_limit(clean_safety_params):
 
     # 3. Update to loose limit (10% = 0.10)
     loose_params = {"drawdown_limit": 0.10}
-    with open(SAFETY_PARAMS_FILE, "w") as f:
-        json.dump(loose_params, f)
+    mock_params_file.write_text(json.dumps(loose_params))
+
+    # Force cache expiry by mocking time or manually resetting
+    # Option A: Wait (slow)
+    # Option B: Mock time (better)
+    # Option C: Manually reset internal state (easiest for unit test)
+    nemo_actions._last_check_time = 0.0
 
     # 4. Check same 2% Drawdown
     # Now it should pass.
     assert check_drawdown_limit(context) is True
 
-def test_invalid_data_sanitization(clean_safety_params):
+def test_invalid_data_sanitization(mock_params_file):
     """
     Test Case 3: Invalid Data (Sanitization).
     Write invalid values and ensure fallback to DEFAULT (0.05).
     """
     # Case A: Too high (> 1.0)
-    # Note: Our logic treats > 1.0 as invalid in the reader,
-    # assuming the generator (transpiler) handles normalization.
-    # If the reader sees > 1.0, it rejects it.
     invalid_params = {"drawdown_limit": 5.0}
-    with open(SAFETY_PARAMS_FILE, "w") as f:
-        json.dump(invalid_params, f)
+    mock_params_file.write_text(json.dumps(invalid_params))
+
+    # Reset cache
+    nemo_actions._last_check_time = 0.0
 
     # Should fall back to 0.05
     # 6% Drawdown should fail (0.06 > 0.05)
-    # If it used 5.0, it would pass.
     context = {"drawdown_pct": 6.0}
     assert check_drawdown_limit(context) is False
 
     # Case B: Negative
     invalid_params = {"drawdown_limit": -0.1}
-    with open(SAFETY_PARAMS_FILE, "w") as f:
-        json.dump(invalid_params, f)
+    mock_params_file.write_text(json.dumps(invalid_params))
+    nemo_actions._last_check_time = 0.0
 
     # Should fall back to 0.05
     # 4% Drawdown should pass
     context_safe = {"drawdown_pct": 4.0}
     assert check_drawdown_limit(context_safe) is True
 
-def test_corrupt_file_resilience(clean_safety_params):
+def test_corrupt_file_resilience(mock_params_file):
     """
     Test Case 4: Corrupt File.
     Write malformed JSON and ensure fallback to DEFAULT.
     """
-    with open(SAFETY_PARAMS_FILE, "w") as f:
-        f.write("{ 'drawdown_limit': ... invalid json ... }")
+    mock_params_file.write_text("{ 'drawdown_limit': ... invalid json ... }")
+    nemo_actions._last_check_time = 0.0
 
     # Should fall back to 0.05
     # 6% Drawdown should fail

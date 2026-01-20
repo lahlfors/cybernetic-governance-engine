@@ -19,6 +19,11 @@ logger = logging.getLogger("NeMo.Actions")
 SAFETY_PARAMS_FILE = "src/governance/safety_params.json"
 DEFAULT_DRAWDOWN_LIMIT = 0.05  # 5% default fallback
 
+# --- CACHING STATE ---
+_safety_params_cache: Dict[str, Any] = {}
+_last_check_time: float = 0.0
+CACHE_TTL = 5.0  # Seconds
+
 # --- CORE/EXISTING ACTIONS ---
 
 def check_approval_token(context: Dict[str, Any] = {}, event: Dict[str, Any] = {}) -> bool:
@@ -76,11 +81,22 @@ def check_data_latency(context: Dict[str, Any] = {}, event: Dict[str, Any] = {})
 def _get_drawdown_limit() -> float:
     """
     Helper to safely read the dynamic drawdown limit from JSON.
-    Implements input sanitization and default fallback.
+    Implements input sanitization, default fallback, and caching.
     """
+    global _safety_params_cache, _last_check_time
+
+    now = time.time()
+
+    # Return cached value if within TTL
+    if _safety_params_cache and (now - _last_check_time < CACHE_TTL):
+        return _safety_params_cache.get("drawdown_limit", DEFAULT_DRAWDOWN_LIMIT)
+
     try:
         if not os.path.exists(SAFETY_PARAMS_FILE):
             return DEFAULT_DRAWDOWN_LIMIT
+
+        # Check file modification time for smarter caching?
+        # For now, simple TTL is sufficient and robust.
 
         with open(SAFETY_PARAMS_FILE, "r") as f:
             data = json.load(f)
@@ -89,17 +105,21 @@ def _get_drawdown_limit() -> float:
 
         # Schema Validation: 0.0 < limit < 1.0
         if limit is None:
-            return DEFAULT_DRAWDOWN_LIMIT
-
-        if not isinstance(limit, (int, float)):
+            limit = DEFAULT_DRAWDOWN_LIMIT
+        elif not isinstance(limit, (int, float)):
              logger.error(f"Invalid type for drawdown_limit: {type(limit)}")
-             return DEFAULT_DRAWDOWN_LIMIT
-
-        if limit <= 0.0 or limit >= 1.0:
+             limit = DEFAULT_DRAWDOWN_LIMIT
+        elif limit <= 0.0 or limit >= 1.0:
             logger.error(f"Invalid value for drawdown_limit: {limit}. Must be between 0.0 and 1.0")
-            return DEFAULT_DRAWDOWN_LIMIT
+            limit = DEFAULT_DRAWDOWN_LIMIT
+        else:
+            limit = float(limit)
 
-        return float(limit)
+        # Update Cache
+        _safety_params_cache = {"drawdown_limit": limit}
+        _last_check_time = now
+
+        return limit
 
     except json.JSONDecodeError:
         logger.error(f"Corrupt safety params file: {SAFETY_PARAMS_FILE}")
