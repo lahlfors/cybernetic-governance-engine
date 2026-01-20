@@ -36,10 +36,13 @@ class UCAType(str, Enum):
 class ControlLoop(BaseModel):
     """
     Metadata describing the STPA Control Loop context.
+    Maps the abstract STPA model to the concrete LangGraph execution.
     """
+    id: str = Field(..., description="Unique ID for this loop instance")
     name: str = Field(..., description="Name of the loop, e.g., 'Trading Execution Loop'")
     controller: str = Field(..., description="The AI Agent (e.g., 'ExecutionAnalyst')")
     controlled_process: str = Field(..., description="The external system (e.g., 'Market/Exchange')")
+    control_actions: List[str] = Field(..., description="List of allowed actions (e.g., ['buy', 'sell'])")
     feedback_mechanism: str = Field(..., description="How the agent sees state (e.g., 'Market Data Feed')")
 
 class ConstraintLogic(BaseModel):

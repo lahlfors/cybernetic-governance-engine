@@ -1,6 +1,7 @@
-from typing import TypedDict, Annotated, List, Literal
+from typing import TypedDict, Annotated, List, Literal, Optional
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
+from src.governance.stpa import ControlLoop
 
 class AgentState(TypedDict):
     # The shared conversation history
@@ -13,10 +14,12 @@ class AgentState(TypedDict):
     risk_status: Literal["UNKNOWN", "APPROVED", "REJECTED_REVISE"]
     risk_feedback: str | None
 
+    # STPA Control Context
+    control_loop_metadata: Optional[ControlLoop] # Current STPA context
+
     # User Profile
     risk_attitude: str | None
     investment_period: str | None
 
     execution_plan_output: str | dict | None # Holds the structured plan
-    risk_attitude: str # User Profile
     user_id: str # User Identity

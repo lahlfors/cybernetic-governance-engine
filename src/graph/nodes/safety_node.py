@@ -13,6 +13,11 @@ def safety_check_node(state: AgentState) -> Dict[str, Any]:
     """
     logger.info("🛡️ Safety Check Node: Intercepting Execution Plan")
 
+    # STPA Context Validation
+    loop_metadata = state.get("control_loop_metadata")
+    if loop_metadata:
+        logger.info(f"Context: {loop_metadata.name} (Controller: {loop_metadata.controller})")
+
     # 1. Extract the proposed plan/action
     # The Execution Analyst (Planner) outputs a structured plan.
     # We assume the plan is stored in 'execution_plan_output' or inferred from the last message.
@@ -35,6 +40,14 @@ def safety_check_node(state: AgentState) -> Dict[str, Any]:
         "user_id": state.get("user_id", "anonymous"),
         "risk_profile": state.get("risk_attitude", "neutral")
     }
+
+    # STPA Metadata Injection for Policy Decisions
+    if loop_metadata:
+        opa_input["stpa_context"] = {
+            "loop_id": loop_metadata.id,
+            "controller": loop_metadata.controller,
+            "allowed_actions": loop_metadata.control_actions
+        }
 
     # 3. Query OPA (Governance Layer)
     decision = opa_client.evaluate_policy(opa_input)
