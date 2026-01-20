@@ -1,18 +1,28 @@
 import logging
 import time
+import json
+import os
 from typing import Dict, Any, List, Optional
 from src.governance.safety import safety_filter
 from src.demo.state import demo_state
 
 # Import generated actions if available
 try:
-    from src.governance.generated_actions import check_slippage_risk, check_drawdown_limit
+    from src.governance.generated_actions import check_slippage_risk
 except ImportError:
     logging.warning("Generated actions not found. Using fallback.")
     def check_slippage_risk(*args, **kwargs): return True
-    def check_drawdown_limit(*args, **kwargs): return True
 
 logger = logging.getLogger("NeMo.Actions")
+
+# --- STATIC CBF CONSTANTS ---
+SAFETY_PARAMS_FILE = "src/governance/safety_params.json"
+DEFAULT_DRAWDOWN_LIMIT = 0.05  # 5% default fallback
+
+# --- CACHING STATE ---
+_safety_params_cache: Dict[str, Any] = {}
+_last_check_time: float = 0.0
+CACHE_TTL = 5.0  # Seconds
 
 # --- CORE/EXISTING ACTIONS ---
 
@@ -66,6 +76,87 @@ def check_data_latency(context: Dict[str, Any] = {}, event: Dict[str, Any] = {})
         return False
 
     logger.info(f"✅ Latency Check Passed: {latency_ms:.2f}ms")
+    return True
+
+def _get_drawdown_limit() -> float:
+    """
+    Helper to safely read the dynamic drawdown limit from JSON.
+    Implements input sanitization, default fallback, and caching.
+    """
+    global _safety_params_cache, _last_check_time
+
+    now = time.time()
+
+    # Return cached value if within TTL
+    if _safety_params_cache and (now - _last_check_time < CACHE_TTL):
+        return _safety_params_cache.get("drawdown_limit", DEFAULT_DRAWDOWN_LIMIT)
+
+    try:
+        if not os.path.exists(SAFETY_PARAMS_FILE):
+            return DEFAULT_DRAWDOWN_LIMIT
+
+        # Check file modification time for smarter caching?
+        # For now, simple TTL is sufficient and robust.
+
+        with open(SAFETY_PARAMS_FILE, "r") as f:
+            data = json.load(f)
+
+        limit = data.get("drawdown_limit")
+
+        # Schema Validation: 0.0 < limit < 1.0
+        if limit is None:
+            limit = DEFAULT_DRAWDOWN_LIMIT
+        elif not isinstance(limit, (int, float)):
+             logger.error(f"Invalid type for drawdown_limit: {type(limit)}")
+             limit = DEFAULT_DRAWDOWN_LIMIT
+        elif limit <= 0.0 or limit >= 1.0:
+            logger.error(f"Invalid value for drawdown_limit: {limit}. Must be between 0.0 and 1.0")
+            limit = DEFAULT_DRAWDOWN_LIMIT
+        else:
+            limit = float(limit)
+
+        # Update Cache
+        _safety_params_cache = {"drawdown_limit": limit}
+        _last_check_time = now
+
+        return limit
+
+    except json.JSONDecodeError:
+        logger.error(f"Corrupt safety params file: {SAFETY_PARAMS_FILE}")
+        return DEFAULT_DRAWDOWN_LIMIT
+    except Exception as e:
+        logger.error(f"Error reading safety params: {e}")
+        return DEFAULT_DRAWDOWN_LIMIT
+
+def check_drawdown_limit(context: Dict[str, Any] = {}, event: Dict[str, Any] = {}) -> bool:
+    """
+    Enforces HZ-Drawdown: Discrete Control Barrier Function (CBF).
+    Invariant: h(x) = Limit - Current_Drawdown >= 0
+    """
+    limit = _get_drawdown_limit()
+
+    # context['drawdown_pct'] is typically 0-100 based on previous analysis of transpiler/agent.
+    # However, our limit is 0.0 - 1.0.
+    # If the input is "5.0" (percent), we need to normalize it to 0.05
+    # OR we assume the context provides it in the same unit.
+    # The generated code used: current_drawdown = float(context.get("drawdown_pct", 0))
+    # And compared: if current_drawdown > {limit} (where limit was e.g. 4.5).
+    # So the context "drawdown_pct" is 0-100.
+    # Therefore, we must normalize the context value: 5.0 -> 0.05
+
+    raw_drawdown = float(context.get("drawdown_pct", 0.0))
+    current_drawdown = raw_drawdown / 100.0
+
+    # CBF Calculation
+    barrier_value = limit - current_drawdown
+
+    # Logging for Observability
+    logger.info(f"🛡️ CBF Check (Drawdown): Limit={limit:.4f}, Current={current_drawdown:.4f}, h(x)={barrier_value:.4f}")
+
+    if barrier_value < 0:
+        logger.warning(f"⛔ UCA Violation (Drawdown): h(x) < 0 ({barrier_value:.4f})")
+        return False
+
     return True
 
 def check_atomic_execution(context: Dict[str, Any] = {}, event: Dict[str, Any] = {}) -> bool:

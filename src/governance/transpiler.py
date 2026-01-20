@@ -159,6 +159,29 @@ decision = "DENY" if {{
 """
         return f"# No Rego template for UCA: {uca.description}"
 
+    def generate_safety_params(self, ucas: List[ProposedUCA]) -> Dict[str, Any]:
+        """
+        Extracts safety parameters from UCAs for dynamic configuration (Phase 3.5).
+        Returns a dictionary suitable for 'safety_params.json'.
+        """
+        params = {}
+        for uca in ucas:
+            logic = uca.constraint_logic
+
+            # Extract Drawdown Limit
+            if logic.variable == "drawdown":
+                try:
+                    # Logic threshold might be a string like "4.5" or "0.045"
+                    val = float(logic.threshold)
+                    # Normalize: if > 1.0, assume percentage (e.g. 4.5 -> 0.045)
+                    if val > 1.0:
+                        val = val / 100.0
+                    params["drawdown_limit"] = val
+                except ValueError:
+                    logger.warning(f"Could not parse drawdown threshold: {logic.threshold}")
+
+        return params
+
     def transpile_policy(self, ucas: List[ProposedUCA]) -> Tuple[str, str]:
         """
         Generates both Python and Rego policy artifacts.
