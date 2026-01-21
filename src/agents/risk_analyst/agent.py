@@ -15,7 +15,6 @@
 """Risk Analysis Agent for providing the final risk evaluation and identifying UCAs"""
 
 from google.adk import Agent
-from google.adk.tools import transfer_to_agent
 from src.utils.prompt_utils import Prompt, PromptData, Content, Part
 from config.settings import MODEL_REASONING
 from pydantic import BaseModel, Field
@@ -80,7 +79,7 @@ Each UCA must have:
 - logic (Structured logic for the transpiler)
 - process_model_flaw (The causal explanation)
 
-IMMEDIATELY AFTER generating this report, you MUST call `transfer_to_agent("financial_coordinator")` to return control to the main agent.
+After generating this report, the risk assessment is complete and will be returned to the financial coordinator.
 """
                     )
                 ]
@@ -98,7 +97,7 @@ risk_analyst_agent = Agent(
     name="risk_analyst_agent",
     instruction=get_risk_analyst_instruction(),
     output_key="risk_assessment_output",
-    tools=[transfer_to_agent],
+    tools=[],
     output_schema=RiskAssessment,
     generate_content_config={
         "response_mime_type": "application/json"

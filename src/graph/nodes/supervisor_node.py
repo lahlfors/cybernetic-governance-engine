@@ -91,6 +91,9 @@ def supervisor_node(state):
                     )
                 elif "risk" in target_lower:
                     next_step = "risk_analyst"
+                elif "strategy" in target_lower:
+                    # Route TRADING_STRATEGY to governed_trader
+                    next_step = "governed_trader"
                 elif "trade" in target_lower:
                     next_step = "governed_trader"
                     # Initialize STPA Loop Context for Trading (Hot Path)
@@ -104,6 +107,13 @@ def supervisor_node(state):
                     )
                 elif "human" in target_lower or "review" in target_lower:
                     next_step = "human_review"
+    
+    # If no routing signal but agent has a text response, end gracefully (return to user)
+    # This handles conversational responses like greetings or questions without explicit routing
+    if next_step == "FINISH" and agent_text:
+        # Agent responded but didn't route anywhere - this is a conversational turn
+        # The graph will end and return the response to the user
+        pass  # Keep next_step as "FINISH" to end the graph and return agent_text
 
     # 3. Return updated state and routing signal
     # We must return the 'updated_state' dictionary, not the original 'state'

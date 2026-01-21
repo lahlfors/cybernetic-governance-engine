@@ -59,21 +59,31 @@ async def query_agent(req: QueryRequest):
             # Capture trace_id for UI
             trace_id = f"{current_span.get_span_context().trace_id:032x}"
 
-        # 1. NeMo Security
+
+        # 1. NeMo Input Validation (Pre-Agent)
         is_safe, msg = await validate_with_nemo(req.prompt, rails)
         if not is_safe:
             return {"response": msg}
 
-        # 2. Graph Execution (Calls Existing Agents)
-        # Using ainvoke to run the graph asynchronously
+        # 2. Graph Execution (Agent generates response)
         res = await graph.ainvoke(
             {"messages": [("user", req.prompt)]},
             config={"recursion_limit": 20, "configurable": {"thread_id": req.thread_id}}
         )
         
-        # Extract the last message content
+        # Extract the agent's response
+        agent_response = res["messages"][-1].content
+        
+        # 3. NeMo Output Validation (Post-Agent)
+        # Validate the agent's response for safety
+        output_safe, output_msg = await validate_with_nemo(agent_response, rails, validate_output=True)
+        if not output_safe:
+            # Agent generated unsafe content, return rejection instead
+            return {"response": output_msg, "trace_id": trace_id}
+        
+        # 4. Return validated agent response
         return {
-            "response": res["messages"][-1].content,
+            "response": agent_response,
             "trace_id": trace_id
         }
 

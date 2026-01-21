@@ -89,7 +89,13 @@ def data_analyst_node(state):
     """Wraps the Data Analyst agent for LangGraph."""
     print("--- [Graph] Calling Data Analyst ---")
     last_msg = state["messages"][-1].content
+    print(f"--- [Graph] Data Analyst Input: {last_msg[:100]}... ---")
+    
     res = run_adk_agent(data_analyst_agent, last_msg)
+    
+    print(f"--- [Graph] Data Analyst Completed. Response length: {len(res.answer)} chars ---")
+    print(f"--- [Graph] Data Analyst Response preview: {res.answer[:200]}... ---")
+    
     return {"messages": [("ai", f"Data Analysis: {res.answer}")]}
 
 

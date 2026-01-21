@@ -34,3 +34,9 @@ verification_*.txt
 trace_*.parquet
 logs/cold_tier/
 tests/temp_*/
+
+# Caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+uv.lock.bak
