@@ -6,8 +6,8 @@ import sys
 from unittest.mock import MagicMock, patch
 
 # Mock Strategy:
-# We must ensure that the arguments passed to memory.write are correct according to wasmtime API.
-# wasmtime.Memory.write(store, value, start)
+# We mock 'wasmtime' and ensure that 'memory.data_ptr(store)' returns a ctypes pointer.
+# We verify that _write_to_memory calls ctypes.memmove with correct arguments.
 
 # 1. Mock PolicyEngine for Client import
 sys.modules['src.governance.engine'] = MagicMock()
@@ -26,8 +26,6 @@ class TestWasmPolicyEngine(unittest.TestCase):
     def test_engine_initialization_no_file(self):
         """Test that engine raises FileNotFoundError if policy file is missing."""
         with patch('src.governance.engine.logger'):
-            # It should raise FileNotFoundError, which we might catch or not depending on impl.
-            # Current impl raises it.
             with self.assertRaises(FileNotFoundError):
                 PolicyEngine(policy_path="non_existent.wasm")
 
@@ -35,10 +33,11 @@ class TestWasmPolicyEngine(unittest.TestCase):
     @patch('src.governance.engine.Linker')
     @patch('src.governance.engine.Store')
     @patch('src.governance.engine.Engine')
-    def test_engine_evaluation_logic(self, MockEngine, MockStore, MockLinker, MockModule):
+    @patch('src.governance.engine.ctypes') # Mock ctypes to verify memmove/string_at
+    def test_engine_evaluation_logic(self, MockCtypes, MockEngine, MockStore, MockLinker, MockModule):
         """
-        Test the PolicyEngine logic using mocked Wasmtime components.
-        STRICT verification of API calls to ensure correctness.
+        Test the PolicyEngine logic using mocked Wasmtime components and ctypes.
+        STRICT verification of memory operations.
         """
         # Create a dummy file
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
@@ -46,30 +45,44 @@ class TestWasmPolicyEngine(unittest.TestCase):
             tmp_path = tmp.name
 
         try:
-            # --- 1. Setup Singleton Mocks (Crucial for Reference Equality) ---
+            # --- Setup Mocks ---
             mock_store_inst = MockStore.return_value
             mock_instance = MockLinker.return_value.instantiate.return_value
 
-            # Define fake pointers
+            # Pointers
             INPUT_PTR = 100
             VALUE_PTR = 200
             CTX_PTR = 300
             RESULT_PTR = 400
             JSON_PTR = 500
+            BASE_ADDR = 1000 # Fake base address of Wasm memory
+            MEMORY_SIZE = 10000
 
-            # Create specific function mocks
+            # Mock functions
             mock_opa_malloc = MagicMock(return_value=INPUT_PTR)
             mock_opa_value_parse = MagicMock(return_value=VALUE_PTR)
             mock_opa_eval_ctx_new = MagicMock(return_value=CTX_PTR)
             mock_opa_eval_ctx_get_result = MagicMock(return_value=RESULT_PTR)
             mock_opa_json_dump = MagicMock(return_value=JSON_PTR)
 
-            # Create the MEMORY mock (Singleton)
+            # Memory Mock
             mock_memory = MagicMock()
-            mock_memory.read.return_value = b'{"result": "ALLOW"}\x00'
-            mock_memory.data_len.return_value = 1024
+            # data_ptr should return a pointer.
+            mock_data_ptr = MagicMock()
+            mock_memory.data_ptr.return_value = mock_data_ptr
+            # data_len should return int
+            mock_memory.data_len.return_value = MEMORY_SIZE
 
-            # --- 2. Configure the "Exports" Side Effect ---
+            # Setup ctypes mock behavior
+            # cast(ptr, void_p).value should return BASE_ADDR
+            mock_void_p_obj = MagicMock()
+            mock_void_p_obj.value = BASE_ADDR
+            MockCtypes.cast.return_value = mock_void_p_obj
+
+            # string_at(addr) -> return bytes
+            MockCtypes.string_at.return_value = b'{"result": "DENY"}' # Simulate DENY result
+
+            # Exports side effect
             mock_exports = MagicMock()
             mock_instance.exports.return_value = mock_exports
 
@@ -86,7 +99,7 @@ class TestWasmPolicyEngine(unittest.TestCase):
                     return mock_opa_eval_ctx_get_result
                 elif name == "opa_json_dump":
                     return mock_opa_json_dump
-                return MagicMock() # Fallback
+                return MagicMock()
 
             mock_exports.__getitem__.side_effect = get_export_side_effect
 
@@ -95,30 +108,37 @@ class TestWasmPolicyEngine(unittest.TestCase):
             self.assertTrue(engine.ready)
 
             # Execute Evaluation
+            # We use input {"unsafe": True} and expect DENY (as returned by string_at mock)
             input_data = {"unsafe": True}
             result = engine.evaluate(input_data)
 
             # Assertions
-            self.assertEqual(result["result"], "ALLOW")
+            self.assertEqual(result["result"], "DENY")
 
-            # STRICT VERIFICATION: Check memory.write arguments
-            # Expected: write(store, input_json_bytes, input_ptr)
+            # STRICT VERIFICATION: Check memmove arguments (Write)
+            # Code: ctypes.memmove(target_addr, data, len(data))
+            # target_addr = BASE_ADDR + INPUT_PTR = 1000 + 100 = 1100
 
-            # Ensure write was called on the SINGLETON mock
-            self.assertTrue(mock_memory.write.called, "Memory.write was not called")
+            MockCtypes.memmove.assert_called()
+            args, _ = MockCtypes.memmove.call_args
 
-            args, _ = mock_memory.write.call_args
+            # Arg 0: Destination Address
+            self.assertEqual(args[0], BASE_ADDR + INPUT_PTR)
 
-            # Arg 0: Store
-            self.assertEqual(args[0], mock_store_inst)
+            # Arg 1: Source Data (Bytes)
+            expected_json = json.dumps(input_data).encode("utf-8")
+            self.assertEqual(args[1], expected_json)
 
-            # Arg 1: Value (Bytes) - This is where the bug was!
-            self.assertIsInstance(args[1], bytes, f"Arg 1 should be bytes (Data), got {type(args[1])}")
-            self.assertEqual(args[1], json.dumps(input_data).encode("utf-8"))
+            # Arg 2: Length
+            self.assertEqual(args[2], len(expected_json))
 
-            # Arg 2: Start (Int) - Offset
-            self.assertIsInstance(args[2], int, f"Arg 2 should be int (Offset), got {type(args[2])}")
-            self.assertEqual(args[2], INPUT_PTR)
+            # STRICT VERIFICATION: Check string_at arguments (Read)
+            # Code: ctypes.string_at(target_addr)
+            # target_addr = BASE_ADDR + JSON_PTR = 1000 + 500 = 1500
+
+            MockCtypes.string_at.assert_called()
+            r_args, _ = MockCtypes.string_at.call_args
+            self.assertEqual(r_args[0], BASE_ADDR + JSON_PTR)
 
         finally:
             if os.path.exists(tmp_path):

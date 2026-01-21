@@ -8,6 +8,8 @@ spec:
   template:
     metadata:
       annotations:
+        # Architecture II uses Cloud Run Gen 2 (MicroVMs) for full Linux compatibility
+        # while maintaining strong isolation.
         run.googleapis.com/execution-environment: gen2
         run.googleapis.com/startup-cpu-boost: "true"
     spec:

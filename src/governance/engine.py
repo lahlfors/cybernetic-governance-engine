@@ -77,19 +77,80 @@ class PolicyEngine:
     def _read_json_from_memory(self, addr: int) -> Dict[str, Any]:
         """
         Reads a null-terminated JSON string from Wasm memory at the given address.
+        Uses ctypes for raw memory access to ensure compatibility.
         """
-        # Access memory as a bytearray
-        mem_data = self.memory.read(self.store, addr, self.memory.data_len(self.store) - addr)
+        # Get raw pointer to the start of Wasm memory
+        base_ptr = self.memory.data_ptr(self.store)
 
-        # Find null terminator
-        try:
-            null_idx = mem_data.index(0)
-        except ValueError:
-            # Fallback if no null terminator found (should not happen with OPA)
-            null_idx = len(mem_data)
+        # Calculate the absolute address in host memory
+        # We need to cast the base_ptr (c_ubyte pointer) to a void pointer or address
+        # ctypes pointers support arithmetic.
 
-        json_bytes = mem_data[:null_idx]
+        # Safe reading loop to find null terminator
+        # We read chunk by chunk or byte by byte. Since JSON is contiguous, we can scan.
+        # But scanning safely in python is slow. OPA JSON is usually small.
+
+        # Direct access using ctypes string_at (reads until null terminator)
+        # Note: data_ptr returns a POINTER(c_ubyte).
+        # We need to access base_ptr[addr].
+
+        # Validate bounds
+        data_len = self.memory.data_len(self.store)
+        if addr >= data_len:
+             raise ValueError("Memory access out of bounds")
+
+        # Create a pointer to the string start
+        # base_ptr is the start of memory. string is at base_ptr + addr.
+        # Python ctypes pointer arithmetic: ptr + offset
+
+        # We must be careful: data_ptr is valid only as long as store/memory isn't grown.
+        # In this short execution scope, it's fine.
+
+        # cast to char pointer for string_at
+        char_ptr = ctypes.cast(base_ptr, ctypes.POINTER(ctypes.c_char))
+
+        # Read null-terminated string from offset
+        # string_at(ptr, size=-1) reads until null if size not given?
+        # Actually string_at(ptr) reads until null.
+        # We need the address: ctypes.addressof(base_ptr.contents) + addr?
+        # data_ptr returns a pointer object.
+
+        # Correct way with wasmtime's pointer:
+        # raw_ptr_val = ctypes.addressof(base_ptr.contents) # This might fail if it's a special object
+        # but wasmtime docs say it returns ctypes.POINTER(ctypes.c_ubyte).
+
+        # Let's use the buffer protocol if available or simple pointer arithmetic.
+        # string_at expects an address (int) or a pointer instance.
+
+        # Pointer arithmetic in ctypes:
+        # If base_ptr is POINTER(c_ubyte), then base_ptr[addr] gives the value.
+        # We want a pointer TO that index.
+
+        # Solution: Use ctypes.byref logic or cast.
+        # Better: string_at(ctypes.cast(base_ptr, ctypes.c_void_p).value + addr)
+
+        raw_base_addr = ctypes.cast(base_ptr, ctypes.c_void_p).value
+        if raw_base_addr is None:
+             raise ValueError("Null memory pointer")
+
+        target_addr = raw_base_addr + addr
+
+        # Read string
+        json_bytes = ctypes.string_at(target_addr)
+
         return json.loads(json_bytes.decode("utf-8"))
+
+    def _write_to_memory(self, data: bytes, addr: int):
+        """
+        Writes bytes to Wasm memory at the given address.
+        """
+        base_ptr = self.memory.data_ptr(self.store)
+        raw_base_addr = ctypes.cast(base_ptr, ctypes.c_void_p).value
+
+        target_addr = raw_base_addr + addr
+
+        # Use memmove to copy bytes
+        ctypes.memmove(target_addr, data, len(data))
 
     def evaluate(self, input_data: Dict[str, Any], entrypoint: str = "finance/allow") -> Dict[str, Any]:
         """
@@ -106,10 +167,8 @@ class PolicyEngine:
             # Allocate memory in Wasm
             input_ptr = self.opa_malloc(self.store, len(input_json))
 
-            # Write bytes to memory
-            # Wasmtime memory.write(store, value, offset)
-            # Fix: Correct signature matches python help(Memory.write) -> write(store, value, offset)
-            self.memory.write(self.store, input_json, input_ptr)
+            # Write bytes to memory using ctypes
+            self._write_to_memory(input_json, input_ptr)
 
             # 3. Parse Input inside Wasm
             value_ptr = self.opa_value_parse(self.store, input_ptr, len(input_json))
