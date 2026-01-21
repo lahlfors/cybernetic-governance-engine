@@ -30,10 +30,4 @@ spec:
             # are injected by deploy_all.py from .env file (single source of truth)
 
       # --- Volumes ---
-      volumes:
-        - name: auth-token-vol
-          secret:
-            secretName: opa-auth-token
-            items:
-              - key: latest
-                path: token
+      # No volumes needed for Architecture II (In-Process Wasm)

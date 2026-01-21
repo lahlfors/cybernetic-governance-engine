@@ -21,9 +21,8 @@ class OPAClient:
     """
     def __init__(self):
         # Initialize the Policy Engine with the configured Wasm path
-        # Respects the OPA_WASM_PATH env var, defaults to 'policy.wasm'
-        wasm_path = os.getenv("OPA_WASM_PATH", "policy.wasm")
-        self.engine = PolicyEngine(policy_path=wasm_path)
+        # Uses Config.OPA_WASM_PATH which ensures centralized configuration
+        self.engine = PolicyEngine(policy_path=Config.OPA_WASM_PATH)
 
     def evaluate_policy(self, input_data: Dict[str, Any]) -> str:
         """

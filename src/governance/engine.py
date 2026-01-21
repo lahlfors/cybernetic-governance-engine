@@ -1,14 +1,15 @@
 import json
 import logging
 import os
+import sys
 from typing import Dict, Any, Optional
 
-# Try to import opa_wasm, but handle the case where it might be missing in some environments
-# (though we installed it, this is good practice for portability)
 try:
     from opa_wasm import OPAPolicy
 except ImportError:
-    OPAPolicy = None
+    # Critical Production Dependency: Must fail fast if missing
+    sys.stderr.write("CRITICAL: opa_wasm library not found. Application cannot start safely.\n")
+    raise
 
 logger = logging.getLogger("GovernanceEngine")
 
@@ -28,13 +29,11 @@ class PolicyEngine:
         self.policy: Optional[OPAPolicy] = None
         self.ready = False
 
-        if not OPAPolicy:
-            logger.error("opa_wasm library not found. Policy checks will fail open or closed based on configuration.")
-            return
-
         if not os.path.exists(policy_path):
-            logger.warning(f"⚠️ Policy file not found at {policy_path}. Governance is NOT active.")
-            return
+            # In production, missing policy is a startup failure
+            msg = f"CRITICAL: Policy file not found at {policy_path}. Governance cannot be enforced."
+            logger.critical(msg)
+            raise FileNotFoundError(msg)
 
         try:
             with open(policy_path, "rb") as f:
@@ -44,6 +43,7 @@ class PolicyEngine:
             logger.info(f"✅ Loaded OPA Policy from {policy_path}")
         except Exception as e:
             logger.critical(f"🔥 Failed to load OPA Policy: {e}")
+            raise e # Fail fast
 
     def evaluate(self, input_data: Dict[str, Any], entrypoint: str = "finance/allow") -> Dict[str, Any]:
         """
@@ -60,8 +60,7 @@ class PolicyEngine:
             The policy evaluation result (typically a dict like {"result": "ALLOW"}).
         """
         if not self.ready or not self.policy:
-            # FAIL SAFE: If policy system is down, we must decide to Fail Open or Closed.
-            # For High Risk Finance: FAIL CLOSED (DENY).
+            # Should technically be unreachable if init raises, but defensive coding
             logger.error("PolicyEngine not ready. Defaulting to DENY.")
             return {"result": "DENY"}
 

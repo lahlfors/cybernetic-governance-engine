@@ -25,9 +25,9 @@ class Config:
     # Data Stores
     REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
-    # Governance
-    OPA_URL = os.getenv("OPA_URL", "http://localhost:8181/v1/data/finance/decision")
-    OPA_AUTH_TOKEN = os.getenv("OPA_AUTH_TOKEN")
+    # Governance (Architecture II: In-Process Wasm)
+    # Replaced OPA_URL/OPA_AUTH_TOKEN with local file path
+    OPA_WASM_PATH = os.getenv("OPA_WASM_PATH", "policy.wasm")
 
     @staticmethod
     def get_llm_config(profile="default"):
