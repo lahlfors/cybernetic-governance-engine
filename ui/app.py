@@ -43,11 +43,6 @@ if "user_id" not in st.session_state:
 if "project_id" not in st.session_state:
     st.session_state.project_id = "unknown"
 
-# Generate a unique thread_id per session (resets on page refresh/new login)
-# This ensures each conversation starts fresh, even with the same user_id
-if "thread_id" not in st.session_state:
-    st.session_state.thread_id = str(uuid.uuid4())
-
 # ...
 
 def query_agent(prompt: str):
@@ -57,8 +52,7 @@ def query_agent(prompt: str):
             f"{BACKEND_URL}/agent/query",
             json={
                 "prompt": prompt,
-                "user_id": st.session_state.user_id,
-                "thread_id": st.session_state.thread_id  # Unique per session, resets on page refresh
+                "user_id": st.session_state.user_id
             },
             headers=headers,
             timeout=300  # Match Cloud Run timeout for complex operations
@@ -89,12 +83,9 @@ st.caption("AI-powered financial analysis with governance guardrails")
 with st.sidebar:
     st.header("About")
     
-    
-    # Display User ID and Thread ID
+    # Display User ID
     st.info(f"**User ID:** `{st.session_state.user_id}`")
-    st.caption(f"**Thread ID:** `{st.session_state.thread_id[:8]}...`")
-    st.markdown("Add `?user_id=your_name` to the URL to persist user identity.")
-    st.markdown("💡 **Refresh page** to start a new conversation.")
+    st.markdown("Add `?user_id=your_name` to the URL to persist memory.")
 
     st.markdown("""
     This financial advisor can help you with:

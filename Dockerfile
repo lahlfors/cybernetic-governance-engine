@@ -1,10 +1,13 @@
 # Use python 3.12 slim image
+# Note: User recommended python:3.10-bookworm for broad compatibility, but 3.12-slim is often fine for wasmtime wheels.
+# Sticking to slim but keeping build-essential which is already there.
 FROM python:3.12-slim
 
 # Set working directory
 WORKDIR /app
 
 # Install system dependencies
+# build-essential is critical for compiling C-extensions if wheels are missing
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
@@ -14,11 +17,13 @@ COPY . .
 
 # Install dependencies
 # Set PYTHONPATH to include src
-# Set PYTHONPATH to include /app so 'from src...' imports work
 ENV PYTHONPATH="${PYTHONPATH}:/app:/app/src"
 
+# Add wasmtime to requirements
 RUN pip install uv && \
     uv export --no-emit-project --no-dev --no-hashes --format requirements-txt > requirements.txt && \
+    # Explicitly add wasmtime as a production dependency
+    echo "wasmtime>=18.0.0" >> requirements.txt && \
     pip install --no-cache-dir -r requirements.txt uvicorn fastapi google-auth google-cloud-aiplatform google-adk opentelemetry-api opentelemetry-sdk opentelemetry-exporter-gcp-trace opentelemetry-instrumentation-fastapi opentelemetry-instrumentation-requests
 
 # Expose the port

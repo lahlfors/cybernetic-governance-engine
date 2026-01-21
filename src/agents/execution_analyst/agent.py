@@ -15,6 +15,7 @@
 """Execution_analyst_agent for finding the ideal execution strategy"""
 
 from google.adk import Agent
+from google.adk.tools import transfer_to_agent
 from src.utils.prompt_utils import Prompt, PromptData, Content, Part
 from config.settings import MODEL_FAST
 from pydantic import BaseModel, Field
@@ -91,7 +92,7 @@ execution_analyst_agent = Agent(
     name="execution_analyst_agent",
     instruction=get_execution_analyst_instruction(),
     output_key="execution_plan_output",
-    tools=[],
+    tools=[transfer_to_agent],
     # Configure JSON mode for Gemini using ADK's output_schema
     output_schema=ExecutionPlan,
     generate_content_config={

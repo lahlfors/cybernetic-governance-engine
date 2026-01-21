@@ -16,6 +16,7 @@
 
 from google.adk import Agent
 from google.adk.tools.google_search_agent_tool import GoogleSearchAgentTool, create_google_search_agent
+from google.adk.tools import transfer_to_agent
 from src.utils.prompt_utils import Prompt, PromptData, Content, Part
 from config.settings import MODEL_NAME
 
@@ -98,7 +99,7 @@ The data_analyst must return a single, comprehensive report object or string wit
      * **Date Published:** [Publication Date of Article]
      * **Brief Relevance:** (1-2 sentences on why this source was key to the analysis)
 
-After generating this report, the analysis is complete and will be returned to the financial coordinator.
+IMMEDIATELY AFTER generating this report, you MUST call `transfer_to_agent("financial_coordinator")` to return control to the main agent.
 """
                     )
                 ]
@@ -120,6 +121,6 @@ data_analyst_agent = Agent(
     name="data_analyst_agent",
     instruction=get_data_analyst_instruction(),
     output_key="market_data_analysis_output",
-    tools=[google_search_tool],
+    tools=[google_search_tool, transfer_to_agent],
 )
 

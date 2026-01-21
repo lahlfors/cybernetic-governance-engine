@@ -27,7 +27,6 @@ dependencies = [
     "yfinance",
     "pandas>=2.0.0",
     "pyarrow>=14.0.0",
-    "kfp>=2.0.0",  # Required for pipeline_manager.py
 ]
 
 requires-python = ">=3.10,<3.13"
@@ -43,8 +42,6 @@ dev = [
 
 deployment = [
     "absl-py>=2.2.1",
-    "PyYAML>=6.0.1",
-    "kfp>=2.0.0",  # Required for pipeline_manager.py
 ]
 
 [project.optional-dependencies]

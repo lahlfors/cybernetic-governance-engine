@@ -87,11 +87,7 @@ Input: CHECK if the user has ALREADY provided a ticker symbol (e.g., "Analyze NV
 
 Action: Call `route_request(intent='MARKET_ANALYSIS')`.
 Expected Output: The data_analyst subagent will return a comprehensive data analysis for the specified market ticker.
-
-**AFTER THIS STEP COMPLETES**: 
-1. FIRST, present the market analysis results to the user in a clear, readable format. Include key findings, trends, and insights.
-2. THEN ASK: "Based on this market analysis, would you like me to develop trading strategies tailored to your risk profile?"
-
+**AFTER THIS STEP COMPLETES, ASK:** "I have completed the market analysis. Would you like me to develop trading strategies based on this data?"
 If the user agrees, **automatically proceed** to the next step (TRADING_STRATEGY).
 
 * Develop Trading Strategies (Intent: TRADING_STRATEGY)

@@ -18,7 +18,7 @@ import json
 from typing import List, Literal
 from pydantic import BaseModel, Field
 from google.adk.agents import LlmAgent, SequentialAgent
-from google.adk.tools import FunctionTool
+from google.adk.tools import FunctionTool, transfer_to_agent
 
 from src.tools.trades import propose_trade, execute_trade
 from src.utils.prompt_utils import Prompt, PromptData, Content, Part
@@ -135,11 +135,11 @@ CRITICAL RULES - READ CAREFULLY:
 EXECUTION STEPS:
 1. Check if the user's CURRENT MESSAGE contains a specific amount and currency (e.g., "100 USD", "$500", "1000 dollars").
 2. If YES: Extract symbol from context + amount/currency from user message. Call `propose_trade`.
-3. If NO (user just said "yes", "execute", etc.): Ask the user:
+3. If NO (user just said "yes", "execute", etc.): You MUST call `transfer_to_agent("financial_coordinator")` and ask:
    "To proceed with the trade, please specify the amount you wish to invest (e.g., '100 USD' or '$500')."
 4. NEVER fabricate an amount from examples in strategy documents or execution plans.
 
-After generating trading strategies or completing trade proposal, the agent's work is complete and control will return to the financial coordinator.
+IMMEDIATELY AFTER generating trading strategies OR completing trade proposal, you MUST call `transfer_to_agent("financial_coordinator")` to return control to the main agent.
 """
                     )
                 ]
@@ -207,7 +207,7 @@ worker_agent = LlmAgent(
     name="worker_agent",
     instruction=get_trading_analyst_instruction(),
     output_key="proposed_trading_strategies_output",
-    tools=[FunctionTool(propose_trade)],
+    tools=[FunctionTool(propose_trade), transfer_to_agent],
 )
 
 # --- VERIFIER AGENT ---

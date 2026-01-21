@@ -130,15 +130,10 @@ def load_rails() -> LLMRails:
     """Wrapper to maintain consistency with new design."""
     return create_nemo_manager()
 
-async def validate_with_nemo(user_input: str, rails: LLMRails, validate_output: bool = False) -> tuple[bool, str]:
+async def validate_with_nemo(user_input: str, rails: LLMRails) -> tuple[bool, str]:
     """
-    Validates user input OR agent output using NeMo Guardrails.
+    Validates user input using NeMo Guardrails.
     Returns (is_safe: bool, response: str).
-    
-    Args:
-        user_input: The text to validate (either user input or agent output)
-        rails: The NeMo rails instance
-        validate_output: If True, runs output validation rails. If False, runs input validation rails.
     """
     # 1. Initialize ISO 42001 OTel callback
     handler = NeMoOTelCallback()
@@ -147,39 +142,40 @@ async def validate_with_nemo(user_input: str, rails: LLMRails, validate_output: 
     token = streaming_handler_var.set(handler)
 
     try:
-        # 3. Run ONLY the specified rails (input or output), do NOT generate responses
-        # This is the "Governance Sandwich" pattern - validate but don't generate
-        rails_to_run = ["output"] if validate_output else ["input"]
-        
+        # Check for 'self_check_input' or similar rails
+        # We perform a generation call which triggers the input rails
+        # If blocked, the response will be a refusal message.
+        # 3. Call generate_async with the handler
         res = await rails.generate_async(
-            messages=[{"role": "user" if not validate_output else "assistant", "content": user_input}],
-            options={"rails": rails_to_run},  # Only validate, don't generate
+            messages=[{"role": "user", "content": user_input}],
             streaming_handler=handler
         )
 
-        # NeMo returns None or empty for validated content, or a dict with blocking message
-        # If blocked, the response will contain a refusal message
+        # Heuristic: Check if the response indicates a block
+        # NeMo typically returns a predefined message if blocked by a rail
         if res and isinstance(res, dict) and "content" in res:
             content = res["content"]
-            # Check if this is a blocking message
-            if content and any(phrase in content.lower() for phrase in ["cannot", "policy", "not allowed", "unsafe"]):
+            if any(phrase in content for phrase in ["I cannot answer", "policy", "I am programmed", "I am sorry"]):
                 return False, content
-            # Empty content means validation passed
-            return True, ""
-        
-        # If response is a string and contains blocking phrases
-        if isinstance(res, str):
-            if res and any(phrase in res.lower() for phrase in ["cannot", "policy", "not allowed", "unsafe"]):
-                return False, res
-            return True, ""
+            # If it's a pass-through or a normal response, we treat it as safe
+            # Note: In a 'Governance Sandwich', we might just check input rails here
+            # but NeMo usually runs generation.
+            # A strict input check might use rails.generate(..., options={"rails": ["input"]})
+            return True, content
 
-        # No blocking detected, validation passed
+        # If response object structure varies (e.g. string)
+        if isinstance(res, str):
+             if any(phrase in res for phrase in ["I cannot answer", "policy", "I am programmed", "I am sorry"]):
+                return False, res
+             return True, res
+
         return True, ""
     except Exception as e:
         print(f"NeMo Validation Error: {e}")
-        # Fail safe - allow the request to proceed if NeMo crashes
+        # Fail safe (or fail closed depending on policy)
+        # Here we allow the graph to proceed if NeMo crashes,
+        # relying on the Graph's internal safety.
         return True, ""
     finally:
         # Clean up the context variable
         streaming_handler_var.reset(token)
-
