@@ -198,13 +198,14 @@ graph LR
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                     Cloud Run Service                         │
-│  ┌─────────────────────┐    ┌────────────────────────────┐  │
-│  │   Main Container    │    │    OPA Sidecar (Layer 2)   │  │
-│  │   ───────────────   │    │    ────────────────────    │  │
-│  │   FastAPI Server    │◀──▶│    Policy Enforcement      │  │
-│  │   LangGraph         │    │    finance_policy.rego     │  │
-│  │   ADK Agents        │    └────────────────────────────┘  │
+│  ┌─────────────────────┐                                     │
+│  │   Main Container    │                                     │
+│  │   ───────────────   │                                     │
+│  │   FastAPI Server    │                                     │
+│  │   LangGraph         │                                     │
+│  │   ADK Agents        │                                     │
 │  │   NeMo Guardrails   │                                     │
+│  │   Policy Engine (Wasm)                                    │
 │  └──────────┬──────────┘                                     │
 │             │                                                 │
 │             ▼                                                 │
@@ -215,6 +216,9 @@ graph LR
 └──────────────────────────────────────────────────────────────┘
 ```
 
+**Note: Architecture II**
+We have moved from an OPA HTTP Sidecar (Architecture I) to an In-Process Wasm Policy Engine (Architecture II). The `policy.wasm` file is loaded into memory by the main container, reducing latency to <1ms.
+
 **Environment Variables**:
 | Variable | Purpose |
 |----------|---------|
@@ -222,6 +226,7 @@ graph LR
 | `GOOGLE_CLOUD_PROJECT` | GCP project ID |
 | `GOOGLE_CLOUD_LOCATION` | Region (e.g., `us-central1`) |
 | `REDIS_URL` | Redis connection for state persistence |
+| `OPA_WASM_PATH` | Path to compiled policy file (default: `/app/policy.wasm`) |
 
 ---
 

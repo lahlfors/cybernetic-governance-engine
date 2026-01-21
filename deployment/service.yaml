@@ -16,7 +16,6 @@ spec:
         # --- CONTAINER 1: The Agent (Ingress) ---
         - name: ingress-agent
           image: gcr.io/PROJECT_ID/financial-advisor:latest
-          # Note: Container dependency is handled via startupProbe on sidecar
           ports:
             - containerPort: 8080
           resources:
@@ -24,68 +23,14 @@ spec:
               cpu: "2"
               memory: "2Gi"
           env:
-            # Point to local sidecar
-            - name: OPA_URL
-              value: "http://localhost:8181/v1/data/finance/allow"
-            # Auth token for OPA sidecar
-            - name: OPA_AUTH_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: opa-auth-token
-                  key: latest
+            # Point to local policy file (built into image)
+            - name: OPA_WASM_PATH
+              value: "/app/policy.wasm"
             # NOTE: GOOGLE_GENAI_USE_VERTEXAI, GOOGLE_CLOUD_PROJECT, GOOGLE_CLOUD_LOCATION
             # are injected by deploy_all.py from .env file (single source of truth)
 
-        # --- CONTAINER 2: OPA Sidecar ---
-        - name: governance-sidecar
-          image: openpolicyagent/opa:0.68.0-static
-          args:
-            - "run"
-            - "--server"
-            - "--addr=0.0.0.0:8181"
-            - "--config-file=/config/opa_config.yaml"
-            - "/policies/finance_policy.rego"
-            - "/policies/system/system_authz.rego"
-          # Health check for dependency
-          startupProbe:
-            httpGet:
-              path: /health
-              port: 8181
-          # Mount the policy
-          volumeMounts:
-            - name: policy-volume
-              mountPath: /policies
-              readOnly: true
-            - name: system-authz-vol
-              mountPath: /policies/system
-              readOnly: true
-            - name: opa-config-vol
-              mountPath: /config
-              readOnly: true
-            - name: auth-token-vol
-              mountPath: /secrets/auth
-              readOnly: true
-
       # --- Volumes ---
       volumes:
-        - name: policy-volume
-          secret:
-            secretName: finance-policy-rego
-            items:
-              - key: latest
-                path: finance_policy.rego
-        - name: system-authz-vol
-          secret:
-            secretName: system-authz-policy
-            items:
-              - key: latest
-                path: system_authz.rego
-        - name: opa-config-vol
-          secret:
-            secretName: opa-configuration
-            items:
-              - key: latest
-                path: opa_config.yaml
         - name: auth-token-vol
           secret:
             secretName: opa-auth-token

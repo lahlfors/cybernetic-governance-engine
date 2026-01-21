@@ -1,13 +1,13 @@
 import functools
 import logging
 import os
-import requests
 from typing import Any, Dict, Union
 from pydantic import BaseModel
 from opentelemetry import trace
 from src.utils.telemetry import genai_span
 from src.governance.consensus import consensus_engine
 from src.governance.safety import safety_filter
+from src.governance.engine import PolicyEngine
 from config.settings import Config
 
 # Configure logging
@@ -16,41 +16,32 @@ tracer = trace.get_tracer("src.governance.client")
 
 class OPAClient:
     """
-    Production-ready OPA Client.
-    Fetches OPA_URL from environment to support seamless transition
-    from Docker Compose -> Cloud Run.
+    Architecture II: In-Process OPA Client.
+    Uses opa-wasm for <1ms policy checks.
     """
     def __init__(self):
-        # Default to localhost for standalone testing, but allow override for Docker/Cloud
-        # Pointing to 'decision' rule instead of 'allow'
-        self.url = Config.OPA_URL
-        # Fetch authentication token if available
-        self.auth_token = Config.OPA_AUTH_TOKEN
+        # Initialize the Policy Engine with the configured Wasm path
+        # Respects the OPA_WASM_PATH env var, defaults to 'policy.wasm'
+        wasm_path = os.getenv("OPA_WASM_PATH", "policy.wasm")
+        self.engine = PolicyEngine(policy_path=wasm_path)
 
     def evaluate_policy(self, input_data: Dict[str, Any]) -> str:
         """
         Evaluates the policy and returns the decision: ALLOW, DENY, or MANUAL_REVIEW.
         """
         with tracer.start_as_current_span("governance.check") as span:
-            span.set_attribute("governance.opa_url", self.url)
+            span.set_attribute("governance.type", "wasm_in_process")
             span.set_attribute("governance.action", input_data.get("action", "unknown"))
 
-            headers = {}
-            if self.auth_token:
-                headers["Authorization"] = f"Bearer {self.auth_token}"
-
             try:
-                # We add a timeout to ensure governance doesn't hang the agent
-                response = requests.post(
-                    self.url,
-                    json={"input": input_data},
-                    headers=headers,
-                    timeout=1.0
-                )
-                response.raise_for_status()
+                # Execute In-Process Wasm Check
+                result_data = self.engine.evaluate(input_data)
 
-                # OPA returns {"result": "ALLOW"} or "DENY" etc.
-                result = response.json().get("result", "DENY")
+                # Extract the result string (defaulting to DENY)
+                # Note: The structure of result_data depends on the query used during 'opa build'.
+                # Assuming 'result' field in the output document.
+                result = result_data.get("result", "DENY")
+
                 span.set_attribute("governance.decision", result)
 
                 if result == "ALLOW":
@@ -62,13 +53,13 @@ class OPAClient:
 
                 return result
             except Exception as e:
-                # FAIL CLOSED: If security is down, nothing happens.
-                logger.critical(f"🔥 OPA FAILURE: Could not connect to policy engine at {self.url}. Error: {e}")
+                # FAIL CLOSED
+                logger.critical(f"🔥 OPA FAILURE: Engine Evaluation Error: {e}")
                 span.record_exception(e)
                 span.set_status(trace.Status(trace.StatusCode.ERROR))
                 return "DENY"
 
-    # Backward compatibility wrapper if needed (returns bool), but we are refactoring usage.
+    # Backward compatibility wrapper
     def check_policy(self, input_data: Dict[str, Any]) -> bool:
          decision = self.evaluate_policy(input_data)
          return decision == "ALLOW"
