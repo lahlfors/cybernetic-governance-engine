@@ -6,14 +6,25 @@ FROM python:3.12-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including OPA for policy compilation
 # build-essential is critical for compiling C-extensions if wheels are missing
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Install OPA CLI for compiling Rego to WASM
+RUN curl -L -o /usr/local/bin/opa https://openpolicyagent.org/downloads/latest/opa_linux_amd64_static && \
+    chmod +x /usr/local/bin/opa
 
 # Copy project files
 COPY . .
+
+# Compile Rego policy to WASM
+RUN opa build -t wasm -e finance/decision src/governance/policy/finance_policy.rego && \
+    tar -xzf bundle.tar.gz && \
+    mv /policy.wasm /app/policy.wasm && \
+    rm -f bundle.tar.gz
 
 # Install dependencies
 # Set PYTHONPATH to include src
