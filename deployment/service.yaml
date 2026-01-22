@@ -33,7 +33,7 @@ spec:
             - "run"
             - "--server"
             - "--addr=localhost:8181" # Bind to localhost for sharing with agent
-            - "/policies/policy.rego"
+            - "/policies" # Load all policies in the directory
           ports:
             - containerPort: 8181
           resources:

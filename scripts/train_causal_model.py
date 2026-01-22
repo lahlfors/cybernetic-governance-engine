@@ -32,9 +32,17 @@ def generate_synthetic_data(n_samples=1000):
     customer_friction = fraud_risk * 0.8 + np.random.normal(0, 0.05, size=n_samples)
     customer_friction = np.clip(customer_friction, 0, 1)
 
-    # Churn Probability depends on Tenure (Inverse) and Friction (Direct)
-    # Long tenure reduces churn, high friction increases it
-    churn_prob_latent = (customer_friction * 2) - (tenure_years / 5) + np.random.normal(0, 0.1, size=n_samples)
+    # Churn Probability depends on Tenure and Friction
+    # - Low Friction: Tenure reduces churn (Loyalty)
+    # - High Friction (Block): Tenure INCREASES churn sensitivity (The "Insult" Effect)
+
+    # Interaction: Friction * Tenure
+    # If Friction is low (0), Churn decreases with Tenure (-0.5 * Tenure)
+    # If Friction is high (1), Churn increases with Tenure (+0.5 * Tenure) because they get angry
+
+    interaction = (customer_friction - 0.2) * tenure_years * 0.5
+
+    churn_prob_latent = (customer_friction * 2) + interaction - 2.0 + np.random.normal(0, 0.1, size=n_samples)
     churn_probability = 1 / (1 + np.exp(-churn_prob_latent)) # Sigmoid
 
     df = pd.DataFrame({
