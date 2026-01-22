@@ -3,4 +3,6 @@ networkx
 pandas
 scikit-learn
 joblib
-wasmtime>=18.0.0
+fastapi
+uvicorn
+requests

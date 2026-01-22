@@ -1,35 +1,42 @@
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: governed-financial-advisor
+  name: system-2-governed-agent
   annotations:
     run.googleapis.com/launch-stage: BETA
 spec:
   template:
     metadata:
       annotations:
-        # Architecture II uses Cloud Run Gen 2 (MicroVMs) for full Linux compatibility
-        # while maintaining strong isolation.
         run.googleapis.com/execution-environment: gen2
         run.googleapis.com/startup-cpu-boost: "true"
     spec:
       serviceAccountName: financial-advisor-sa
       containers:
-        # --- CONTAINER 1: The Agent (Ingress) ---
-        - name: ingress-agent
-          image: gcr.io/PROJECT_ID/financial-advisor:latest
-          ports:
-            - containerPort: 8080
-          resources:
-            limits:
-              cpu: "2"
-              memory: "2Gi"
-          env:
-            # Point to local policy file (built into image)
-            - name: OPA_WASM_PATH
-              value: "/app/policy.wasm"
-            # NOTE: GOOGLE_GENAI_USE_VERTEXAI, GOOGLE_CLOUD_PROJECT, GOOGLE_CLOUD_LOCATION
-            # are injected by deploy_all.py from .env file (single source of truth)
+      # --- CONTAINER 1: The Agent (Ingress) ---
+      # This container runs the LangGraph logic and talks to localhost:9000
+      - name: ingress-agent
+        image: gcr.io/PROJECT_ID/financial-advisor:latest
+        ports:
+          - containerPort: 8080
+        env:
+          - name: GUARD_URL
+            value: "http://127.0.0.1:9000"
+          # Standard env vars injected by deployment script
 
-      # --- Volumes ---
-      # No volumes needed for Architecture II (In-Process Wasm)
+      # --- CONTAINER 2: The Sidecar Guard ---
+      # This container runs the Policy/Safety logic
+      - name: policy-sidecar
+        image: gcr.io/PROJECT_ID/policy-guard:latest
+        ports:
+          - containerPort: 9000
+        env:
+          - name: BANKING_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: banking-core-secrets
+                key: api-key
+        resources:
+            limits:
+              cpu: "1"
+              memory: "512Mi"
