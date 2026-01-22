@@ -363,8 +363,8 @@ def main():
             print(f"✅ Injected Envs from .env: REDIS_HOST={redis_host}, GOOGLE_GENAI_USE_VERTEXAI={os.environ.get('GOOGLE_GENAI_USE_VERTEXAI', 'true')}")
             break
 
-    # Guarantee Secret Name Consistency
-    volumes = service_config["spec"]["template"]["spec"]["volumes"]
+    # Guarantee Secret Name Consistency (optional, only if volumes exist)
+    volumes = service_config["spec"]["template"]["spec"].get("volumes", [])
     for volume in volumes:
         if volume["name"] == "policy-volume":
             volume["secret"]["secretName"] = "finance-policy-rego"

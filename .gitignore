@@ -15,6 +15,9 @@ venv.bak/
 .new_venv/
 source/
 
+# Local pip configuration (overrides global settings)
+pip.conf
+
 # IDEs
 .vscode/
 .idea/
