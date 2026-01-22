@@ -21,7 +21,7 @@ RUN curl -L -o /usr/local/bin/opa https://openpolicyagent.org/downloads/latest/o
 COPY . .
 
 # Compile Rego policy to WASM
-RUN opa build -t wasm -e finance/decision src/governance/policy/finance_policy.rego && \
+RUN opa build -t wasm -e finance/allow src/governance/policy/finance_policy.rego && \
     tar -xzf bundle.tar.gz && \
     mv /policy.wasm /app/policy.wasm && \
     rm -f bundle.tar.gz
