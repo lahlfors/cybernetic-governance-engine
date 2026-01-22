@@ -23,7 +23,7 @@ COPY . .
 # Compile Rego policy to WASM
 RUN opa build -t wasm -e finance/allow src/governance/policy/finance_policy.rego && \
     tar -xzf bundle.tar.gz && \
-    mv /policy.wasm /app/policy.wasm && \
+    mv policy.wasm /app/policy.wasm && \
     rm -f bundle.tar.gz
 
 # Install dependencies
