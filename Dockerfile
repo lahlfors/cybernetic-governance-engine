@@ -20,11 +20,10 @@ RUN curl -L -o /usr/local/bin/opa https://openpolicyagent.org/downloads/latest/o
 # Copy project files
 COPY . .
 
-# Compile Rego policy to WASM
+# Compile Rego policy to WASM (creates policy.wasm in current dir /app)
 RUN opa build -t wasm -e finance/allow src/governance/policy/finance_policy.rego && \
     tar -xzf bundle.tar.gz && \
-    mv policy.wasm /app/policy.wasm && \
-    rm -f bundle.tar.gz
+    rm -f bundle.tar.gz /data.json /.manifest
 
 # Install dependencies
 # Set PYTHONPATH to include src
