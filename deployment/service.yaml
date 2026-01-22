@@ -1,7 +1,7 @@
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: system-2-governed-agent
+  name: neuro-cybernetic-agent
   annotations:
     run.googleapis.com/launch-stage: BETA
 spec:
@@ -13,30 +13,40 @@ spec:
     spec:
       serviceAccountName: financial-advisor-sa
       containers:
-      # --- CONTAINER 1: The Agent (Ingress) ---
-      # This container runs the LangGraph logic and talks to localhost:9000
-      - name: ingress-agent
-        image: gcr.io/PROJECT_ID/financial-advisor:latest
-        ports:
-          - containerPort: 8080
-        env:
-          - name: GUARD_URL
-            value: "http://127.0.0.1:9000"
-          # Standard env vars injected by deployment script
-
-      # --- CONTAINER 2: The Sidecar Guard ---
-      # This container runs the Policy/Safety logic
-      - name: policy-sidecar
-        image: gcr.io/PROJECT_ID/policy-guard:latest
-        ports:
-          - containerPort: 9000
-        env:
-          - name: BANKING_API_KEY
-            valueFrom:
-              secretKeyRef:
-                name: banking-core-secrets
-                key: api-key
-        resources:
+        # 1. The Brain (Your Existing Agent)
+        - name: agent-brain
+          image: gcr.io/PROJECT_ID/financial-advisor:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: POLICY_URL
+              value: "http://localhost:8181/v1/data/banking/governance"
+          resources:
             limits:
-              cpu: "1"
-              memory: "512Mi"
+              cpu: "2"
+              memory: "2Gi"
+
+        # 2. The Guard (OPA Sidecar)
+        - name: policy-guard
+          image: openpolicyagent/opa:latest
+          args:
+            - "run"
+            - "--server"
+            - "--addr=localhost:8181" # Bind to localhost for sharing with agent
+            - "/policies/policy.rego"
+          ports:
+            - containerPort: 8181
+          resources:
+            limits:
+              cpu: "0.5"
+              memory: "128Mi"
+          volumeMounts:
+            - name: policy-volume
+              mountPath: /policies
+      volumes:
+        - name: policy-volume
+          secret:
+            secretName: opa-policy-secret
+            items:
+              - key: policy.rego
+                path: policy.rego

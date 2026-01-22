@@ -8,47 +8,54 @@ logger = logging.getLogger("GovernanceEngine")
 
 class PolicyEngine:
     """
-    Architecture III: Cloud Run Sidecar Guard.
-    Replaces In-Process Wasm with HTTP Sidecar calls.
+    Architecture 1.5: OPA Sidecar Client.
+    Decoupled governance logic via Open Policy Agent.
     """
-    def __init__(self, policy_path: str = None):
-        # Policy path is ignored in this architecture, but kept for compatibility
-        self.guard_url = os.getenv("GUARD_URL", "http://localhost:9000")
-        logger.info(f"🛡️ Sidecar Policy Engine Initialized. Target: {self.guard_url}")
+    def __init__(self, policy_url: str = None):
+        self.opa_url = os.getenv("POLICY_URL", "http://localhost:8181/v1/data/banking/governance")
+        logger.info(f"🛡️ OPA Client Initialized. Target: {self.opa_url}")
 
-    def evaluate(self, input_data: Dict[str, Any], entrypoint: str = "finance/allow") -> Dict[str, Any]:
+    def evaluate(self, input_data: Dict[str, Any], entrypoint: str = None) -> Dict[str, Any]:
         """
-        Executes the policy by calling the Sidecar Guard.
+        Executes the policy by querying the OPA Sidecar.
         """
         try:
-            # Map OPA-style input to Sidecar ActionRequest
-            # Input data usually structure: {"input": { ... }} or just raw dict depending on caller.
-            # We assume input_data contains 'action' and 'context' or we infer it.
-
-            # Basic mapping logic:
-            # If the caller sends a raw dict, we assume it *is* the context,
-            # and we need an action name.
+            # Map input to OPA format
+            # Input data usually structure: {"action": "...", "context": {...}}
+            # We flatten it for the Rego policy: {"input": {"action": ..., "amount": ..., "risk_score": ...}}
 
             action = input_data.get("action", "unknown_action")
             context = input_data.get("context", input_data)
 
             payload = {
-                "action": action,
-                "context": context
+                "input": {
+                    "action": action,
+                    # Spread context keys into input for easier Rego access
+                    **context
+                }
             }
 
-            response = requests.post(f"{self.guard_url}/execute_action", json=payload, timeout=2.0)
+            # Ultra-low latency localhost call
+            response = requests.post(self.opa_url, json=payload, timeout=0.5)
 
             if response.status_code == 200:
                 result = response.json()
-                if result.get("allowed"):
+                # OPA returns {"result": {"allow": true, ...}} or just {"result": true} depending on rule
+                # Our policy defines `allow` as a boolean.
+                # So result.json() -> {"result": {"allow": true}} ??
+                # If we query the package `data.banking.governance`, result is `{"result": {"allow": true}}`
+
+                allow = result.get("result", {}).get("allow", False)
+
+                if allow:
                     return {"result": "ALLOW"}
                 else:
-                    return {"result": "DENY", "reason": result.get("reason")}
+                    return {"result": "DENY", "reason": "Policy Violation (OPA)"}
             else:
-                logger.error(f"Sidecar returned {response.status_code}: {response.text}")
-                return {"result": "DENY", "reason": "Sidecar Error"}
+                logger.error(f"OPA returned {response.status_code}: {response.text}")
+                return {"result": "DENY", "reason": "OPA Error"}
 
         except Exception as e:
-            logger.error(f"Sidecar Evaluation failed: {e}")
+            logger.error(f"OPA Evaluation failed: {e}")
+            # Fail closed
             return {"result": "DENY", "reason": "Communication Failure"}
