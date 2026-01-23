@@ -25,7 +25,7 @@ def test_opa_allow(mock_opa):
     }
 
     result = engine.evaluate(input_data)
-    assert result["result"] == "ALLOW"
+    assert result["status"] == "ALLOW"
     assert len(mock_opa.calls) == 1
 
 def test_opa_deny(mock_opa):
@@ -45,7 +45,7 @@ def test_opa_deny(mock_opa):
     }
 
     result = engine.evaluate(input_data)
-    assert result["result"] == "DENY"
+    assert result["status"] == "DENY"
     assert "Policy Violation" in result["reason"]
 
 def test_opa_connection_failure(mock_opa):
@@ -61,7 +61,7 @@ def test_opa_connection_failure(mock_opa):
     input_data = {"action": "test"}
     result = engine.evaluate(input_data)
 
-    assert result["result"] == "DENY"
+    assert result["status"] == "DENY"
     assert "Communication Failure" in result["reason"]
 
 if __name__ == "__main__":

@@ -25,8 +25,6 @@ def induce_policy():
 
     for tenure in tenure_range:
         # Context: We isolate Tenure. Other factors nominal.
-        # Note: In a real SCM, we might marginalize over other factors or pick average values.
-        # Here we fix Transaction Amount and Risk to "Average/Safe" to isolate Tenure's effect.
         context = {
             "Transaction_Amount": 100.0,
             "Location_Mismatch": 0,
@@ -62,7 +60,7 @@ def induce_policy():
 # Timestamp: {np.datetime64('now')}
 # Logic: Blocking users with Tenure >= {safety_threshold} causes Churn Risk > {RISK_LIMIT}
 
-deny {{
+deny[msg] {{
     input.action == "block_transaction"
     input.tenure_years >= {safety_threshold}
     msg := "Unsafe Control Action: Blocking high-tenure user causes unacceptable churn risk (>{RISK_LIMIT})."
