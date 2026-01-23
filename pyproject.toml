@@ -42,8 +42,6 @@ dev = [
 
 deployment = [
     "absl-py>=2.2.1",
-    "PyYAML>=6.0.0",
-    "kfp>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -108,10 +106,6 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-root = ""
-
-# Use public PyPI exclusively - all dependencies including google-adk are available
-[tool.uv]
-index-url = "https://pypi.org/simple"
 
 # This configuration file is used by goo.gle/agent-starter-pack to power remote templating.
 # It defines the template's properties and settings.

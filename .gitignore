@@ -15,9 +15,6 @@ venv.bak/
 .new_venv/
 source/
 
-# Local pip configuration (overrides global settings)
-pip.conf
-
 # IDEs
 .vscode/
 .idea/
@@ -31,7 +28,6 @@ agents_log/
 # Project Specific
 opa
 verification_*.txt
-.manifest
 
 # Traces
 *.parquet

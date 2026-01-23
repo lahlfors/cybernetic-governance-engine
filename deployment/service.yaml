@@ -46,7 +46,7 @@ spec:
       volumes:
         - name: policy-volume
           secret:
-            secretName: opa-policy-secret
+            secretName: governance-policy
             items:
-              - key: policy.rego
+              - key: latest
                 path: policy.rego

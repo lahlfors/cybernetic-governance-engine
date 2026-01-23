@@ -300,19 +300,33 @@ def main():
     # System Authz Policy
     create_secret(project_id, "system-authz-policy", file_path="deployment/system_authz.rego")
 
-    # Finance Policy
-    if os.path.exists("src/governance/policy/finance_policy.rego"):
-        policy_path = "src/governance/policy/finance_policy.rego"
-    elif os.path.exists("deployment/finance_policy.rego"):
-        policy_path = "deployment/finance_policy.rego"
-    else:
-        print("⚠️ Warning: finance_policy.rego not found. Creating dummy.")
-        policy_path = "deployment/finance_policy.rego"
-        with open(policy_path, "w") as f:
-            f.write("package finance\nallow := true")
+    # Governance Policies (Concatenated)
+    print("\n--- 📜 Bundling Governance Policies ---")
+    policy_dir = Path("policies")
+    bundled_policy = ""
 
-    print(f"📄 Using Finance Policy from: {policy_path}")
-    create_secret(project_id, "finance-policy-rego", file_path=policy_path)
+    if policy_dir.exists():
+        first_file = True
+        for policy_file in sorted(policy_dir.glob("*.rego")):
+            print(f"   + Adding {policy_file.name}")
+            with open(policy_file, "r") as f:
+                content = f.read()
+
+                # OPA Syntax: Multiple 'package' declarations in one file is invalid.
+                # We strip the package declaration from subsequent files.
+                if not first_file:
+                    lines = content.splitlines()
+                    # Filter out package line
+                    content = "\n".join([l for l in lines if not l.strip().startswith("package ")])
+
+                bundled_policy += f"\n# --- Source: {policy_file.name} ---\n"
+                bundled_policy += content + "\n"
+                first_file = False
+    else:
+        print("⚠️ Warning: 'policies/' directory not found. Using default deny.")
+        bundled_policy = "package banking.governance\ndefault allow = false"
+
+    create_secret(project_id, "governance-policy", literal_value=bundled_policy)
 
     # OPA Config
     create_secret(project_id, "opa-configuration", file_path="deployment/opa_config.yaml")
@@ -363,12 +377,12 @@ def main():
             print(f"✅ Injected Envs from .env: REDIS_HOST={redis_host}, GOOGLE_GENAI_USE_VERTEXAI={os.environ.get('GOOGLE_GENAI_USE_VERTEXAI', 'true')}")
             break
 
-    # Guarantee Secret Name Consistency (optional, only if volumes exist)
-    volumes = service_config["spec"]["template"]["spec"].get("volumes", [])
+    # Guarantee Secret Name Consistency
+    volumes = service_config["spec"]["template"]["spec"]["volumes"]
     for volume in volumes:
         if volume["name"] == "policy-volume":
-            volume["secret"]["secretName"] = "finance-policy-rego"
-            print("✅ Enforced secretName: finance-policy-rego for policy-volume")
+            volume["secret"]["secretName"] = "governance-policy"
+            print("✅ Enforced secretName: governance-policy for policy-volume")
             break
 
     # Write to temp file
