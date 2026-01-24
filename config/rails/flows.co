@@ -30,3 +30,52 @@ define flow check atomic execution
   if not $atomic_ok
     bot refuse to respond
     stop
+
+# --- Advanced Governance: Parallel Rails (Colang 2.0) ---
+
+define user ask high_risk_intent
+  "transfer funds"
+  "modify account"
+  "access pii"
+
+# Wrapper flows to return status for parallel execution
+flow check_topical_rail
+  # Check Authorization (RBAC)
+   = execute src.governance.nemo_actions.check_approval_token
+  if not
+     = "blocked"
+  else
+     = "allowed"
+
+flow check_safety_rail
+  # Check Financial Risk (Drawdown)
+   = execute src.governance.nemo_actions.check_drawdown_limit
+  if not
+     = "blocked"
+  else
+     = "allowed"
+
+flow check_fact_checking_rail
+  # Check Data Integrity (Latency)
+   = execute src.governance.nemo_actions.check_data_latency
+  if not
+     = "blocked"
+  else
+     = "allowed"
+
+flow parallel_governance_check
+  user ask high_risk_intent
+  priority 1.0
+
+  # Trigger parallel execution
+  (execute check_topical_rail) and (execute check_safety_rail) and (execute check_fact_checking_rail)
+
+  if $check_topical_rail.status == "blocked" or $check_safety_rail.status == "blocked" or $check_fact_checking_rail.status == "blocked"
+    bot refuse to respond
+    stop
+  else
+    # Allow the conversation to proceed (flow finishes)
+    bot continue to execution
+
+define bot continue to execution
+  "Proceeding with transaction."

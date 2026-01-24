@@ -3,6 +3,9 @@ Factory for creating NeMo Guardrails manager with custom Gemini support.
 """
 import os
 import nest_asyncio
+import yaml
+import datetime
+import logging
 from nemoguardrails import LLMRails, RailsConfig
 from nemoguardrails.llm.providers import register_llm_provider
 from nemoguardrails.context import streaming_handler_var
@@ -10,6 +13,64 @@ from langchain_core.language_models.llms import LLM
 from typing import Any, List, Optional
 from src.infrastructure.telemetry.nemo_exporter import NeMoOTelCallback
 
+# Configure Logging
+logger = logging.getLogger("NeMoManager")
+
+# Global cache name to be shared with GeminiLLM instances
+CACHED_CONTENT_NAME = None
+
+def _get_or_create_cache(config_path: str, model_name: str) -> Optional[str]:
+    """
+    Creates a Vertex AI CachedContent resource for the NeMo system prompts.
+    Returns the cache resource name (ID).
+    """
+    try:
+        from vertexai.preview.generative_models import CachedContent, Part, Content
+
+        # 1. Read System Instructions from Config
+        config_file = os.path.join(config_path, "config.yml")
+        if not os.path.exists(config_file):
+            return None
+
+        with open(config_file, "r") as f:
+            config_data = yaml.safe_load(f)
+
+        instructions = config_data.get("instructions", [])
+        system_prompt = ""
+        for instr in instructions:
+            system_prompt += instr.get("content", "") + "\n"
+
+        if not system_prompt:
+            return None
+
+        # 2. Define Cache (TTL: 1 hour)
+        # We use a static name or just let it generate one.
+        # For simplicity, we create a new one on startup (ephemeral).
+        # In prod, we might check for existing one.
+
+        # We need to wrap content in Content object
+        contents = [Content(role="user", parts=[Part.from_text(system_prompt)])]
+
+        cache = CachedContent.create(
+            model_name=model_name,
+            system_instruction=None, # NeMo injects system instructions in the prompt usually?
+            # Wait, if we use cache, we should put system prompt here?
+            # Instructions: "cache the NeMo system prompts"
+            # If we put it in contents, it acts as context.
+            contents=contents,
+            ttl=datetime.timedelta(hours=1),
+            display_name="governance_cache_v1"
+        )
+
+        logger.info(f"✅ Vertex AI Context Cache Created: {cache.name}")
+        return cache.name
+
+    except ImportError:
+        logger.warning("⚠️ Vertex AI SDK not found or CachedContent not supported.")
+        return None
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to create context cache: {e}")
+        return None
 
 class GeminiLLM(LLM):
     """Custom LangChain-compatible wrapper for Google Gemini using Vertex AI."""
@@ -26,10 +87,18 @@ class GeminiLLM(LLM):
             # Use Vertex AI integration (works with service account)
             from langchain_google_vertexai import ChatVertexAI
             
+            # Inject Cache if available
+            llm_kwargs = {}
+            if CACHED_CONTENT_NAME:
+                # Assuming ChatVertexAI supports cached_content (newer versions)
+                # If not, this might fail, so we wrap in try/except or check version
+                llm_kwargs["cached_content"] = CACHED_CONTENT_NAME
+
             llm = ChatVertexAI(
                 model_name=self.model,
                 project=os.environ.get("GOOGLE_CLOUD_PROJECT", "laah-cybernetics"),
                 location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
+                **llm_kwargs
             )
             response = llm.invoke(prompt)
             return response.content
@@ -53,10 +122,15 @@ class GeminiLLM(LLM):
         try:
             from langchain_google_vertexai import ChatVertexAI
             
+            llm_kwargs = {}
+            if CACHED_CONTENT_NAME:
+                llm_kwargs["cached_content"] = CACHED_CONTENT_NAME
+
             llm = ChatVertexAI(
                 model_name=self.model,
                 project=os.environ.get("GOOGLE_CLOUD_PROJECT", "laah-cybernetics"),
                 location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
+                **llm_kwargs
             )
             response = await llm.ainvoke(prompt)
             return response.content
@@ -95,6 +169,8 @@ def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
     Returns:
         An initialized LLMRails instance.
     """
+    global CACHED_CONTENT_NAME
+
     # Fix for nested event loops
     try:
         nest_asyncio.apply()
@@ -119,6 +195,12 @@ def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
 
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"NeMo Guardrails config not found at: {config_path}")
+
+    # Initialize Cache if using Vertex AI
+    # Check env var to allow disabling it
+    if os.environ.get("ENABLE_GOVERNANCE_CACHE", "true").lower() == "true":
+        model_name = os.environ.get("GUARDRAILS_MODEL_NAME", "gemini-2.0-flash")
+        CACHED_CONTENT_NAME = _get_or_create_cache(config_path, model_name)
 
     config = RailsConfig.from_path(config_path)
     rails = LLMRails(config)

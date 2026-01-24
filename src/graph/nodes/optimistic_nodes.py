@@ -1,5 +1,6 @@
 import logging
 import time
+import asyncio
 from typing import Dict, Any, Literal
 from concurrent.futures import ThreadPoolExecutor
 from src.graph.state import AgentState
@@ -7,7 +8,7 @@ from src.graph.nodes.safety_node import safety_check_node
 
 logger = logging.getLogger("OptimisticExecution")
 
-def trader_prep_node(state: AgentState) -> Dict[str, Any]:
+async def trader_prep_node(state: AgentState) -> Dict[str, Any]:
     """
     Optimistic Execution Branch (Read-Only).
     Runs in parallel with Safety Check.
@@ -22,42 +23,79 @@ def trader_prep_node(state: AgentState) -> Dict[str, Any]:
     if plan and isinstance(plan, dict):
         symbol = plan.get("symbol", "UNKNOWN")
 
-    # Simulate API Latency for Market Data (Read-Only Tool)
-    # In a real system, this would call `get_market_data(symbol)`
-    time.sleep(0.1)
+    try:
+        # Simulate API Latency for Market Data (Read-Only Tool)
+        # In a real system, this would call `await get_market_data(symbol)`
+        # Using asyncio.sleep to allow the safety check to run concurrently
+        await asyncio.sleep(0.1)
 
-    latency = (time.time() - start_time) * 1000
-    logger.info(f"🚀 Optimistic Node: Pre-Flight Complete for {symbol} in {latency:.2f}ms")
+        # Simulate a longer task to demonstrate cancellation if needed
+        # await asyncio.sleep(2.0)
 
-    return {
-        "trader_prep_output": {
-            "symbol": symbol,
-            "market_status": "OPEN",
-            "liquidity": "HIGH", # Mock data
-            "prep_latency_ms": latency
+        latency = (time.time() - start_time) * 1000
+        logger.info(f"🚀 Optimistic Node: Pre-Flight Complete for {symbol} in {latency:.2f}ms")
+
+        return {
+            "trader_prep_output": {
+                "symbol": symbol,
+                "market_status": "OPEN",
+                "liquidity": "HIGH", # Mock data
+                "prep_latency_ms": latency
+            }
         }
-    }
+    except asyncio.CancelledError:
+        logger.warning(f"🛑 Optimistic Node: Pre-Flight Cancelled for {symbol} (Safety Check Failed)")
+        # Perform cleanup here (e.g., close DB connections)
+        raise
 
-def optimistic_execution_node(state: AgentState) -> Dict[str, Any]:
+async def optimistic_execution_node(state: AgentState) -> Dict[str, Any]:
     """
     Wrapper Node that executes Safety Check and Trader Prep in PARALLEL.
     Demonstrates Optimistic Execution pattern (Governance Budget).
     """
     logger.info("⚡ Optimistic Execution: Forking Safety and Prep Threads")
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        future_safety = executor.submit(safety_check_node, state)
-        future_prep = executor.submit(trader_prep_node, state)
+    # 1. Start the Safety Check (The Gatekeeper)
+    # Since safety_check_node is sync (blocking I/O to OPA), we run it in a separate thread
+    # so it doesn't block the event loop, allowing trader_prep_node to run.
+    rail_task = asyncio.create_task(asyncio.to_thread(safety_check_node, state))
 
-        # Wait for both (Barrier)
-        result_safety = future_safety.result()
-        result_prep = future_prep.result()
+    # 2. Start the Tool Execution (Optimistic)
+    tool_task = asyncio.create_task(trader_prep_node(state))
 
-    logger.info("⚡ Optimistic Execution: Joined Threads. Proceeding to Gate.")
+    # 3. Wait for the Guardrail FIRST
+    try:
+        rail_result = await rail_task
+    except Exception as e:
+        logger.error(f"Safety check failed with exception: {e}")
+        tool_task.cancel()
+        return {"safety_status": "ERROR", "error": str(e)}
 
-    # Merge results
-    merged_update = {**result_safety, **result_prep}
-    return merged_update
+    # 4. Decide based on Guardrail result
+    safety_status = rail_result.get("safety_status")
+
+    if safety_status == "APPROVED" or safety_status == "SKIPPED":
+        logger.info("✅ Safety Approved. Waiting for Tool Result...")
+        try:
+            # If allowed, retrieve the already-running tool result
+            prep_result = await tool_task
+            return {**rail_result, **prep_result}
+        except Exception as e:
+            logger.error(f"Tool execution failed: {e}")
+            return {**rail_result, "trader_prep_error": str(e)}
+
+    else:
+        # If denied (BLOCKED/ESCALATED), cancel the tool task immediately
+        logger.warning(f"⛔ Safety Status: {safety_status}. Cancelling Optimistic Tool.")
+        tool_task.cancel()
+
+        # Await the task to ensure cancellation cleanup completes (optional but good practice)
+        try:
+            await tool_task
+        except asyncio.CancelledError:
+            pass # Expected
+
+        return rail_result
 
 def route_optimistic_execution(state: AgentState) -> Literal["governed_trader", "execution_analyst"]:
     """
