@@ -1,0 +1,34 @@
+# Use a lightweight Python base image
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+# curl for healthchecks
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+# Install python dependencies
+# We install uvicorn, fastapi, nemoguardrails explicitly
+# In a real setup, we might copy pyproject.toml, but for sidecar, keeping it simple
+RUN pip install --no-cache-dir \
+    uvicorn \
+    fastapi \
+    nemoguardrails \
+    langchain-google-genai \
+    langchain-google-vertexai
+
+# Copy source code
+COPY src /app/src
+COPY config /app/config
+# Copy policies if referenced? Not strictly needed for NeMo unless python modules are shared.
+
+# Expose port
+EXPOSE 8000
+
+# Healthcheck
+HEALTHCHECK --interval=5s --timeout=3s \
+  CMD curl -f http://localhost:8000/health || exit 1
+
+# Command to run the application
+CMD ["uvicorn", "src.governance.nemo_server:app", "--host", "0.0.0.0", "--port", "8000"]

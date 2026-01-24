@@ -15,10 +15,14 @@ app = FastAPI()
 # Load Rails Config
 RAILS_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "rails")
 
+rails = None
 try:
-    config = RailsConfig.from_path(RAILS_CONFIG_PATH)
-    rails = LLMRails(config)
-    logger.info(f"✅ NeMo Guardrails loaded from {RAILS_CONFIG_PATH}")
+    if os.path.exists(RAILS_CONFIG_PATH):
+        config = RailsConfig.from_path(RAILS_CONFIG_PATH)
+        rails = LLMRails(config)
+        logger.info(f"✅ NeMo Guardrails loaded from {RAILS_CONFIG_PATH}")
+    else:
+        logger.warning(f"⚠️ Rails config not found at {RAILS_CONFIG_PATH}")
 except Exception as e:
     logger.error(f"❌ Failed to load NeMo Guardrails: {e}")
     rails = None
@@ -33,7 +37,9 @@ async def check_guardrails(request: GuardrailRequest):
     Endpoint to check input/output against NeMo Guardrails.
     """
     if not rails:
-        raise HTTPException(status_code=500, detail="NeMo Guardrails not initialized")
+        # Fail Open/Closed decision: For sidecar, strict mode -> 500
+        # If rails didn't load, we can't guarantee safety.
+        raise HTTPException(status_code=503, detail="NeMo Guardrails not initialized")
 
     try:
         # Generate response using NeMo
@@ -42,9 +48,11 @@ async def check_guardrails(request: GuardrailRequest):
             messages=[{"role": "user", "content": request.input}]
         )
 
-        # In a real output rail scenario, we might pass the bot's response as input
-        # For now, we return the processed response
-        return {"response": response}
+        # Structure the response
+        return {
+            "response": response.response[0]["content"] if response.response else "",
+            # Include metadata if supported by version
+        }
 
     except Exception as e:
         logger.error(f"Guardrail execution failed: {e}")
@@ -52,7 +60,10 @@ async def check_guardrails(request: GuardrailRequest):
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "rails_loaded": rails is not None}
+    """Health check endpoint for Docker Compose."""
+    if rails is None:
+        raise HTTPException(status_code=503, detail="Rails not loaded")
+    return {"status": "ok", "rails_loaded": True}
 
 if __name__ == "__main__":
     import uvicorn
