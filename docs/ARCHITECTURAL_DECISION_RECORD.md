@@ -59,6 +59,13 @@ Regardless of the migration timeline, the following improvements are approved fo
 **Problem:** `print()` statements obscure production debugging.
 **Fix:** Adopt structured JSON logging with injected `trace_id` for correlation in Cloud Logging.
 
+### 3.5 Unix Domain Sockets (Rejected Alternative)
+**Context:** Replacing TCP/IP over localhost with Unix Domain Sockets (UDS) for sidecar communication.
+**Analysis:**
+*   **Pros:** Reduces syscall overhead and TCP stack latency (~10-50µs gain). Supported by OPA and `httpx`.
+*   **Cons:** Only feasible if the Agent and OPA share a filesystem (Sidecar pattern). This **conflicts** with the "Full Cloud" strategy where the Agent runs on Vertex AI and OPA on Cloud Run (separated by network).
+*   **Decision:** **REJECT** for Target State. While UDS is a valid optimization for the *current* containerized setup, it is incompatible with the strategic move to Vertex AI's managed runtime.
+
 ---
 
 ## 4. Final Recommendation
