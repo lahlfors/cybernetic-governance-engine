@@ -17,6 +17,7 @@
 import json
 from typing import List, Literal
 from pydantic import BaseModel, Field
+from google.adk import Agent
 from google.adk.agents import LlmAgent, SequentialAgent
 from google.adk.tools import FunctionTool, transfer_to_agent
 
@@ -200,16 +201,6 @@ Protocol:
 def get_verifier_instruction() -> str:
     return VERIFIER_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
 
-
-# --- WORKER AGENT (Trading Analyst) ---
-worker_agent = LlmAgent(
-    model=MODEL_FAST,  # Fast path for strategy generation
-    name="worker_agent",
-    instruction=get_trading_analyst_instruction(),
-    output_key="proposed_trading_strategies_output",
-    tools=[FunctionTool(propose_trade), transfer_to_agent],
-)
-
 # --- VERIFIER AGENT ---
 class RiskPacket(BaseModel):
     risk_score: int = Field(..., ge=1, le=100, description="Risk score between 1 (Safe) and 100 (Critical).")
@@ -225,19 +216,31 @@ def submit_risk_assessment(risk_packet: RiskPacket) -> str:
         return json.dumps(risk_packet)
     return json.dumps(risk_packet.model_dump())
 
-verifier_agent = LlmAgent(
-    name="verifier_agent",
-    model=MODEL_REASONING,  # Safety-critical: use reasoning model
-    instruction=get_verifier_instruction(),
-    tools=[FunctionTool(execute_trade), FunctionTool(submit_risk_assessment)],
-)
+def create_governed_trader_agent() -> Agent:
+    """Factory to create governed trading agent (Sequential: Worker -> Verifier)."""
 
-# --- GOVERNED TRADING AGENT (SEQUENTIAL) ---
-governed_trading_agent = SequentialAgent(
-    name="governed_trading_agent",
-    description=(
-        "A governed trading pipeline that first proposes strategies (Worker) "
-        "and then verifies them against security and semantic rules (Verifier)."
-    ),
-    sub_agents=[worker_agent, verifier_agent],
-)
+    # --- WORKER AGENT (Trading Analyst) ---
+    worker_agent = LlmAgent(
+        model=MODEL_FAST,  # Fast path for strategy generation
+        name="worker_agent",
+        instruction=get_trading_analyst_instruction(),
+        output_key="proposed_trading_strategies_output",
+        tools=[FunctionTool(propose_trade), transfer_to_agent],
+    )
+
+    verifier_agent = LlmAgent(
+        name="verifier_agent",
+        model=MODEL_REASONING,  # Safety-critical: use reasoning model
+        instruction=get_verifier_instruction(),
+        tools=[FunctionTool(execute_trade), FunctionTool(submit_risk_assessment)],
+    )
+
+    # --- GOVERNED TRADING AGENT (SEQUENTIAL) ---
+    return SequentialAgent(
+        name="governed_trading_agent",
+        description=(
+            "A governed trading pipeline that first proposes strategies (Worker) "
+            "and then verifies them against security and semantic rules (Verifier)."
+        ),
+        sub_agents=[worker_agent, verifier_agent],
+    )

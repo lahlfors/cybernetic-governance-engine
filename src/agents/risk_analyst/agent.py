@@ -95,14 +95,16 @@ def get_risk_analyst_instruction() -> str:
     return RISK_ANALYST_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
 
 
-risk_analyst_agent = Agent(
-    model=MODEL_REASONING,
-    name="risk_analyst_agent",
-    instruction=get_risk_analyst_instruction(),
-    output_key="risk_assessment_output",
-    tools=[transfer_to_agent],
-    output_schema=RiskAssessment,
-    generate_content_config={
-        "response_mime_type": "application/json"
-    }
-)
+def create_risk_analyst_agent(model_name: str = MODEL_REASONING) -> Agent:
+    """Factory to create risk analyst agent."""
+    return Agent(
+        model=model_name,
+        name="risk_analyst_agent",
+        instruction=get_risk_analyst_instruction(),
+        output_key="risk_assessment_output",
+        tools=[transfer_to_agent],
+        output_schema=RiskAssessment,
+        generate_content_config={
+            "response_mime_type": "application/json"
+        }
+    )

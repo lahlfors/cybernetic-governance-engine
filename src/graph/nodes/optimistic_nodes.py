@@ -27,6 +27,7 @@ async def trader_prep_node(state: AgentState) -> Dict[str, Any]:
         # Simulate API Latency for Market Data (Read-Only Tool)
         # In a real system, this would call `await get_market_data(symbol)`
         # Using asyncio.sleep to allow the safety check to run concurrently
+        # IMPORTANT: This must be cancel-safe.
         await asyncio.sleep(0.1)
 
         # Simulate a longer task to demonstrate cancellation if needed
@@ -56,9 +57,8 @@ async def optimistic_execution_node(state: AgentState) -> Dict[str, Any]:
     logger.info("⚡ Optimistic Execution: Forking Safety and Prep Threads")
 
     # 1. Start the Safety Check (The Gatekeeper)
-    # Since safety_check_node is sync (blocking I/O to OPA), we run it in a separate thread
-    # so it doesn't block the event loop, allowing trader_prep_node to run.
-    rail_task = asyncio.create_task(asyncio.to_thread(safety_check_node, state))
+    # safety_check_node is now async, so we just create a task
+    rail_task = asyncio.create_task(safety_check_node(state))
 
     # 2. Start the Tool Execution (Optimistic)
     tool_task = asyncio.create_task(trader_prep_node(state))
@@ -80,6 +80,9 @@ async def optimistic_execution_node(state: AgentState) -> Dict[str, Any]:
             # If allowed, retrieve the already-running tool result
             prep_result = await tool_task
             return {**rail_result, **prep_result}
+        except asyncio.CancelledError:
+             logger.warning("Tool task was cancelled unexpectedly.")
+             return {**rail_result, "trader_prep_error": "Cancelled"}
         except Exception as e:
             logger.error(f"Tool execution failed: {e}")
             return {**rail_result, "trader_prep_error": str(e)}
@@ -94,6 +97,8 @@ async def optimistic_execution_node(state: AgentState) -> Dict[str, Any]:
             await tool_task
         except asyncio.CancelledError:
             pass # Expected
+        except Exception as e:
+            logger.error(f"Error during tool cancellation: {e}")
 
         return rail_result
 

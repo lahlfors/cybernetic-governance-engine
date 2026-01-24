@@ -27,11 +27,17 @@ logger = logging.getLogger("FinancialCoordinator")
 # Initialize GCP observability (logging and tracing)
 configure_telemetry()
 
-from src.agents.data_analyst import data_analyst_agent
+# Import Factory Functions
+from src.agents.data_analyst import create_data_analyst_agent
+from src.agents.execution_analyst import create_execution_analyst_agent
+from src.agents.governed_trader import create_governed_trader_agent
+from src.agents.risk_analyst import create_risk_analyst_agent
 
-from src.agents.execution_analyst import execution_analyst_agent
-from src.agents.governed_trader import governed_trading_agent
-from src.agents.risk_analyst import risk_analyst_agent
+# Instantiate Agents
+data_analyst_agent = create_data_analyst_agent()
+execution_analyst_agent = create_execution_analyst_agent()
+governed_trading_agent = create_governed_trader_agent()
+risk_analyst_agent = create_risk_analyst_agent()
 
 
 financial_coordinator = LlmAgent(
@@ -62,4 +68,3 @@ financial_coordinator = LlmAgent(
 
 root_agent = financial_coordinator
 agent = financial_coordinator
-

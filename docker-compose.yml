@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  opa:
+    image: openpolicyagent/opa:latest-static
+    # Run OPA listening on both UDS (for sidecar simulation) and TCP (for debugging/fallback)
+    command:
+      - "run"
+      - "--server"
+      - "--log-level=info"
+      - "--addr=unix:///tmp/opa.sock"
+      - "--addr=:8181"
+      - "/policies"
+    volumes:
+      - ./policies:/policies
+      # Shared volume for Unix Domain Socket
+      - opa_socket_vol:/tmp
+    ports:
+      - "8181:8181"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8181/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Optional: Application service placeholder (if running fully in docker)
+  # app:
+  #   build: .
+  #   volumes:
+  #     - opa_socket_vol:/tmp
+  #   environment:
+  #     - OPA_URL=http+unix://%2Ftmp%2Fopa.sock/v1/data/finance/decision
+  #     - REDIS_URL=redis://redis:6379
+
+volumes:
+  redis_data:
+  opa_socket_vol:

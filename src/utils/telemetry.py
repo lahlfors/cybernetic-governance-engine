@@ -2,16 +2,50 @@
 Telemetry configuration for GCP Cloud Logging and Cloud Trace.
 """
 import logging
+import sys
 import os
 import contextlib
 import random
 from typing import Any, Dict
+from pythonjsonlogger import jsonlogger
 
-# Configure logging first
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Configure Structured JSON Logging immediately
+class TraceIdFilter(logging.Filter):
+    """Injects OpenTelemetry trace_id and span_id into log records."""
+    def filter(self, record):
+        try:
+            from opentelemetry import trace
+            span = trace.get_current_span()
+            if span:
+                ctx = span.get_span_context()
+                if ctx.is_valid:
+                    record.trace_id = format(ctx.trace_id, "032x")
+                    record.span_id = format(ctx.span_id, "016x")
+                    record.trace_sampled = ctx.trace_flags.sampled
+        except ImportError:
+            pass
+        return True
+
+def setup_canonical_logging():
+    """Configures the root logger to output structured JSON with trace correlation."""
+    root_logger = logging.getLogger()
+
+    # Avoid duplicate handlers
+    if root_logger.handlers:
+        return
+
+    logHandler = logging.StreamHandler(sys.stdout)
+    formatter = jsonlogger.JsonFormatter(
+        '%(asctime)s %(levelname)s %(name)s %(message)s %(trace_id)s %(span_id)s',
+        rename_fields={'levelname': 'severity', 'asctime': 'timestamp'}
+    )
+    logHandler.setFormatter(formatter)
+    logHandler.addFilter(TraceIdFilter())
+    root_logger.addHandler(logHandler)
+    root_logger.setLevel(logging.INFO)
+
+# Initialize logging early
+setup_canonical_logging()
 logger = logging.getLogger("FinancialAdvisor")
 
 _telemetry_configured = False
@@ -95,28 +129,40 @@ def configure_telemetry():
             logger.info("✅ OpenTelemetry: Tiered Observability (Cost Optimizer) configured.")
             logger.info("✅ OpenTelemetry: Google Cloud Trace Exporter configured.")
             
-            # Instrument the requests library for HTTP tracing
+            # Instrument the requests and httpx libraries for HTTP tracing
             try:
                 from opentelemetry.instrumentation.requests import RequestsInstrumentor
                 RequestsInstrumentor().instrument()
                 logger.info("✅ OpenTelemetry: Requests HTTP library instrumented.")
+
+                # Instrument httpx if available
+                try:
+                    from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+                    HTTPXClientInstrumentor().instrument()
+                    logger.info("✅ OpenTelemetry: HTTPX library instrumented.")
+                except ImportError:
+                    pass
+
             except ImportError:
-                logger.warning("⚠️ Requests instrumentation not available (install opentelemetry-instrumentation-requests)")
+                logger.warning("⚠️ Requests/HTTPX instrumentation not available")
             except Exception as e:
-                logger.warning(f"⚠️ Requests instrumentation failed: {e}")
+                logger.warning(f"⚠️ HTTP instrumentation failed: {e}")
                 
         except Exception as e:
             logger.warning(f"⚠️ OpenTelemetry Cloud Trace not configured: {e}")
         
-        # Try to configure Google Cloud Logging
+        # Configure Google Cloud Logging (if explicitly needed, but JSON to stdout is often enough for Cloud Run)
+        # We prefer our custom JSON handler for consistency, but if GCL client is used, it might attach its own handler.
+        # We will wrap it in try-except but mostly rely on our setup_canonical_logging
         try:
-            import google.cloud.logging
-            
-            client = google.cloud.logging.Client()
-            client.setup_logging()
-            logger.info("✅ Google Cloud Logging configured.")
+            # Check environment to decide if we want to use the library
+            if os.getenv("GOOGLE_CLOUD_PROJECT"):
+                 pass
+                 # We skip google.cloud.logging.Client().setup_logging() to avoid overriding our JSON formatter
+                 # unless we want to use its specific features.
+                 # For Phase 1/2, stdout JSON is best practice.
         except Exception as e:
-            logger.warning(f"⚠️ Google Cloud Logging not configured: {e}")
+             logger.warning(f"⚠️ Google Cloud Logging check failed: {e}")
         
         _telemetry_configured = True
         logger.info("✅ Telemetry configuration complete.")

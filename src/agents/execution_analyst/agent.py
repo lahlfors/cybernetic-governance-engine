@@ -86,16 +86,17 @@ IMMEDIATELY AFTER generating this execution plan, you MUST call `transfer_to_age
 def get_execution_analyst_instruction() -> str:
     return EXECUTION_ANALYST_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
 
-
-execution_analyst_agent = Agent(
-    model=MODEL_FAST,
-    name="execution_analyst_agent",
-    instruction=get_execution_analyst_instruction(),
-    output_key="execution_plan_output",
-    tools=[transfer_to_agent],
-    # Configure JSON mode for Gemini using ADK's output_schema
-    output_schema=ExecutionPlan,
-    generate_content_config={
-        "response_mime_type": "application/json"
-    }
-)
+def create_execution_analyst_agent(model_name: str = MODEL_FAST) -> Agent:
+    """Factory to create execution analyst agent."""
+    return Agent(
+        model=model_name,
+        name="execution_analyst_agent",
+        instruction=get_execution_analyst_instruction(),
+        output_key="execution_plan_output",
+        tools=[transfer_to_agent],
+        # Configure JSON mode for Gemini using ADK's output_schema
+        output_schema=ExecutionPlan,
+        generate_content_config={
+            "response_mime_type": "application/json"
+        }
+    )

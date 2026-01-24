@@ -5,7 +5,7 @@ from src.governance.client import opa_client
 
 logger = logging.getLogger("SafetyNode")
 
-def safety_check_node(state: AgentState) -> Dict[str, Any]:
+async def safety_check_node(state: AgentState) -> Dict[str, Any]:
     """
     Explicit Safety Interceptor Node (Layer 2 Enforcement).
     Intercepts the plan from the Execution Analyst before it reaches the Trader.
@@ -36,8 +36,8 @@ def safety_check_node(state: AgentState) -> Dict[str, Any]:
         "risk_profile": state.get("risk_attitude", "neutral")
     }
 
-    # 3. Query OPA (Governance Layer)
-    decision = opa_client.evaluate_policy(opa_input)
+    # 3. Query OPA (Governance Layer) - ASYNC
+    decision = await opa_client.evaluate_policy(opa_input)
 
     if decision == "ALLOW":
         logger.info(f"✅ Safety Check PASSED: {opa_input['action']}")
