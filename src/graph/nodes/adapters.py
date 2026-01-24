@@ -4,19 +4,21 @@ ADK Agent Adapters for LangGraph Nodes
 Uses Dependency Injection pattern to allow mocking during tests.
 """
 
+import asyncio
 import json
 import logging
-import asyncio
-from typing import Callable, Any
+from collections.abc import Callable
+from typing import Any
+
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
 # Import Factory Functions
 from src.agents.data_analyst.agent import create_data_analyst_agent
-from src.agents.risk_analyst.agent import create_risk_analyst_agent
 from src.agents.execution_analyst.agent import create_execution_analyst_agent
 from src.agents.governed_trader.agent import create_governed_trader_agent
+from src.agents.risk_analyst.agent import create_risk_analyst_agent
 
 # Session management for ADK agents
 session_service = InMemorySessionService()
@@ -67,7 +69,7 @@ def run_adk_agent(agent_instance, user_msg: str, session_id: str = "default", us
     """
     import nest_asyncio
     nest_asyncio.apply()
-    
+
     # Helper to create session asynchronously
     async def ensure_session():
         existing = await session_service.get_session(
@@ -81,7 +83,7 @@ def run_adk_agent(agent_instance, user_msg: str, session_id: str = "default", us
                 user_id=user_id,
                 session_id=session_id
             )
-    
+
     # Ensure session exists before running
     try:
         loop = asyncio.get_running_loop()
@@ -91,19 +93,19 @@ def run_adk_agent(agent_instance, user_msg: str, session_id: str = "default", us
 
     # Use nest_asyncio to allow re-entrant loop if needed
     loop.run_until_complete(ensure_session())
-    
+
     runner = Runner(
         agent=agent_instance,
         session_service=session_service,
         app_name="financial_advisor"
     )
-    
+
     # Format the message as Content
     new_message = types.Content(
         role="user",
         parts=[types.Part(text=user_msg)]
     )
-    
+
     # Run and collect events to extract answer
     answer_parts = []
     function_calls = []
@@ -117,8 +119,8 @@ def run_adk_agent(agent_instance, user_msg: str, session_id: str = "default", us
                         function_calls.append(part.function_call)
     except Exception as e:
         logger.error(f"Error running ADK agent: {e}")
-        return AgentResponse(answer=f"Error: {str(e)}")
-    
+        return AgentResponse(answer=f"Error: {e!s}")
+
     return AgentResponse(answer="".join(answer_parts), function_calls=function_calls)
 
 

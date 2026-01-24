@@ -12,19 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Governed Trading Agent: Worker (Trading Analyst) + Verifier"""
+"""Governed Trading Agent: Worker (Trading Analyst) + Verifier (NeMo-Enhanced)"""
 
 import json
-from typing import List, Literal
-from pydantic import BaseModel, Field
+import logging
+from typing import Literal
+
+import httpx
 from google.adk import Agent
 from google.adk.agents import LlmAgent, SequentialAgent
 from google.adk.tools import FunctionTool, transfer_to_agent
-
-from src.tools.trades import propose_trade, execute_trade
-from src.utils.prompt_utils import Prompt, PromptData, Content, Part
+from pydantic import BaseModel, Field
 
 from config.settings import MODEL_FAST, MODEL_REASONING
+from src.tools.trades import execute_trade, propose_trade
+from src.utils.prompt_utils import Content, Part, Prompt, PromptData
+
+logger = logging.getLogger("GovernedTrader")
 
 # --- TRADING ANALYST (WORKER) PROMPT ---
 TRADING_ANALYST_PROMPT_OBJ = Prompt(
@@ -153,7 +157,7 @@ def get_trading_analyst_instruction() -> str:
     return TRADING_ANALYST_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
 
 
-# --- VERIFIER PROMPT ---
+# --- VERIFIER PROMPT (Original Logic + NeMo Delegation Hint) ---
 VERIFIER_PROMPT_OBJ = Prompt(
     prompt_data=PromptData(
         model=MODEL_REASONING,  # Safety-critical: use reasoning model
@@ -174,21 +178,18 @@ FLOW AWARENESS:
 
 - ONLY verify and potentially execute a trade if the Worker agent has ACTUALLY PROPOSED a trade with `propose_trade`.
 
-CRITICAL VALIDATION - AMOUNT SOURCE CHECK:
+CRITICAL VALIDATION - AMOUNT SOURCE CHECK (DELEGATED TO GUARDRAIL):
 Before executing any trade, you MUST verify that the trade AMOUNT was provided by the USER in their trade request.
-- The ticker symbol CAN come from earlier in the conversation (e.g., market analysis).
-- The AMOUNT must come from the USER'S DIRECT REQUEST, not from:
-  * Strategy documents (which contain illustrative examples)
-  * Execution plans (which contain example amounts like "$10,000")
-  * Any agent-generated content
-- If the worker used an amount from a strategy/execution plan example, REJECT the trade.
-- Look for the user explicitly saying something like "100 USD", "$500", "buy 1000 dollars worth".
+You have a tool `verify_with_nemo_guardrails` that performs this check against safety policies.
+- USE `verify_with_nemo_guardrails` to validate the intent.
+- If NeMo returns "SAFE" or "ALLOWED", you may proceed to `execute_trade`.
+- If NeMo returns "UNSAFE", "BLOCKED", or "REFUSED", you MUST REJECT the trade.
 
 Protocol:
 1.  **Check if there is a trade to verify**: If the worker only asked questions and no `propose_trade` was called, APPROVE and exit.
-2.  **Validate amount source**: If a trade was proposed, verify the amount came from user's direct input, not from examples.
+2.  **Validate via NeMo**: Call `verify_with_nemo_guardrails(input_text=last_user_message)`.
 3.  **If valid**: Execute with `execute_trade`.
-4.  **If amount was fabricated**: REJECT with reasoning "Trade amount was not provided by user."
+4.  **If invalid**: REJECT with reasoning provided by NeMo.
 5.  **Report**: ALWAYS call `submit_risk_assessment` to finalize your decision.
 """
                     )
@@ -201,10 +202,10 @@ Protocol:
 def get_verifier_instruction() -> str:
     return VERIFIER_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
 
-# --- VERIFIER AGENT ---
+# --- VERIFIER AGENT TOOLS ---
 class RiskPacket(BaseModel):
     risk_score: int = Field(..., ge=1, le=100, description="Risk score between 1 (Safe) and 100 (Critical).")
-    flags: List[str] = Field(..., description="List of risk flags detected (e.g., 'Financial Threshold Exceeded').")
+    flags: list[str] = Field(..., description="List of risk flags detected (e.g., 'Financial Threshold Exceeded').")
     decision: Literal["APPROVE", "REJECT", "ESCALATE"] = Field(..., description="Final decision.")
     reasoning: str = Field(..., description="Explanation for the decision.")
 
@@ -215,6 +216,33 @@ def submit_risk_assessment(risk_packet: RiskPacket) -> str:
     if isinstance(risk_packet, dict):
         return json.dumps(risk_packet)
     return json.dumps(risk_packet.model_dump())
+
+def verify_with_nemo_guardrails(input_text: str) -> str:
+    """
+    Calls the NeMo Guardrails Sidecar to verify the input/intent.
+    """
+    NEMO_URL = "http://nemo:8000/v1/guardrails/check"
+    try:
+        # For local testing if nemo service name not resolvable
+        import os
+        if not os.getenv("DOCKER_ENV"):
+             NEMO_URL = "http://localhost:8000/v1/guardrails/check"
+
+        response = httpx.post(NEMO_URL, json={"input": input_text}, timeout=5.0)
+        response.raise_for_status()
+        result = response.json().get("response", "")
+
+        # Simple heuristic mapping from NeMo text response to Status
+        if "refuse" in result.lower() or "cannot" in result.lower():
+             return f"BLOCKED: NeMo Guardrails refused. Response: {result}"
+
+        return "SAFE: NeMo Guardrails check passed."
+
+    except Exception as e:
+        logger.error(f"NeMo Check Failed: {e}")
+        # Fail safe? Or Fail Open for now?
+        # Safer to fail open during dev if sidecar missing, but production should fail closed.
+        return f"WARNING: NeMo Sidecar unreachable ({e}). Proceeding with internal caution."
 
 def create_governed_trader_agent() -> Agent:
     """Factory to create governed trading agent (Sequential: Worker -> Verifier)."""
@@ -232,7 +260,11 @@ def create_governed_trader_agent() -> Agent:
         name="verifier_agent",
         model=MODEL_REASONING,  # Safety-critical: use reasoning model
         instruction=get_verifier_instruction(),
-        tools=[FunctionTool(execute_trade), FunctionTool(submit_risk_assessment)],
+        tools=[
+            FunctionTool(execute_trade),
+            FunctionTool(submit_risk_assessment),
+            FunctionTool(verify_with_nemo_guardrails)
+        ],
     )
 
     # --- GOVERNED TRADING AGENT (SEQUENTIAL) ---

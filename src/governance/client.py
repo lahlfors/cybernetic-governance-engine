@@ -1,16 +1,18 @@
+import asyncio
 import functools
 import logging
 import time
-import httpx
 import urllib.parse
-import asyncio
-from typing import Any, Dict
-from pydantic import BaseModel
+from typing import Any
+
+import httpx
 from opentelemetry import trace
-from src.utils.telemetry import genai_span
+from pydantic import BaseModel
+
+from config.settings import Config
 from src.governance.consensus import consensus_engine
 from src.governance.safety import safety_filter
-from config.settings import Config
+from src.utils.telemetry import genai_span
 
 # Configure logging
 logger = logging.getLogger("GovernanceLayer")
@@ -75,7 +77,7 @@ class OPAClient:
             self.transport = httpx.AsyncHTTPTransport(retries=0)
             logger.info(f"🌐 OPAClient configured for HTTP: {self.target_url}")
 
-    async def evaluate_policy(self, input_data: Dict[str, Any]) -> str:
+    async def evaluate_policy(self, input_data: dict[str, Any]) -> str:
         """
         Evaluates the policy asynchronously.
         Returns: ALLOW, DENY, or MANUAL_REVIEW.
@@ -125,7 +127,7 @@ class OPAClient:
                 span.set_status(trace.Status(trace.StatusCode.ERROR))
                 return "DENY"
 
-    def check_policy(self, input_data: Dict[str, Any]) -> bool:
+    def check_policy(self, input_data: dict[str, Any]) -> bool:
         """
         Deprecated synchronous wrapper.
         WARNING: Do not use in async contexts if possible.

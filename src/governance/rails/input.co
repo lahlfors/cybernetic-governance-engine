@@ -1,0 +1,10 @@
+define user ask about trading
+  "I want to trade"
+  "Can you buy stocks?"
+  "Execute a trade"
+
+define flow input rails
+  user ask about trading
+  # This is a placeholder for input sanitization
+  # In a real scenario, we might check for jailbreaks or malicious intent here
+  bot provide trading advice
