@@ -77,6 +77,34 @@ Adopting Vertex AI Reasoning Engine, Model Armor, and Firestore couples the appl
 ## Technical Implementation Plan
 
 1.  **Refactor Async Logic:** Convert `optimistic_nodes.py` from `ThreadPoolExecutor` to `asyncio.gather`.
+    *   **Phase 1 (Bridge):** Wrap existing blocking `OPAClient` calls using `asyncio.get_running_loop().run_in_executor(None, ...)` to enable parallel execution within the Vertex AI async runtime.
+    *   **Phase 2 (Native):** Refactor `OPAClient` to use `httpx` (Async HTTP) for true non-blocking I/O.
 2.  **Migrate Policy:** Translate `policy.rego` logic to Model Armor configuration or Reasoning Engine "Policy Tools".
 3.  **Update Deployment:** Replace `deploy_all.py` logic to target Vertex AI Reasoning Engine instead of Cloud Run.
 4.  **Enable Caching:** Implement Explicit Context Caching for the `AgentState` system prompt.
+
+## Appendix: Optimistic Execution Implementation
+
+To apply Optimistic Parallel Execution to the **current** implementation immediately:
+
+```python
+import asyncio
+from src.graph.nodes.safety_node import safety_check_node
+from src.graph.nodes.optimistic_nodes import trader_prep_node
+
+async def optimistic_execution_node(state: AgentState) -> Dict[str, Any]:
+    """
+    Async implementation of Optimistic Execution.
+    Wraps legacy blocking nodes in threads to run parallel on the event loop.
+    """
+    loop = asyncio.get_running_loop()
+
+    # Schedule blocking tasks in the default ThreadPoolExecutor
+    future_safety = loop.run_in_executor(None, safety_check_node, state)
+    future_prep = loop.run_in_executor(None, trader_prep_node, state)
+
+    # Await results concurrently (Non-Blocking Wait)
+    result_safety, result_prep = await asyncio.gather(future_safety, future_prep)
+
+    return {**result_safety, **result_prep}
+```
