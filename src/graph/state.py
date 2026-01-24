@@ -1,4 +1,4 @@
-from typing import TypedDict, Annotated, List, Literal
+from typing import TypedDict, Annotated, List, Literal, Dict, Any
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
@@ -13,10 +13,13 @@ class AgentState(TypedDict):
     risk_status: Literal["UNKNOWN", "APPROVED", "REJECTED_REVISE"]
     risk_feedback: str | None
 
+    # Safety & Optimization Control
+    safety_status: Literal["APPROVED", "BLOCKED", "ESCALATED", "SKIPPED"]
+    trader_prep_output: Dict[str, Any] | None
+
     # User Profile
     risk_attitude: str | None
     investment_period: str | None
 
     execution_plan_output: str | dict | None # Holds the structured plan
-    risk_attitude: str # User Profile
     user_id: str # User Identity

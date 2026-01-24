@@ -1,6 +1,11 @@
 import logging
+import os
 from typing import List, Dict, Any, Tuple
 from src.agents.risk_analyst.agent import ProposedUCA
+from config.settings import MODEL_REASONING, Config
+
+# Import Vertex AI integration
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 logger = logging.getLogger("Governance.Transpiler")
 
@@ -10,18 +15,56 @@ class PolicyTranspiler:
     Converts Risk Analyst UCAs (with Structured Logic) into:
     1. NeMo-compatible Python Actions (Semantic Control)
     2. Rego Policies (Structural Control)
+
+    Upgrade: Uses LLM for Neuro-Symbolic Translation (ARPaCCino Pattern).
     """
 
-    def generate_nemo_action(self, uca: ProposedUCA) -> str:
+    def __init__(self):
+        # Initialize LLM for code generation
+        try:
+            self.llm = ChatGoogleGenerativeAI(
+                model=MODEL_REASONING,
+                temperature=0.0,
+                google_api_key=Config.GOOGLE_API_KEY
+            )
+            self.use_llm = True
+        except Exception as e:
+            logger.warning(f"Could not initialize LLM for Transpiler: {e}. Falling back to templates.")
+            self.use_llm = False
+
+    def _generate_with_llm(self, prompt: str) -> str:
         """
-        Transpiles a single UCA into a Python function string using the `constraint_logic`.
+        Helper to invoke the LLM for code generation.
         """
-        logger.info(f"Transpiling UCA to Python: {uca.description}")
+        if not self.use_llm:
+            return None # Trigger fallback
+
+        try:
+            response = self.llm.invoke(prompt)
+            content = response.content
+            # Strip markdown code blocks if present
+            if "```python" in content:
+                content = content.split("```python", 1)[1]
+            elif "```rego" in content:
+                content = content.split("```rego", 1)[1]
+            elif "```" in content:
+                content = content.split("```", 1)[1]
+
+            if content.endswith("```"):
+                content = content.rsplit("```", 1)[0]
+
+            return content.strip()
+        except Exception as e:
+            logger.error(f"LLM Generation failed: {e}")
+            return None # Trigger fallback
+
+    def _generate_nemo_template(self, uca: ProposedUCA) -> str:
+        """Fallback template for Python generation."""
         logic = uca.constraint_logic
 
         # 1. Slippage / Volume Check
         if logic.variable == "order_size" or "volume" in logic.threshold:
-            threshold_multiplier = logic.threshold.split("*")[0].strip() # Extract '0.01' from '0.01 * daily_volume'
+            threshold_multiplier = logic.threshold.split("*")[0].strip()
             if not threshold_multiplier.replace('.', '', 1).isdigit():
                 threshold_multiplier = "0.01" # Fallback
 
@@ -86,19 +129,11 @@ def check_atomic_execution(context: Dict[str, Any] = {{}}, event: Dict[str, Any]
     return True
 """
 
-        # Fallback
-        return f"# No template found for UCA: {uca.description}"
+        return f"# No template for {uca.description}"
 
-    def generate_rego_policy(self, uca: ProposedUCA) -> str:
-        """
-        Transpiles a single UCA into a Rego rule block.
-        """
-        logger.info(f"Transpiling UCA to Rego: {uca.description}")
+    def _generate_rego_template(self, uca: ProposedUCA) -> str:
+        """Fallback template for Rego generation."""
         logic = uca.constraint_logic
-
-        # Generic Allow Rule Structure
-        # allow { not deny }
-        # deny { ... condition ... }
 
         # 1. Slippage / Volume Check
         if logic.variable == "order_size" or "volume" in logic.threshold:
@@ -157,7 +192,76 @@ decision = "DENY" if {{
     completed < required
 }}
 """
-        return f"# No Rego template for UCA: {uca.description}"
+        return f"# No Rego template for {uca.description}"
+
+    def generate_nemo_action(self, uca: ProposedUCA) -> str:
+        """
+        Transpiles a single UCA into a Python function string using LLM or Fallback.
+        """
+        logger.info(f"Transpiling UCA to Python: {uca.description}")
+        logic = uca.constraint_logic
+
+        if self.use_llm:
+            prompt = f"""
+You are an Expert Python Engineer specializing in NeMo Guardrails.
+Task: Write a Python function based on the following Hazard Description.
+
+Hazard: {uca.hazard}
+Description: {uca.description}
+Constraint Logic:
+- Variable: {logic.variable}
+- Operator: {logic.operator}
+- Threshold: {logic.threshold}
+- Condition: {logic.condition}
+
+Requirements:
+1. Function name should be descriptive (e.g., check_slippage_risk).
+2. Arguments: (context: Dict[str, Any], event: Dict[str, Any]) -> bool.
+3. Return False if the hazard is detected (violation), True otherwise.
+4. Use `context.get()` with safe defaults.
+5. Include docstring.
+6. OUTPUT ONLY THE PYTHON CODE. NO MARKDOWN.
+"""
+            result = self._generate_with_llm(prompt)
+            if result:
+                return result
+
+        logger.warning("Using Template Fallback for Python Transpilation")
+        return self._generate_nemo_template(uca)
+
+    def generate_rego_policy(self, uca: ProposedUCA) -> str:
+        """
+        Transpiles a single UCA into a Rego rule block using LLM or Fallback.
+        """
+        logger.info(f"Transpiling UCA to Rego: {uca.description}")
+        logic = uca.constraint_logic
+
+        if self.use_llm:
+            prompt = f"""
+You are an Expert OPA Rego Developer.
+Task: Write a Rego deny rule based on the following Hazard Description.
+
+Hazard: {uca.hazard}
+Description: {uca.description}
+Constraint Logic:
+- Variable: {logic.variable}
+- Operator: {logic.operator}
+- Threshold: {logic.threshold}
+- Condition: {logic.condition}
+
+Requirements:
+1. Rule should assign `decision = "DENY"` if the violation occurs.
+2. Input is accessible via `input`.
+3. Use `object.get(input, "key", default)` for safety.
+4. Include comments explaining the rule.
+5. OUTPUT ONLY THE REGO CODE. NO MARKDOWN.
+"""
+            result = self._generate_with_llm(prompt)
+            if result:
+                return result
+
+        logger.warning("Using Template Fallback for Rego Transpilation")
+        return self._generate_rego_template(uca)
 
     def generate_safety_params(self, ucas: List[ProposedUCA]) -> Dict[str, Any]:
         """
@@ -191,7 +295,7 @@ decision = "DENY" if {{
         py_blocks = [
             "from typing import Dict, Any",
             "",
-            "# AUTOMATICALLY GENERATED BY GOVERNANCE TRANSPILER",
+            "# AUTOMATICALLY GENERATED BY GOVERNANCE TRANSPILER (Neuro-Symbolic)",
             ""
         ]
         for uca in ucas:
@@ -203,7 +307,7 @@ decision = "DENY" if {{
             "",
             "import rego.v1",
             "",
-            "# AUTOMATICALLY GENERATED BY GOVERNANCE TRANSPILER",
+            "# AUTOMATICALLY GENERATED BY GOVERNANCE TRANSPILER (Neuro-Symbolic)",
             "default decision = \"ALLOW\"",
             ""
         ]
