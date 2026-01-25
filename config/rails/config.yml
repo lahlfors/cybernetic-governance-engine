@@ -1,4 +1,5 @@
 # NeMo Guardrails Configuration
+colang_version: "2.x"
 
 models:
   - type: main
@@ -7,16 +8,11 @@ models:
 
 rails:
   input:
-    flows:
-      - self check input
-      - check authorization
-      - check latency
-      - check financial risk
-      - check atomic execution
+    flows: []
 
-  output:
-    flows:
-      - self check output
+#  output:
+#    flows:
+#      - self check output
 
 instructions:
   - type: general

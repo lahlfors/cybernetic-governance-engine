@@ -10,7 +10,7 @@ dependencies = [
     "google-genai>=1.9.0",
     "pydantic>=2.10.6",
     "python-dotenv>=1.0.1",
-    "google-adk>=1.0.0",
+    "google-adk>=1.22.0",
     "opentelemetry-instrumentation-fastapi>=0.58b0",
     "opentelemetry-instrumentation-requests>=0.58b0",
     "nemoguardrails>=0.17.0",
@@ -31,6 +31,7 @@ dependencies = [
     "python-json-logger>=2.0.7",
     "uvicorn>=0.29.0",
     "fastapi>=0.110.0",
+    "kfp",
 ]
 
 requires-python = ">=3.10,<3.13"
@@ -106,11 +107,10 @@ pythonpath = "."
 asyncio_default_fixture_loop_scope = "function"
 
 [build-system]
-requires = ["uv_build>=0.8.14,<0.9.0"]
-build-backend = "uv_build"
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
 
-[tool.uv.build-backend]
-module-root = ""
+
 
 # This configuration file is used by goo.gle/agent-starter-pack to power remote templating.
 # It defines the template's properties and settings.

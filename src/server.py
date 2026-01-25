@@ -1,5 +1,18 @@
 import os
 import sys
+import logging
+import nemoguardrails
+print(f"DEBUG: INSTALLED NEMOGUARDRAILS VERSION: {nemoguardrails.__version__}")
+print(f"DEBUG: sys.path: {sys.path}")
+print(f"DEBUG: CWD: {os.getcwd()}")
+try:
+    print(f"DEBUG: ls CWD: {os.listdir('.')}")
+    if os.path.exists('/app'):
+        print(f"DEBUG: ls /app: {os.listdir('/app')}")
+except Exception as e:
+    print(f"DEBUG: Error listing dir: {e}")
+
+
 import uvicorn
 import traceback
 from fastapi import FastAPI, HTTPException
@@ -8,12 +21,7 @@ from pydantic import BaseModel
 from opentelemetry import trace
 from opentelemetry.instrumentation.langchain import LangchainInstrumentor
 
-# Initialize Vertex AI before importing agents
-import vertexai
 from config.settings import Config
-
-vertexai.init(project=Config.GOOGLE_CLOUD_PROJECT, location=Config.GOOGLE_CLOUD_LOCATION)
-print(f"✅ Vertex AI initialized: project={Config.GOOGLE_CLOUD_PROJECT}, location={Config.GOOGLE_CLOUD_LOCATION}")
 
 from src.utils.nemo_manager import load_rails, validate_with_nemo
 from src.graph.graph import create_graph

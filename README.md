@@ -92,7 +92,6 @@ The system orchestrates a team of specialized sub-agents, managed by a central *
 
 ### 1. Prerequisites
 
-*   [uv](https://github.com/astral-sh/uv) (for Python dependency management)
 *   [Open Policy Agent (OPA)](https://www.openpolicyagent.org/docs/latest/#running-opa)
 *   [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) (for Cloud Run deployments)
 *   A Google Cloud project with Vertex AI API enabled
@@ -105,10 +104,8 @@ git clone https://github.com/lahlfors/cybernetic-governance-engine.git
 cd cybernetic-governance-engine
 
 # Install dependencies
-uv sync
+pip install -r requirements.txt
 ```
-
-> **Note:** If you encounter `401 Unauthorized` errors during `uv sync` (common in corporate environments), standard PyPI access might be blocked or overridden. Ensure you have valid credentials (e.g., `gcert`) or configure `uv` to use the public PyPI index explicitly.
 
 
 ### 3. Configuration
@@ -147,7 +144,8 @@ opa run -s -b src/governance/policy --addr :8181 &
 
 ```bash
 # Run the FastAPI server locally
-uv run python src/server.py
+# Run the FastAPI server locally
+python src/server.py
 ```
 
 The server will start on `http://localhost:8080`. Test with:
@@ -159,7 +157,8 @@ curl localhost:8080/health
 
 ```bash
 # Install Streamlit if not already installed
-uv pip install streamlit
+# Install Streamlit if not already installed
+pip install streamlit
 
 # Run the UI (ensure the backend is running on port 8080)
 export BACKEND_URL="http://localhost:8080"

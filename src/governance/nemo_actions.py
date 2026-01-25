@@ -5,6 +5,7 @@ import os
 from typing import Dict, Any, List, Optional
 from src.governance.safety import safety_filter
 from src.demo.state import demo_state
+from nemoguardrails.actions import action
 
 # Import generated actions if available
 try:
@@ -26,6 +27,7 @@ CACHE_TTL = 5.0  # Seconds
 
 # --- CORE/EXISTING ACTIONS ---
 
+@action(is_system_action=True)
 def check_approval_token(context: Dict[str, Any] = {}, event: Dict[str, Any] = {}) -> bool:
     """
     NeMo Action: SC-1 Authorization Check with Cryptographic Mandate (AP2 Mock).
@@ -49,10 +51,12 @@ def check_approval_token(context: Dict[str, Any] = {}, event: Dict[str, Any] = {
     logger.warning("⛔ SC-1 Violation: Invalid Signature.")
     return False
 
+@action(is_system_action=True)
 def check_latency(context: Dict[str, Any] = {}, event: Dict[str, Any] = {}) -> bool:
     """NeMo Action: SC-2 Latency Check (Generic)."""
     return True
 
+@action(is_system_action=True)
 def check_data_latency(context: Dict[str, Any] = {}, event: Dict[str, Any] = {}) -> bool:
     """
     Enforces HZ-Latency: Blocks trades if data latency > 200ms.
@@ -128,6 +132,7 @@ def _get_drawdown_limit() -> float:
         logger.error(f"Error reading safety params: {e}")
         return DEFAULT_DRAWDOWN_LIMIT
 
+@action(is_system_action=True)
 def check_drawdown_limit(context: Dict[str, Any] = {}, event: Dict[str, Any] = {}) -> bool:
     """
     Enforces HZ-Drawdown: Discrete Control Barrier Function (CBF).
@@ -159,6 +164,7 @@ def check_drawdown_limit(context: Dict[str, Any] = {}, event: Dict[str, Any] = {
 
     return True
 
+@action(is_system_action=True)
 def check_atomic_execution(context: Dict[str, Any] = {}, event: Dict[str, Any] = {}) -> bool:
     """
     Enforces HZ-Atomic: Ensures multi-leg trades complete atomically.
