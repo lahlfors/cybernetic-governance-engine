@@ -34,3 +34,6 @@ verification_*.txt
 trace_*.parquet
 logs/cold_tier/
 tests/temp_*/
+
+*.manifest
+GEMINI.md

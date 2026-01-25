@@ -12,12 +12,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy project files
 COPY . .
 
+# DEBUG: Verify flows.co content
+RUN cat config/rails/flows.co || echo "File not found"
+
 # Install dependencies
 # Set PYTHONPATH to include src
 # Set PYTHONPATH to include /app so 'from src...' imports work
 ENV PYTHONPATH="${PYTHONPATH}:/app:/app/src"
 
 RUN pip install uv && \
+    rm -f uv.lock && \
     uv export --no-emit-project --no-dev --no-hashes --format requirements-txt > requirements.txt && \
     pip install --no-cache-dir -r requirements.txt uvicorn fastapi google-auth google-cloud-aiplatform google-adk opentelemetry-api opentelemetry-sdk opentelemetry-exporter-gcp-trace opentelemetry-instrumentation-fastapi opentelemetry-instrumentation-requests
 
