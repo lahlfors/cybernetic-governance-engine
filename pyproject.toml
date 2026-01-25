@@ -33,8 +33,6 @@ dependencies = [
     "fastapi>=0.110.0",
     "openai>=1.0.0",
     "google-genai>=0.3.0",
-    "PyYAML>=6.0",
-    "kfp>=2.0.0",
 ]
 
 requires-python = ">=3.10,<3.13"
