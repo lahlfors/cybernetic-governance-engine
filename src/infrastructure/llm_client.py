@@ -72,7 +72,7 @@ class HybridClient:
         Generates a response using the Hybrid Strategy.
         Attempts Fast Path (vLLM) first. Falls back to Vertex AI on Error or Latency Violation.
 
-        Uses streaming to accurately measure Time-To-First-Token (TTFT).
+        Uses streaming to accurately measure Time-To-First-Token (TTFT) and TPOT.
         """
         with tracer.start_as_current_span("hybrid_generate") as span:
             start_time = time.time()
@@ -101,7 +101,8 @@ class HybridClient:
                 # We use anext() to get the first item from the async iterator
                 first_chunk = await asyncio.wait_for(anext(stream), timeout=ttft_timeout)
 
-                ttft_ms = (time.time() - start_time) * 1000
+                ttft_time = time.time()
+                ttft_ms = (ttft_time - start_time) * 1000
                 span.set_attribute("telemetry.ttft_ms", ttft_ms)
                 span.set_attribute("telemetry.provider", "vllm")
 
@@ -112,17 +113,37 @@ class HybridClient:
 
                 # Accumulate the response
                 collected_content = []
+                token_chunks = 0
 
                 # Add first chunk content
                 if first_chunk.choices[0].delta.content:
                     collected_content.append(first_chunk.choices[0].delta.content)
+                    token_chunks += 1
 
                 # Consume the rest of the stream normally
                 async for chunk in stream:
                     if chunk.choices[0].delta.content:
                         collected_content.append(chunk.choices[0].delta.content)
+                        token_chunks += 1
 
                 full_response = "".join(collected_content)
+                end_time = time.time()
+                total_time_ms = (end_time - start_time) * 1000
+
+                span.set_attribute("telemetry.total_generation_time_ms", total_time_ms)
+
+                # Calculate TPOT (Time Per Output Token)
+                # We use the number of received chunks with content as a proxy for token count
+                # This is accurate for OpenAI-compatible streams where 1 chunk ~= 1 token usually.
+                num_tokens = token_chunks
+                if num_tokens > 1:
+                    # Time from first token to last token / (N-1) intervals
+                    # Or simply (Total Time - TTFT) / (N - 1)
+                    generation_phase_ms = (end_time - ttft_time) * 1000
+                    tpot_ms = generation_phase_ms / (num_tokens - 1)
+                    span.set_attribute("telemetry.tpot_ms", tpot_ms)
+                    span.set_attribute("telemetry.output_tokens_estimated", num_tokens)
+
                 span.set_attribute("telemetry.status", "success_fast_path")
                 return full_response
 

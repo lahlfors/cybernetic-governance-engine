@@ -14,8 +14,15 @@
 # limitations under the License.
 
 """
-Cloud Run Deployment Script for Governed Financial Advisor
-Handles secret creation, image building, service deployment, and infrastructure verification.
+Cloud Run & Kubernetes Deployment Script for Governed Financial Advisor
+
+Handles:
+1. Google Cloud API enablement.
+2. Redis (Memorystore) provisioning/verification.
+3. Secret Manager configuration (tokens, OPA policies).
+4. Kubernetes Infrastructure (vLLM on GKE).
+5. Cloud Run Service Deployment (Main App + Sidecar).
+6. UI Service Deployment.
 
 Configuration is read from .env file as the single source of truth.
 """
@@ -26,12 +33,14 @@ import secrets
 import subprocess
 import sys
 import tempfile
+import shutil
 from pathlib import Path
 
 import yaml
 
 
-# Load .env file as single source of truth
+# --- Configuration Loading ---
+
 def load_dotenv():
     """Load environment variables from .env file."""
     env_path = Path(__file__).parent.parent / ".env"
@@ -50,15 +59,30 @@ def load_dotenv():
 
 load_dotenv()
 
-def run_command(command, check=True, capture_output=False):
-    """Runs a shell command and prints the output."""
+
+# --- Helper Functions ---
+
+def run_command(command, check=True, capture_output=False, env=None):
+    """
+    Runs a shell command and prints the output.
+
+    Args:
+        command (list): The command to run.
+        check (bool): Whether to raise an exception on failure.
+        capture_output (bool): Whether to capture stdout/stderr.
+        env (dict): Environment variables to pass.
+
+    Returns:
+        subprocess.CompletedProcess or subprocess.CalledProcessError
+    """
     print(f"🚀 Running: {' '.join(command)}")
     try:
         result = subprocess.run(
             command,
             check=check,
             capture_output=capture_output,
-            text=True
+            text=True,
+            env=env or os.environ.copy()
         )
         if capture_output and result.stdout:
             print(result.stdout.strip())
@@ -71,6 +95,13 @@ def run_command(command, check=True, capture_output=False):
             sys.exit(1)
         return e
 
+def check_tool_availability(tool_name):
+    """Checks if a CLI tool is available in the PATH."""
+    return shutil.which(tool_name) is not None
+
+
+# --- Infrastructure Steps ---
+
 def enable_apis(project_id):
     """Enables necessary Google Cloud APIs."""
     print("\n--- 🛠️ Enabling APIs ---")
@@ -79,7 +110,8 @@ def enable_apis(project_id):
         "aiplatform.googleapis.com",
         "secretmanager.googleapis.com",
         "run.googleapis.com",
-        "cloudbuild.googleapis.com"
+        "cloudbuild.googleapis.com",
+        "container.googleapis.com" # Required for GKE/Kubectl
     ]
     for api in apis:
         run_command([
@@ -134,80 +166,38 @@ def get_redis_host(project_id, region, instance_name="financial-advisor-redis"):
     parts = output.split()
     return parts[0], parts[1]
 
-
-def check_service_exists(project_id, region, service_name):
-    """Checks if a Cloud Run service exists."""
-    cmd = [
-        "gcloud", "run", "services", "describe", service_name,
-        "--region", region,
-        "--project", project_id,
-        "--format", "value(status.url)"
-    ]
-    result = run_command(cmd, check=False, capture_output=True)
-    if result.returncode == 0 and result.stdout.strip():
-        return result.stdout.strip()
-    return None
-
-
-def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=False):
+def deploy_k8s_infra(project_id, region):
     """
-    Deploys UI service to Cloud Run (default behavior).
-    Use skip_ui=True to skip deployment entirely.
-    Returns the UI service URL.
+    Deploys Kubernetes manifests for vLLM.
+    Requires 'kubectl' to be configured for the target cluster.
     """
-    print(f"\n--- 🖥️ Deploying UI Service: {ui_service_name} ---")
+    print("\n--- ☸️ Deploying K8s Infrastructure (vLLM) ---")
 
-    if skip_ui:
-        print("⏭️ Skipping UI deployment (--skip-ui flag set)")
-        # Check if service exists and return its URL
-        existing_url = check_service_exists(project_id, region, ui_service_name)
-        if existing_url:
-            print(f"   Existing UI service at: {existing_url}")
-            return existing_url
-        return None
+    if not check_tool_availability("kubectl"):
+        print("⚠️ 'kubectl' not found in PATH. Skipping K8s deployment.")
+        print("   Ensure you have installed kubectl and configured context.")
+        return
 
-    # Check if ui/ directory exists
-    ui_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ui")
-    if not os.path.exists(ui_dir):
-        print(f"❌ UI directory not found at: {ui_dir}")
-        print("   Skipping UI deployment.")
-        return None
+    k8s_dir = Path("deployment/k8s")
+    if not k8s_dir.exists():
+        print(f"⚠️ K8s directory {k8s_dir} not found. Skipping.")
+        return
 
-    # Build UI image
-    ui_image_uri = f"gcr.io/{project_id}/financial-advisor-ui:latest"
-    print("\n🏗️ Building UI container image...")
-    run_command([
-        "gcloud", "builds", "submit",
-        "--tag", ui_image_uri,
-        "--project", project_id,
-        ui_dir
-    ])
+    # Check for authentication (rudimentary check)
+    try:
+        run_command(["kubectl", "cluster-info"], check=True, capture_output=True)
+    except Exception:
+        print("⚠️ Failed to connect to Kubernetes cluster. Skipping manifest application.")
+        print("   Run: gcloud container clusters get-credentials CLUSTER_NAME --region REGION")
+        return
 
-    # Deploy UI service
-    print("\n🚀 Deploying UI service to Cloud Run...")
-    print("ℹ️  Note: If you see 'Setting IAM policy failed', it is due to Organization Policy.")
-    print("    The service will still deploy but will require authenticated access.")
-    run_command([
-        "gcloud", "run", "deploy", ui_service_name,
-        "--image", ui_image_uri,
-        "--region", region,
-        "--project", project_id,
-        "--platform", "managed",
-        "--allow-unauthenticated",
-        "--set-env-vars", f"BACKEND_URL={backend_url}",
-        "--port", "8080",
-        "--memory", "512Mi",
-        "--cpu", "1"
-    ])
+    # Apply all manifests
+    print("🚀 Applying manifests from deployment/k8s/...")
+    run_command(["kubectl", "apply", "-f", str(k8s_dir)])
+    print("✅ K8s manifests applied.")
 
-    # Get the deployed URL
-    deployed_url = check_service_exists(project_id, region, ui_service_name)
-    if deployed_url:
-        print(f"✅ UI service deployed at: {deployed_url}")
-        return deployed_url
 
-    print("⚠️ UI deployment completed but could not retrieve URL.")
-    return None
+# --- Secret Management ---
 
 def check_secret_exists(project_id, secret_name):
     """Checks if a secret exists in Secret Manager."""
@@ -250,9 +240,81 @@ def create_secret(project_id, secret_name, file_path=None, literal_value=None):
             check=True
         )
 
+
+# --- Service Deployment ---
+
+def check_service_exists(project_id, region, service_name):
+    """Checks if a Cloud Run service exists."""
+    cmd = [
+        "gcloud", "run", "services", "describe", service_name,
+        "--region", region,
+        "--project", project_id,
+        "--format", "value(status.url)"
+    ]
+    result = run_command(cmd, check=False, capture_output=True)
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip()
+    return None
+
+def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=False):
+    """
+    Deploys UI service to Cloud Run (default behavior).
+    Use skip_ui=True to skip deployment entirely.
+    Returns the UI service URL.
+    """
+    print(f"\n--- 🖥️ Deploying UI Service: {ui_service_name} ---")
+
+    if skip_ui:
+        print("⏭️ Skipping UI deployment (--skip-ui flag set)")
+        existing_url = check_service_exists(project_id, region, ui_service_name)
+        if existing_url:
+            print(f"   Existing UI service at: {existing_url}")
+            return existing_url
+        return None
+
+    ui_dir = Path("ui")
+    if not ui_dir.exists():
+        print(f"❌ UI directory not found at: {ui_dir}")
+        print("   Skipping UI deployment.")
+        return None
+
+    ui_image_uri = f"gcr.io/{project_id}/financial-advisor-ui:latest"
+    print("\n🏗️ Building UI container image...")
+    run_command([
+        "gcloud", "builds", "submit",
+        "--tag", ui_image_uri,
+        "--project", project_id,
+        str(ui_dir)
+    ])
+
+    print("\n🚀 Deploying UI service to Cloud Run...")
+    run_command([
+        "gcloud", "run", "deploy", ui_service_name,
+        "--image", ui_image_uri,
+        "--region", region,
+        "--project", project_id,
+        "--platform", "managed",
+        "--allow-unauthenticated",
+        "--set-env-vars", f"BACKEND_URL={backend_url}",
+        "--port", "8080",
+        "--memory", "512Mi",
+        "--cpu", "1"
+    ])
+
+    deployed_url = check_service_exists(project_id, region, ui_service_name)
+    if deployed_url:
+        print(f"✅ UI service deployed at: {deployed_url}")
+        return deployed_url
+
+    print("⚠️ UI deployment completed but could not retrieve URL.")
+    return None
+
+
+# --- Main Execution Flow ---
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Deploy Financial Advisor to Cloud Run (deploys all services by default)"
+        description="Deploy Financial Advisor to Cloud Run & GKE"
     )
     parser.add_argument("--project-id", required=True, help="Google Cloud Project ID")
     parser.add_argument("--region", default="us-central1", help="Cloud Run Region")
@@ -262,8 +324,9 @@ def main():
     parser.add_argument("--skip-build", action="store_true", help="Skip image build step")
     parser.add_argument("--skip-redis", action="store_true", help="Skip Redis provisioning")
     parser.add_argument("--skip-ui", action="store_true", help="Skip UI service deployment")
+    parser.add_argument("--skip-k8s", action="store_true", help="Skip Kubernetes deployment")
 
-    # Override Arguments (use existing resources)
+    # Override Arguments
     parser.add_argument("--redis-host", help="Use existing Redis Host")
     parser.add_argument("--redis-port", default="6379", help="Redis Port")
     parser.add_argument("--redis-instance-name", default="financial-advisor-redis", help="Name for auto-provisioned Redis")
@@ -290,9 +353,14 @@ def main():
     else:
         print(f"\n--- 🗄️ Using provided Redis: {redis_host}:{redis_port} ---")
 
+    # 2. Kubernetes Infrastructure (vLLM)
+    if not args.skip_k8s:
+        deploy_k8s_infra(project_id, region)
+    else:
+        print("\n--- ⏭️ Skipping K8s deployment (--skip-k8s flag set) ---")
 
 
-    # 2. Secret Management
+    # 3. Secret Management
     print("\n--- 🔑 Managing Secrets ---")
 
     # Random Auth Token
@@ -302,16 +370,16 @@ def main():
     # System Authz Policy
     create_secret(project_id, "system-authz-policy", file_path="deployment/system_authz.rego")
 
-    # Finance Policy
-    if os.path.exists("src/governance/policy/finance_policy.rego"):
-        policy_path = "src/governance/policy/finance_policy.rego"
-    elif os.path.exists("deployment/finance_policy.rego"):
-        policy_path = "deployment/finance_policy.rego"
-    else:
-        print("⚠️ Warning: finance_policy.rego not found. Creating dummy.")
-        policy_path = "deployment/finance_policy.rego"
-        with open(policy_path, "w") as f:
-            f.write("package finance\nallow := true")
+    # Finance Policy - Strict Check (No Mocks)
+    policy_path = "src/governance/policy/finance_policy.rego"
+    if not os.path.exists(policy_path):
+        # Fallback to local deployment/ folder if src/ is missing (e.g. in some build contexts)
+        if os.path.exists("deployment/finance_policy.rego"):
+             policy_path = "deployment/finance_policy.rego"
+        else:
+            print(f"❌ Critical Error: Finance Policy not found at {policy_path}")
+            print("   Ensure 'src/governance/policy/finance_policy.rego' exists.")
+            sys.exit(1)
 
     print(f"📄 Using Finance Policy from: {policy_path}")
     create_secret(project_id, "finance-policy-rego", file_path=policy_path)
@@ -319,7 +387,7 @@ def main():
     # OPA Config
     create_secret(project_id, "opa-configuration", file_path="deployment/opa_config.yaml")
 
-    # 3. Build Image
+    # 4. Build Image
     image_uri = f"gcr.io/{project_id}/financial-advisor:latest"
     if not args.skip_build:
         print("\n--- 🏗️ Building Container Image ---")
@@ -332,7 +400,7 @@ def main():
     else:
         print(f"\n--- ⏭️ Skipping Build (Image: {image_uri}) ---")
 
-    # 4. Prepare Service YAML
+    # 5. Prepare Service YAML
     print("\n--- 📝 Preparing Service Configuration ---")
 
     with open("deployment/service.yaml") as f:
@@ -362,7 +430,13 @@ def main():
             add_env("GOOGLE_GENAI_USE_VERTEXAI", os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "true"))
             add_env("OPA_URL", os.environ.get("OPA_URL", "http://localhost:8181/v1/data/finance/allow"))
 
-            print(f"✅ Injected Envs from .env: REDIS_HOST={redis_host}, GOOGLE_GENAI_USE_VERTEXAI={os.environ.get('GOOGLE_GENAI_USE_VERTEXAI', 'true')}")
+            # vLLM Configuration
+            # Default to K8s internal DNS (assumes connectivity via VPC or similar)
+            vllm_url = os.environ.get("VLLM_BASE_URL", "http://vllm-service.governance-stack.svc.cluster.local:8000/v1")
+            add_env("VLLM_BASE_URL", vllm_url)
+            add_env("VLLM_API_KEY", os.environ.get("VLLM_API_KEY", "EMPTY"))
+
+            print(f"✅ Injected Envs: REDIS_HOST={redis_host}, VLLM_BASE_URL={vllm_url}")
             break
 
     # Guarantee Secret Name Consistency
@@ -370,7 +444,6 @@ def main():
     for volume in volumes:
         if volume["name"] == "policy-volume":
             volume["secret"]["secretName"] = "finance-policy-rego"
-            print("✅ Enforced secretName: finance-policy-rego for policy-volume")
             break
 
     # Write to temp file
@@ -379,20 +452,8 @@ def main():
         temp_path = temp.name
 
     try:
-        # 5. Deploy
+        # 6. Deploy Main Service
         print("\n--- 🚀 Deploying to Cloud Run ---")
-
-        # Note: Cloud Run needs VPC connector to access Redis (Memorystore).
-        # This script assumes a VPC Connector is set up or Redis is accessible.
-        # Adding VPC connector automation is highly complex (Networking).
-        # We assume the default VPC or a Serverless VPC Access connector is configured if required.
-
-        print("⚠️  IMPORTANT: ensuring connectivity to Redis...")
-        print("   Cloud Run requires a 'Serverless VPC Access' connector to reach Cloud Memorystore (Redis).")
-        print("   If you have not configured a VPC connector, the application will timeout connecting to Redis")
-        print("   and fallback to 'Ephemeral Mode' (Local State only). Safety state will NOT persist across restarts.")
-        print("   To fix: Create a VPC connector and add '--vpc-connector' to the gcloud run deploy command manually.")
-
         run_command([
             "gcloud", "run", "services", "replace", temp_path,
             "--region", region,
@@ -407,7 +468,7 @@ def main():
         print("\n--- ✅ Main Service Deployment Complete ---")
         print(f"Backend URL: {backend_url}")
 
-        # 6. Deploy UI Service
+        # 7. Deploy UI Service
         ui_url = deploy_ui_service(
             project_id,
             region,
