@@ -128,8 +128,8 @@ cp .env.example .env
 Edit `.env` with your settings:
 ```bash
 # Model Configuration
-MODEL_FAST=gemini-2.0-flash
-MODEL_REASONING=gemini-2.0-pro-exp-02-05
+MODEL_FAST=gemini-2.5-flash-lite
+MODEL_REASONING=gemini-2.5-pro
 
 # Vertex AI Configuration (Required for Reasoning Plane)
 GOOGLE_GENAI_USE_VERTEXAI=1

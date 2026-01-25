@@ -23,8 +23,8 @@ class HybridClient:
         self,
         vllm_base_url: str = "http://vllm-service.governance-stack.svc.cluster.local:8000/v1",
         vllm_api_key: str = "EMPTY",
-        vllm_model: str = "google/gemma-3-27b-it",
-        vertex_model: str = "gemini-2.0-pro-exp-02-05",
+        vllm_model: str = os.getenv("VLLM_MODEL", "google/gemma-3-27b-it"),
+        vertex_model: str = "gemini-2.5-pro",
         vertex_project: Optional[str] = None,
         vertex_location: str = "us-central1",
         fallback_threshold_ms: float = 200.0

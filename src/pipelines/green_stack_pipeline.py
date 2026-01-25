@@ -56,7 +56,7 @@ def risk_discovery_op(
         identified_ucas: list[ProposedUCA] = Field(description="List of specific Financial UCAs identified")
         analysis_text: str = Field(description="Detailed textual analysis of risks")
 
-    MODEL_REASONING = "gemini-2.0-pro-exp-02-05" # Hardcoded for safety in pipeline
+    MODEL_REASONING = "gemini-2.5-pro" # Hardcoded for safety in pipeline
 
     RISK_ANALYST_PROMPT_TEXT = """
 Role: You are the 'Risk Discovery Agent' (A2 System).
