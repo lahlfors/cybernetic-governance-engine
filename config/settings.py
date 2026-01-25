@@ -6,10 +6,12 @@ load_dotenv()
 
 # Tiered Model Configuration (from .env)
 # Fast path: Supervisor, Data Analyst, Execution Analyst
-MODEL_FAST = os.getenv("MODEL_FAST", "gemini-2.0-flash")
+# Defaulting to Gemini 2.0 Flash-Lite
+MODEL_FAST = os.getenv("MODEL_FAST", "gemini-2.0-flash-lite-001")
 
 # Reasoning path: Risk Analyst, Verifier, Consensus (safety-critical)
-MODEL_REASONING = os.getenv("MODEL_REASONING", "gemini-2.5-pro")
+# Defaulting to Gemini 2.0 Pro
+MODEL_REASONING = os.getenv("MODEL_REASONING", "gemini-2.0-pro-exp-02-05")
 
 # Legacy alias for backward compatibility
 MODEL_NAME = MODEL_FAST

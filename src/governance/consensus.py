@@ -15,7 +15,7 @@ class ConsensusEngine:
     Implements a 'Critic' check for high-stakes decisions using a separate LLM call.
     """
 
-    def __init__(self, threshold: float = 10000.0, model_name: str = "gemini-2.5-pro"):
+    def __init__(self, threshold: float = 10000.0, model_name: str = "gemini-2.0-pro-exp-02-05"):
         self.threshold = threshold
         self.model_name = model_name
 

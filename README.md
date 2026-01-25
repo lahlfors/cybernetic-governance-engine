@@ -129,7 +129,7 @@ Edit `.env` with your settings:
 ```bash
 # Model Configuration
 MODEL_FAST=gemini-2.0-flash
-MODEL_REASONING=gemini-2.5-pro
+MODEL_REASONING=gemini-2.0-pro-exp-02-05
 
 # Vertex AI Configuration (Required for Reasoning Plane)
 GOOGLE_GENAI_USE_VERTEXAI=1
