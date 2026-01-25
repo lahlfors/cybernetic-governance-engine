@@ -19,6 +19,7 @@ ENV PYTHONPATH="${PYTHONPATH}:/app:/app/src"
 
 RUN pip install uv && \
     uv export --no-emit-project --no-dev --no-hashes --format requirements-txt > requirements.txt && \
+    pip install kfp && \
     pip install --no-cache-dir -r requirements.txt uvicorn fastapi google-auth google-cloud-aiplatform google-adk opentelemetry-api opentelemetry-sdk opentelemetry-exporter-gcp-trace opentelemetry-instrumentation-fastapi opentelemetry-instrumentation-requests
 
 # Expose the port
