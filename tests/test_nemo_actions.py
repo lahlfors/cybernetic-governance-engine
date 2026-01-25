@@ -1,5 +1,7 @@
 import unittest
+
 from src.governance.nemo_actions import check_approval_token, check_latency
+
 
 class TestNeMoActions(unittest.TestCase):
     def test_check_approval_token_valid(self):

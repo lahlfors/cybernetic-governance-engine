@@ -1,6 +1,9 @@
-from typing import Callable, Optional, Any, Dict
-from opentelemetry.sdk.trace import SpanProcessor, ReadableSpan
+from collections.abc import Callable
+from typing import Any
+
 from opentelemetry.context import Context
+from opentelemetry.sdk.trace import ReadableSpan, SpanProcessor
+
 
 class StrippedSpan:
     """
@@ -18,7 +21,7 @@ class StrippedSpan:
         return getattr(self._span, name)
 
     @property
-    def attributes(self) -> Dict[str, Any]:
+    def attributes(self) -> dict[str, Any]:
         """Return attributes excluding the heavy ones."""
         if self._filtered_attributes is None:
             original_attrs = self._span.attributes or {}
@@ -59,7 +62,7 @@ class GenAICostOptimizerProcessor(SpanProcessor):
             "risk_feedback"
         }
 
-    def on_start(self, span: Any, parent_context: Optional[Context] = None) -> None:
+    def on_start(self, span: Any, parent_context: Context | None = None) -> None:
         # Forward on_start to both processors
         self.cold_processor.on_start(span, parent_context)
         self.hot_processor.on_start(span, parent_context)

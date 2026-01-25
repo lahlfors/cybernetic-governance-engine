@@ -1,11 +1,11 @@
-import pytest
 import json
-import os
 import logging
-import time
 from unittest import mock
+
+import pytest
+
 from src.governance import nemo_actions
-from src.governance.nemo_actions import check_drawdown_limit, DEFAULT_DRAWDOWN_LIMIT
+from src.governance.nemo_actions import check_drawdown_limit
 
 # Configure logging to capture output
 logging.basicConfig(level=logging.INFO)

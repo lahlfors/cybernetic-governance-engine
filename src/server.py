@@ -1,25 +1,24 @@
-import os
-import sys
-import uvicorn
 import traceback
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
 
-from opentelemetry import trace
-from opentelemetry.instrumentation.langchain import LangchainInstrumentor
+import uvicorn
 
 # Initialize Vertex AI before importing agents
 import vertexai
+from fastapi import FastAPI, HTTPException
+from opentelemetry import trace
+from opentelemetry.instrumentation.langchain import LangchainInstrumentor
+from pydantic import BaseModel
+
 from config.settings import Config
 
 vertexai.init(project=Config.GOOGLE_CLOUD_PROJECT, location=Config.GOOGLE_CLOUD_LOCATION)
 print(f"✅ Vertex AI initialized: project={Config.GOOGLE_CLOUD_PROJECT}, location={Config.GOOGLE_CLOUD_LOCATION}")
 
-from src.utils.nemo_manager import load_rails, validate_with_nemo
+from src.demo.router import demo_router
 from src.graph.graph import create_graph
 from src.utils.context import user_context
+from src.utils.nemo_manager import load_rails, validate_with_nemo
 from src.utils.telemetry import configure_telemetry
-from src.demo.router import demo_router
 
 # Observability
 configure_telemetry()
@@ -35,7 +34,7 @@ graph = create_graph(redis_url=Config.REDIS_URL)
 
 class QueryRequest(BaseModel):
     prompt: str
-    user_id: str = "default_user" 
+    user_id: str = "default_user"
     thread_id: str = "default_thread"
 
 @app.get("/health")
@@ -70,7 +69,7 @@ async def query_agent(req: QueryRequest):
             {"messages": [("user", req.prompt)]},
             config={"recursion_limit": 20, "configurable": {"thread_id": req.thread_id}}
         )
-        
+
         # Extract the last message content
         return {
             "response": res["messages"][-1].content,

@@ -1,32 +1,52 @@
+import src.governance
 
-define flow check authorization
-  user ask "execute trade"
-  $allowed = execute src.governance.nemo_actions.check_approval_token
+flow check_authorization
+  user said "execute trade"
+  $allowed = await src.governance.check_approval_token()
   if not $allowed
     bot refuse to respond
-    stop
+    abort
 
-define flow check latency
-  user ask "execute trade"
-  $allowed = execute src.governance.nemo_actions.check_data_latency
+flow check_latency
+  user said "execute trade"
+  $allowed = await src.governance.check_data_latency()
   if not $allowed
     bot refuse to respond
-    stop
+    abort
 
-define flow check financial risk
-  user ask "execute trade"
-  $drawdown_ok = execute src.governance.nemo_actions.check_drawdown_limit
+flow check_financial_risk
+  user said "execute trade"
+  $drawdown_ok = await src.governance.check_drawdown_limit()
   if not $drawdown_ok
     bot refuse to respond
-    stop
-  $slippage_ok = execute src.governance.nemo_actions.check_slippage_risk
+    abort
+  $slippage_ok = await src.governance.check_slippage_risk()
   if not $slippage_ok
     bot refuse to respond
-    stop
+    abort
 
-define flow check atomic execution
-  user ask "execute multi-leg trade"
-  $atomic_ok = execute src.governance.nemo_actions.check_atomic_execution
+flow check_atomic_execution
+  user said "execute multi-leg trade"
+  $atomic_ok = await src.governance.check_atomic_execution()
   if not $atomic_ok
     bot refuse to respond
-    stop
+    abort
+
+# --- Advanced Governance: Parallel Rails (Colang 2.0) ---
+
+flow parallel_governance_check
+  user said r"transfer funds|modify account|access pii"
+  
+  # Trigger parallel execution
+  $topical = await src.governance.check_approval_token()
+  $safety = await src.governance.check_drawdown_limit()
+  $fact = await src.governance.check_data_latency()
+
+  if not $topical or not $safety or not $fact
+    bot refuse to respond
+    abort
+  else
+    bot continue to execution
+
+flow bot continue to execution
+  bot say "Proceeding with transaction."

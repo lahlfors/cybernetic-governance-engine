@@ -1,6 +1,6 @@
-# Architecture: Hybrid LangGraph + Google ADK
+# Architecture: Hybrid LangGraph + Google ADK + Hybrid Inference
 
-This document describes the hybrid architecture of the Cybernetic Governance Engine, which combines **LangGraph** for deterministic workflow orchestration with **Google ADK** for LLM-powered agent reasoning.
+This document describes the hybrid architecture of the Cybernetic Governance Engine, which combines **LangGraph** for deterministic workflow orchestration with **Google ADK** for LLM-powered agent reasoning, supported by a **Hybrid Inference Stack** (vLLM + Vertex AI).
 
 ## Overview
 
@@ -36,6 +36,19 @@ This document describes the hybrid architecture of the Cybernetic Governance Eng
 
 **The Insight**: Use LangGraph for what it does best (deterministic control flow, conditional routing, loops) and ADK for what it does best (LLM-powered reasoning, tool use, multi-turn conversations).
 
+## Hybrid Inference Strategy (Latency as Currency)
+
+To fund the "Governance Budget" (overhead of NeMo/OPA checks), we utilize a self-hosted high-performance inference stack.
+
+*   **Fast Path:** **vLLM** on Kubernetes (GKE) with NVIDIA H100 GPUs.
+    *   **Model:** `google/gemma-3-27b-it` (Target) + `google/gemma-3-4b-it` (Draft).
+    *   **Technique:** Speculative Decoding (FP8).
+    *   **SLA:** Time-To-First-Token (TTFT) < 200ms.
+*   **Reliable Path:** **Vertex AI** (Gemini 2.5 Pro).
+    *   **Fallback:** Triggered on connection error or SLA violation.
+
+See [docs/LATENCY_STRATEGY.md](docs/LATENCY_STRATEGY.md) for details.
+
 ---
 
 ## Request Flow
@@ -49,6 +62,9 @@ sequenceDiagram
     participant Supervisor as Supervisor Node
     participant Adapter as ADK Adapter
     participant Agent as ADK LlmAgent
+    participant HybridClient as Hybrid LLM Client
+    participant vLLM as Self-Hosted Inference
+    participant Vertex as Vertex AI
 
     User->>Server: POST /agent/query
     Server->>NeMo: Validate input
@@ -58,6 +74,17 @@ sequenceDiagram
     Graph->>Supervisor: Entry Point
     Supervisor->>Adapter: run_adk_agent(root_agent)
     Adapter->>Agent: Runner.run()
+    Agent->>HybridClient: generate()
+
+    alt Fast Path (vLLM)
+        HybridClient->>vLLM: Stream Request
+        vLLM-->>HybridClient: First Token (<200ms)
+        vLLM-->>HybridClient: Full Response
+    else Slow/Error
+        HybridClient->>Vertex: Fallback Request
+        Vertex-->>HybridClient: Response
+    end
+
     Agent-->>Adapter: Response + route_request tool call
     Adapter-->>Supervisor: AgentResponse
     
@@ -222,6 +249,8 @@ graph LR
 | `GOOGLE_CLOUD_PROJECT` | GCP project ID |
 | `GOOGLE_CLOUD_LOCATION` | Region (e.g., `us-central1`) |
 | `REDIS_URL` | Redis connection for state persistence |
+| `MODEL_FAST` | Fast model alias (e.g., `gemini-2.5-flash-lite`) |
+| `MODEL_REASONING` | Reasoning model alias (e.g., `gemini-2.5-pro`) |
 
 ---
 

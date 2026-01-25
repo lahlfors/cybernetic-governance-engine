@@ -1,8 +1,10 @@
-from typing import Dict, Any, List
 import logging
-from opentelemetry import trace
-from src.utils.telemetry import genai_span
+from typing import Any
+
 from langchain_google_genai import ChatGoogleGenerativeAI
+from opentelemetry import trace
+
+from src.utils.telemetry import genai_span
 
 logger = logging.getLogger("ConsensusEngine")
 tracer = trace.get_tracer("src.governance.consensus")
@@ -56,7 +58,7 @@ class ConsensusEngine:
             logger.error(f"Critic {role} failed: {e}")
             return "ERROR"
 
-    def check_consensus(self, action: str, amount: float, symbol: str) -> Dict[str, Any]:
+    def check_consensus(self, action: str, amount: float, symbol: str) -> dict[str, Any]:
         """
         If the amount > threshold, trigger a consensus check.
         Uses a Multi-Agent Debate pattern (simulated via multiple calls).

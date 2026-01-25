@@ -1,9 +1,9 @@
-import logging
-import time
 import json
+import logging
 import os
-from typing import Dict, Any, List, Optional
-from src.governance.safety import safety_filter
+import time
+from typing import Any
+
 from src.demo.state import demo_state
 
 # Import generated actions if available
@@ -20,13 +20,13 @@ SAFETY_PARAMS_FILE = "src/governance/safety_params.json"
 DEFAULT_DRAWDOWN_LIMIT = 0.05  # 5% default fallback
 
 # --- CACHING STATE ---
-_safety_params_cache: Dict[str, Any] = {}
+_safety_params_cache: dict[str, Any] = {}
 _last_check_time: float = 0.0
 CACHE_TTL = 5.0  # Seconds
 
 # --- CORE/EXISTING ACTIONS ---
 
-def check_approval_token(context: Dict[str, Any] = {}, event: Dict[str, Any] = {}) -> bool:
+def check_approval_token(context: dict[str, Any] = {}, event: dict[str, Any] = {}) -> bool:
     """
     NeMo Action: SC-1 Authorization Check with Cryptographic Mandate (AP2 Mock).
     """
@@ -49,11 +49,11 @@ def check_approval_token(context: Dict[str, Any] = {}, event: Dict[str, Any] = {
     logger.warning("⛔ SC-1 Violation: Invalid Signature.")
     return False
 
-def check_latency(context: Dict[str, Any] = {}, event: Dict[str, Any] = {}) -> bool:
+def check_latency(context: dict[str, Any] = {}, event: dict[str, Any] = {}) -> bool:
     """NeMo Action: SC-2 Latency Check (Generic)."""
     return True
 
-def check_data_latency(context: Dict[str, Any] = {}, event: Dict[str, Any] = {}) -> bool:
+def check_data_latency(context: dict[str, Any] = {}, event: dict[str, Any] = {}) -> bool:
     """
     Enforces HZ-Latency: Blocks trades if data latency > 200ms.
     Uses real Temporal Logic.
@@ -98,7 +98,7 @@ def _get_drawdown_limit() -> float:
         # Check file modification time for smarter caching?
         # For now, simple TTL is sufficient and robust.
 
-        with open(SAFETY_PARAMS_FILE, "r") as f:
+        with open(SAFETY_PARAMS_FILE) as f:
             data = json.load(f)
 
         limit = data.get("drawdown_limit")
@@ -128,7 +128,7 @@ def _get_drawdown_limit() -> float:
         logger.error(f"Error reading safety params: {e}")
         return DEFAULT_DRAWDOWN_LIMIT
 
-def check_drawdown_limit(context: Dict[str, Any] = {}, event: Dict[str, Any] = {}) -> bool:
+def check_drawdown_limit(context: dict[str, Any] = {}, event: dict[str, Any] = {}) -> bool:
     """
     Enforces HZ-Drawdown: Discrete Control Barrier Function (CBF).
     Invariant: h(x) = Limit - Current_Drawdown >= 0
@@ -159,7 +159,7 @@ def check_drawdown_limit(context: Dict[str, Any] = {}, event: Dict[str, Any] = {
 
     return True
 
-def check_atomic_execution(context: Dict[str, Any] = {}, event: Dict[str, Any] = {}) -> bool:
+def check_atomic_execution(context: dict[str, Any] = {}, event: dict[str, Any] = {}) -> bool:
     """
     Enforces HZ-Atomic: Ensures multi-leg trades complete atomically.
     Inspects 'audit_trail' state.

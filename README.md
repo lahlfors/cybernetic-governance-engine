@@ -43,6 +43,17 @@ This system implements a **Hybrid Manager-Worker Architecture** that separates c
 
 👉 **For a deep dive, see [ARCHITECTURE.md](ARCHITECTURE.md)**
 
+## Sovereign Stack (Phase 1 & 2)
+
+This implementation adheres to the **Sovereign Stack** architecture, ensuring cloud independence and portability.
+
+👉 **See [docs/SOVEREIGN_STACK.md](docs/SOVEREIGN_STACK.md) for full architecture details.**
+
+*   **Cloud Agnostic:** Runs on local Docker, AWS, Azure, or On-Prem.
+*   **Local Governance:** Policy (OPA) and Semantic Guardrails (NeMo) run as **Sidecars**.
+*   **Standard Protocols:** Uses HTTP and **Unix Domain Sockets (UDS)** for ultra-low latency IPC.
+*   **Optimistic Execution:** Uses Python `asyncio` to parallelize safety checks and tool execution, reducing latency.
+
 ## Governance & Safety (Green Stack)
 
 This repository implements the advanced **Green Stack Governance Architecture**, separating cognition from control to satisfy ISO 42001 and STPA requirements.
@@ -65,7 +76,7 @@ This system demonstrates a **Hybrid Cognitive Architecture** designed for regula
 
 *   **Stateless Compute (Cloud Run):** The core agent logic runs on Google Cloud Run. This ensures **infinite scalability** (scale-to-zero) and **deterministic restarts** (no drift).
 *   **Redis State Store:** Session state is persisted to Redis (Cloud Memorystore) for reliable recovery across stateless compute instances.
-*   **Zero-Hop Policy (OPA Sidecar):** Regulatory checks happen over `localhost`. There is **no network latency** penalty for compliance, enabling high-frequency decision auditing.
+*   **Zero-Hop Policy (OPA Sidecar):** Regulatory checks happen over `localhost` or UDS. There is **no network latency** penalty for compliance, enabling high-frequency decision auditing.
 
 The architecture enforces "Defense in Depth" through six distinct layers (0-5), combining symbolic AI (Hard Logic) with Generative AI (Soft Logic):
 
@@ -85,17 +96,15 @@ The system orchestrates a team of specialized sub-agents, managed by a central *
 1.  **Data Analyst Agent:** Performs market research using Google Search.
 2.  **Governed Trader Agent (Layer 3):**
     *   **Worker:** Proposes trading strategies based on analysis.
-    *   **Verifier:** Audits the proposal against safety rules and the user's direct intent. Only the Verifier can execute.
+    *   **Verifier:** Audits the proposal against safety rules and the user's direct intent (delegating semantic checks to NeMo). Only the Verifier can execute.
 3.  **Execution Analyst Agent (Strategy):** Creates detailed execution plans (e.g., VWAP, TWAP).
 
-## Quick Start
+## Quick Start (Sovereign Stack)
 
 ### 1. Prerequisites
 
 *   [uv](https://github.com/astral-sh/uv) (for Python dependency management)
-*   [Open Policy Agent (OPA)](https://www.openpolicyagent.org/docs/latest/#running-opa)
-*   [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) (for Cloud Run deployments)
-*   A Google Cloud project with Vertex AI API enabled
+*   [Docker](https://docs.docker.com/get-docker/) & Docker Compose
 
 ### 2. Installation
 
@@ -108,12 +117,9 @@ cd cybernetic-governance-engine
 uv sync
 ```
 
-> **Note:** If you encounter `401 Unauthorized` errors during `uv sync` (common in corporate environments), standard PyPI access might be blocked or overridden. Ensure you have valid credentials (e.g., `gcert`) or configure `uv` to use the public PyPI index explicitly.
-
-
 ### 3. Configuration
 
-Copy the example environment file and configure your Google Cloud credentials:
+Copy the example environment file and configure your Google Cloud credentials (for Vertex AI access):
 
 ```bash
 cp .env.example .env
@@ -121,97 +127,57 @@ cp .env.example .env
 
 Edit `.env` with your settings:
 ```bash
-# Model Configuration (Tiered)
-MODEL_FAST=gemini-2.0-flash       # Fast path: Supervisor, Data Analyst
-MODEL_REASONING=gemini-2.5-pro    # Reasoning path: Verifier, Risk Analyst
+# Model Configuration
+MODEL_FAST=gemini-2.5-flash-lite
+MODEL_REASONING=gemini-2.5-pro
 
-# Vertex AI Configuration
+# Vertex AI Configuration (Required for Reasoning Plane)
 GOOGLE_GENAI_USE_VERTEXAI=1
 GOOGLE_CLOUD_PROJECT=<YOUR_PROJECT_ID>
-GOOGLE_CLOUD_LOCATION=<YOUR_REGION>  # e.g., us-central1
+GOOGLE_CLOUD_LOCATION=<YOUR_REGION>
+GOOGLE_API_KEY=<YOUR_API_KEY> # If using AI Studio
 
-# Policy Engine
+# Sovereign Stack Configuration
 OPA_URL=http://localhost:8181/v1/data/finance/allow
+# For UDS (Linux/Mac): OPA_URL=http+unix://%2Ftmp%2Fopa.sock/v1/data/finance/allow
 ```
 
-### 4. Run OPA (Required for Trading)
+### 4. Run the Stack (Docker Compose)
 
-You **must** have OPA running to execute trades. The system fails closed if OPA is unreachable.
+Start the governance infrastructure (OPA, Redis, NeMo):
 
 ```bash
-# Run OPA in the background with the provided policy bundle
-opa run -s -b src/governance/policy --addr :8181 &
+docker-compose up -d
 ```
 
-### 5. Run the Agent (Local Development)
+### 5. Run the Agent
 
 ```bash
 # Run the FastAPI server locally
 uv run python src/server.py
 ```
 
-The server will start on `http://localhost:8080`. Test with:
-```bash
-curl localhost:8080/health
-```
+The server will start on `http://localhost:8080`.
 
 ### 6. Run the UI (Optional)
 
 ```bash
-# Install Streamlit if not already installed
+# Install Streamlit
 uv pip install streamlit
 
-# Run the UI (ensure the backend is running on port 8080)
+# Run the UI
 export BACKEND_URL="http://localhost:8080"
 streamlit run ui/app.py
 ```
 
-### 7. Advanced Usage
-
-#### A. Session Persistence
-The system uses Redis for session state persistence. When running on Cloud Run with a VPC connector to Memorystore, session state is automatically persisted.
-*   **Default:** Ephemeral session (state lost on container restart).
-*   **With Redis:** Session state persists across container restarts.
-
-#### B. Accessing Cloud Run Services (Not Publicly Accessible)
-
-Cloud Run services deployed with authentication enabled require an identity token. Use the **Cloud Run Proxy** to tunnel authenticated requests:
-
-1.  **Start the Backend Proxy:**
-    ```bash
-    gcloud run services proxy governed-financial-advisor \
-      --project <YOUR_PROJECT_ID> \
-      --region us-central1 \
-      --port 8081
-    ```
-
-2.  **Start the UI Proxy (in another terminal):**
-    ```bash
-    gcloud run services proxy financial-advisor-ui \
-      --project <YOUR_PROJECT_ID> \
-      --region us-central1 \
-      --port 8080
-    ```
-
-3.  **Access the UI:**
-    Open `http://localhost:8080` in your browser.
-
-4.  **Test the Backend directly:**
-    curl -X POST localhost:8081/agent/query \
-      -H "Content-Type: application/json" \
-      -d '{"prompt": "Hello"}'
-    ```
-
-## 8. Security Verification (Red Teaming)
+## Security Verification (Red Teaming)
 
 This project includes a comprehensive **Red Team Test Suite** to verify the robustness of guardrails against adversarial attacks.
 
 To run the automated security tests against a deployed agent:
 
 ```bash
-# 1. Proxy the backend service (if on Cloud Run) to port 8082
-gcloud run services proxy governed-financial-advisor --project <PROJECT_ID> --region <REGION> --port 8082
-
+# 1. Ensure backend is running
 # 2. Run the test suite
 python3 tests/red_team/run_red_team.py
 ```
@@ -229,19 +195,6 @@ The suite tests for:
 
 The system is designed to meet **ISO/IEC 42001** standards for AI Management Systems.
 👉 **See [ISO_42001_COMPLIANCE.md](ISO_42001_COMPLIANCE.md) for the Telemetry Audit Map.**
-
-## Deployment
-
-The system is designed for **Google Cloud Run** using a multi-container Sidecar pattern.
-*   **Service 1 (Backend):** The Multi-Agent Application + OPA Sidecar (Policy Engine).
-*   **Service 2 (Frontend):** The Streamlit UI, automatically connected to the backend.
-
-To deploy:
-```bash
-python deployment/deploy_all.py --project-id <YOUR_PROJECT_ID>
-```
-
-See **[deployment/README.md](deployment/README.md)** for detailed deployment instructions.
 
 ## Architecture Diagram
 

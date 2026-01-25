@@ -14,8 +14,8 @@
 
 """Prompt for the financial_coordinator_agent."""
 
-from src.utils.prompt_utils import Prompt, PromptData, Content, Part
 from config.settings import MODEL_FAST
+from src.utils.prompt_utils import Content, Part, Prompt, PromptData
 
 FINANCIAL_COORDINATOR_PROMPT_OBJ = Prompt(
     prompt_data=PromptData(

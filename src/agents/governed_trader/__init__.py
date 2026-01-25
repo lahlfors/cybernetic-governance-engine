@@ -1,4 +1,4 @@
 # Governed Trader Agent Package
-from .agent import governed_trading_agent, worker_agent, verifier_agent
+from .agent import create_governed_trader_agent
 
-__all__ = ["governed_trading_agent", "worker_agent", "verifier_agent"]
+__all__ = ["create_governed_trader_agent"]

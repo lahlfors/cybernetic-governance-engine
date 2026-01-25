@@ -1,0 +1,42 @@
+# STAMP Safety Case Specification (Example)
+version: "1.0"
+hazards:
+  - id: "H-1"
+    hazard: "Unsafe Action Provided (Insolvency/Drawdown)"
+    deontic_modal: "PROHIBITION"
+    description: "Agent executes buy_order when daily_drawdown > 4.5%."
+    logic:
+      variable: "drawdown"
+      operator: ">"
+      threshold: "4.5"
+      condition: "action=='BUY'"
+
+  - id: "H-2"
+    hazard: "Wrong Timing (Stale Data/Front-running)"
+    deontic_modal: "PROHIBITION"
+    description: "Agent executes market_order when tick_timestamp is older than 200ms."
+    logic:
+      variable: "latency"
+      operator: ">"
+      threshold: "200"
+      condition: "order_type=='MARKET'"
+
+  - id: "H-3"
+    hazard: "Wrong Order (Liquidity/Slippage)"
+    deontic_modal: "PROHIBITION"
+    description: "Agent submits market_order where size > 1% of average_daily_volume."
+    logic:
+      variable: "order_size"
+      operator: ">"
+      threshold: "0.01 * daily_volume"
+      condition: "order_type=='MARKET'"
+
+  - id: "H-4"
+    hazard: "Stopped Too Soon (Atomic Execution Risk)"
+    deontic_modal: "OBLIGATION"
+    description: "Agent fails to complete leg_2 within 1 second of leg_1."
+    logic:
+      variable: "time_delta_legs"
+      operator: ">"
+      threshold: "1.0"
+      condition: "strategy=='MULTI_LEG'"

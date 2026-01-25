@@ -1,7 +1,5 @@
 import logging
-import random
-import time
-from typing import List, Dict, Any
+from typing import Any
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -17,7 +15,7 @@ class TraceAuditor:
     def __init__(self):
         self.violations = []
 
-    def fetch_recent_traces(self) -> List[Dict[str, Any]]:
+    def fetch_recent_traces(self) -> list[dict[str, Any]]:
         """
         Mock source. In production, this would query the Google Cloud Trace API
         or a Jaeger/OTLP endpoint.
@@ -53,7 +51,7 @@ class TraceAuditor:
         # Randomly return a batch
         return [trace_valid, trace_violation, trace_violation_deny]
 
-    def audit_trace(self, trace: Dict[str, Any]):
+    def audit_trace(self, trace: dict[str, Any]):
         """
         Invariant: Every 'tool.execution' span must have a causally preceding 'governance.check' span
         with decision='ALLOW' in the same trace.

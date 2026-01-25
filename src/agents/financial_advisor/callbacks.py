@@ -1,6 +1,7 @@
 import logging
+from typing import Any
+
 from opentelemetry import trace
-from typing import Optional, Any
 
 # We need to import the correct types from ADK
 # Using try-except block to handle potential import locations depending on ADK version
@@ -18,7 +19,7 @@ logger = logging.getLogger("OTelInterceptor")
 def otel_interceptor_callback(
     callback_context: CallbackContext,
     llm_response: LlmResponse
-) -> Optional[LlmResponse]:
+) -> LlmResponse | None:
     """
     Standard ADK AfterModelCallback signature.
     Intercepts the ADK response to add OTel attributes.

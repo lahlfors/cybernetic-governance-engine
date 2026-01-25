@@ -1,7 +1,7 @@
-import os
 import logging
+import os
+
 import redis
-from typing import Optional
 
 logger = logging.getLogger("Infrastructure.Redis")
 
@@ -32,7 +32,7 @@ class RedisWrapper:
             logger.warning(f"⚠️ Redis connection failed: {e}. Running in ephemeral mode.")
             self.client = None
 
-    def get(self, key: str) -> Optional[str]:
+    def get(self, key: str) -> str | None:
         try:
             if self.client:
                 return self.client.get(key)

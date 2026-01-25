@@ -1,14 +1,15 @@
 import os
 import shutil
-import time
+from unittest.mock import MagicMock, patch
+
 import pandas as pd
-from unittest.mock import MagicMock, patch, ANY
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider, Span
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor, BatchSpanProcessor
-from opentelemetry.sdk.resources import Resource
-from src.infrastructure.telemetry.processors.genai_cost_optimizer import GenAICostOptimizerProcessor
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+
 from src.infrastructure.telemetry.exporters.parquet_exporter import ParquetSpanExporter
+from src.infrastructure.telemetry.processors.genai_cost_optimizer import (
+    GenAICostOptimizerProcessor,
+)
 from src.utils.telemetry import smart_sampling
 
 # Setup

@@ -1,6 +1,6 @@
 import logging
 import random
-from typing import Dict, Any, List
+from typing import Any
 
 logger = logging.getLogger("EvaluatorAgent.RedAgent")
 
@@ -34,7 +34,7 @@ class RedAgent:
             }
         ]
 
-    def generate_attack(self, target_uca_id: str = None) -> Dict[str, Any]:
+    def generate_attack(self, target_uca_id: str = None) -> dict[str, Any]:
         """
         Selects an attack vector, optionally targeting a specific UCA.
         """

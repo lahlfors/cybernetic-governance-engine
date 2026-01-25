@@ -5,18 +5,7 @@ models:
     engine: gemini
     model: gemini-2.0-flash
 
-rails:
-  input:
-    flows:
-      - self check input
-      - check authorization
-      - check latency
-      - check financial risk
-      - check atomic execution
-
-  output:
-    flows:
-      - self check output
+colang_version: "2.x"
 
 instructions:
   - type: general

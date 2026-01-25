@@ -1,8 +1,12 @@
 import unittest
-from unittest.mock import MagicMock
-from src.agents.risk_analyst.agent import ProposedUCA, ConstraintLogic
+
+from src.agents.risk_analyst.agent import ConstraintLogic, ProposedUCA
+from src.governance.nemo_actions import (
+    check_drawdown_limit,
+    check_slippage_risk,
+)
 from src.governance.transpiler import transpiler
-from src.governance.nemo_actions import check_slippage_risk, check_drawdown_limit, check_data_latency
+
 
 class TestAutomatedLoop(unittest.TestCase):
     def test_transpiler_generation_slippage(self):

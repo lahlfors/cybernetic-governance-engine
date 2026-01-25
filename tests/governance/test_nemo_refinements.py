@@ -1,6 +1,12 @@
-import unittest
 import time
-from src.governance.nemo_actions import check_approval_token, check_data_latency, check_atomic_execution
+import unittest
+
+from src.governance.nemo_actions import (
+    check_approval_token,
+    check_atomic_execution,
+    check_data_latency,
+)
+
 
 class TestNeMoRefinements(unittest.TestCase):
     def test_approval_token_signature(self):

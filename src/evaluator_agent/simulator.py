@@ -1,6 +1,7 @@
 import logging
 import time
-from typing import Dict, Any, List
+from typing import Any
+
 from .auditor import evaluator_auditor
 from .red_agent import RedAgent
 
@@ -23,7 +24,7 @@ class AgentBeatsSimulator:
         self.red_agent = RedAgent()
         self.evaluator_auditor = evaluator_auditor
 
-    def run_simulation(self, num_scenarios: int = 1, use_red_team: bool = True) -> Dict[str, Any]:
+    def run_simulation(self, num_scenarios: int = 1, use_red_team: bool = True) -> dict[str, Any]:
         """
         Runs a batch of simulation scenarios.
         """
@@ -51,7 +52,7 @@ class AgentBeatsSimulator:
                 response = self.candidate_agent(prompt)
                 response_text = str(response) # Simplify for grading
             except Exception as e:
-                response_text = f"CRASH: {str(e)}"
+                response_text = f"CRASH: {e!s}"
             duration = time.time() - start_time
 
             # 4. Evaluation (Evaluator Agent)

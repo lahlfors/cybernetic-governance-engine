@@ -14,24 +14,33 @@
 
 """Financial coordinator: provide reasonable investment strategies."""
 
+import logging
+
 from google.adk.agents import LlmAgent
+
+from config.settings import MODEL_NAME
 from src.tools.router import route_request
 from src.utils.telemetry import configure_telemetry
-from .prompt import get_financial_coordinator_instruction
-from config.settings import MODEL_NAME
+
 from .callbacks import otel_interceptor_callback
-import logging
+from .prompt import get_financial_coordinator_instruction
 
 logger = logging.getLogger("FinancialCoordinator")
 
 # Initialize GCP observability (logging and tracing)
 configure_telemetry()
 
-from src.agents.data_analyst import data_analyst_agent
+# Import Factory Functions
+from src.agents.data_analyst import create_data_analyst_agent
+from src.agents.execution_analyst import create_execution_analyst_agent
+from src.agents.governed_trader import create_governed_trader_agent
+from src.agents.risk_analyst import create_risk_analyst_agent
 
-from src.agents.execution_analyst import execution_analyst_agent
-from src.agents.governed_trader import governed_trading_agent
-from src.agents.risk_analyst import risk_analyst_agent
+# Instantiate Agents
+data_analyst_agent = create_data_analyst_agent()
+execution_analyst_agent = create_execution_analyst_agent()
+governed_trading_agent = create_governed_trader_agent()
+risk_analyst_agent = create_risk_analyst_agent()
 
 
 financial_coordinator = LlmAgent(
@@ -56,10 +65,9 @@ financial_coordinator = LlmAgent(
     ],
     # Expose ONLY the deterministic router tool.
     tools=[
-        route_request, 
+        route_request,
     ],
 )
 
 root_agent = financial_coordinator
 agent = financial_coordinator
-

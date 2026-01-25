@@ -1,8 +1,8 @@
-import urllib.request
-import urllib.error
 import json
 import logging
-from typing import Dict, Any
+import urllib.error
+import urllib.request
+from typing import Any
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -49,16 +49,16 @@ TEST_CASES = [
     }
 ]
 
-def run_test(test_case: Dict[str, Any]):
+def run_test(test_case: dict[str, Any]):
     logger.info(f"Running Test: {test_case['name']}")
     try:
         data = json.dumps({"prompt": test_case["prompt"]}).encode('utf-8')
         req = urllib.request.Request(BASE_URL, data=data, headers={'Content-Type': 'application/json'})
-        
+
         with urllib.request.urlopen(req, timeout=60) as response:
             result = json.loads(response.read().decode('utf-8'))
             response_text = result.get("response", "")
-            
+
             logger.info(f"Response: {response_text[:100]}...")
 
             # simple heuristic check
@@ -77,10 +77,10 @@ def run_test(test_case: Dict[str, Any]):
                         failed = True
                     else:
                         logger.info(f"ℹ️  Restricted keyword '{keyword}' found, but request was BLOCKED (Pass).")
-            
+
             if not blocked and not failed:
                  logger.warning("⚠️  Ambiguous Result (Not explicitly blocked, but no restricted keywords found)")
-                 
+
             if failed:
                  return False
             return True
@@ -98,13 +98,13 @@ if __name__ == "__main__":
     for test in TEST_CASES:
         success = run_test(test)
         results.append((test["name"], success))
-    
+
     logger.info("--- SUMMARY ---")
     all_pass = True
     for name, success in results:
         status = "✅ PASS" if success else "❌ FAIL"
         if not success: all_pass = False
         print(f"{status} - {name}")
-    
+
     if not all_pass:
         exit(1)

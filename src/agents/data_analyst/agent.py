@@ -15,10 +15,14 @@
 """data_analyst_agent for finding information using google search"""
 
 from google.adk import Agent
-from google.adk.tools.google_search_agent_tool import GoogleSearchAgentTool, create_google_search_agent
 from google.adk.tools import transfer_to_agent
-from src.utils.prompt_utils import Prompt, PromptData, Content, Part
+from google.adk.tools.google_search_agent_tool import (
+    GoogleSearchAgentTool,
+    create_google_search_agent,
+)
+
 from config.settings import MODEL_NAME
+from src.utils.prompt_utils import Content, Part, Prompt, PromptData
 
 DATA_ANALYST_PROMPT_OBJ = Prompt(
     prompt_data=PromptData(
@@ -111,16 +115,16 @@ IMMEDIATELY AFTER generating this report, you MUST call `transfer_to_agent("fina
 def get_data_analyst_instruction() -> str:
     return DATA_ANALYST_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
 
-# Create a dedicated search agent and wrap it as a tool
-# This isolates the Google Search Retrieval tool to prevent conflicts with other function tools.
-search_agent = create_google_search_agent(model=MODEL_NAME)
-google_search_tool = GoogleSearchAgentTool(agent=search_agent)
+def create_data_analyst_agent(model_name: str = MODEL_NAME) -> Agent:
+    """Factory to create data analyst agent."""
+    # Create a dedicated search agent and wrap it as a tool
+    search_agent = create_google_search_agent(model=model_name)
+    google_search_tool = GoogleSearchAgentTool(agent=search_agent)
 
-data_analyst_agent = Agent(
-    model=MODEL_NAME,
-    name="data_analyst_agent",
-    instruction=get_data_analyst_instruction(),
-    output_key="market_data_analysis_output",
-    tools=[google_search_tool, transfer_to_agent],
-)
-
+    return Agent(
+        model=model_name,
+        name="data_analyst_agent",
+        instruction=get_data_analyst_instruction(),
+        output_key="market_data_analysis_output",
+        tools=[google_search_tool, transfer_to_agent],
+    )

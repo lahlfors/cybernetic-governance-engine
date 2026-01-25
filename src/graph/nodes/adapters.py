@@ -1,26 +1,60 @@
 """
 ADK Agent Adapters for LangGraph Nodes
 
-CRITICAL: These adapters import EXISTING agent instances and wrap them for LangGraph.
-Do not create new agent classes here.
+Uses Dependency Injection pattern to allow mocking during tests.
 """
 
+import asyncio
 import json
 import logging
+from collections.abc import Callable
+from typing import Any
+
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
-# Import EXISTING agent instances from nested structure
-from src.agents.data_analyst.agent import data_analyst_agent
-from src.agents.risk_analyst.agent import risk_analyst_agent
-from src.agents.execution_analyst.agent import execution_analyst_agent
-from src.agents.governed_trader.agent import governed_trading_agent
+# Import Factory Functions
+from src.agents.data_analyst.agent import create_data_analyst_agent
+from src.agents.execution_analyst.agent import create_execution_analyst_agent
+from src.agents.governed_trader.agent import create_governed_trader_agent
+from src.agents.risk_analyst.agent import create_risk_analyst_agent
 
 # Session management for ADK agents
 session_service = InMemorySessionService()
 
 logger = logging.getLogger("Graph.Adapters")
+
+# --- Dependency Injection Infrastructure ---
+
+_agent_registry = {}
+_agent_cache = {}
+
+def get_agent(name: str, factory: Callable[[], Any]) -> Any:
+    """
+    Retrieves an agent instance.
+    If a mock is registered in _agent_registry, returns that.
+    Otherwise, creates (and caches) the real agent using the factory.
+    """
+    # 1. Check for overrides/mocks (Transient)
+    if name in _agent_registry:
+        return _agent_registry[name]
+
+    # 2. Check cache (Singleton)
+    if name not in _agent_cache:
+        logger.info(f"Creating new agent instance for: {name}")
+        _agent_cache[name] = factory()
+
+    return _agent_cache[name]
+
+def inject_agent(name: str, instance: Any):
+    """Injects an agent instance (mock) for testing."""
+    _agent_registry[name] = instance
+
+def clear_agent_cache():
+    """Clears the agent cache and registry."""
+    _agent_registry.clear()
+    _agent_cache.clear()
 
 class AgentResponse:
     """Simple response object to hold agent output."""
@@ -28,16 +62,14 @@ class AgentResponse:
         self.answer = answer
         self.function_calls = function_calls or []
 
-
 def run_adk_agent(agent_instance, user_msg: str, session_id: str = "default", user_id: str = "default_user"):
     """
     Wraps the ADK Agent Runner to execute a turn and return the result object.
     Uses the updated Runner.run() API: run(user_id, session_id, new_message)
     """
-    import asyncio
     import nest_asyncio
     nest_asyncio.apply()
-    
+
     # Helper to create session asynchronously
     async def ensure_session():
         existing = await session_service.get_session(
@@ -51,36 +83,45 @@ def run_adk_agent(agent_instance, user_msg: str, session_id: str = "default", us
                 user_id=user_id,
                 session_id=session_id
             )
-    
+
     # Ensure session exists before running
-    asyncio.get_event_loop().run_until_complete(ensure_session())
-    
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    # Use nest_asyncio to allow re-entrant loop if needed
+    loop.run_until_complete(ensure_session())
+
     runner = Runner(
         agent=agent_instance,
         session_service=session_service,
         app_name="financial_advisor"
     )
-    
+
     # Format the message as Content
     new_message = types.Content(
         role="user",
         parts=[types.Part(text=user_msg)]
     )
-    
+
     # Run and collect events to extract answer
     answer_parts = []
     function_calls = []
-    for event in runner.run(user_id=user_id, session_id=session_id, new_message=new_message):
-        if hasattr(event, 'content') and event.content:
-            for part in event.content.parts:
-                if hasattr(part, 'text') and part.text:
-                    answer_parts.append(part.text)
-                if hasattr(part, 'function_call') and part.function_call:
-                    function_calls.append(part.function_call)
-    
+    try:
+        for event in runner.run(user_id=user_id, session_id=session_id, new_message=new_message):
+            if hasattr(event, 'content') and event.content:
+                for part in event.content.parts:
+                    if hasattr(part, 'text') and part.text:
+                        answer_parts.append(part.text)
+                    if hasattr(part, 'function_call') and part.function_call:
+                        function_calls.append(part.function_call)
+    except Exception as e:
+        logger.error(f"Error running ADK agent: {e}")
+        return AgentResponse(answer=f"Error: {e!s}")
+
     return AgentResponse(answer="".join(answer_parts), function_calls=function_calls)
-
-
 
 
 # --- Node Implementations ---
@@ -88,8 +129,9 @@ def run_adk_agent(agent_instance, user_msg: str, session_id: str = "default", us
 def data_analyst_node(state):
     """Wraps the Data Analyst agent for LangGraph."""
     print("--- [Graph] Calling Data Analyst ---")
+    agent = get_agent("data_analyst", create_data_analyst_agent)
     last_msg = state["messages"][-1].content
-    res = run_adk_agent(data_analyst_agent, last_msg)
+    res = run_adk_agent(agent, last_msg)
     return {"messages": [("ai", f"Data Analysis: {res.answer}")]}
 
 
@@ -99,8 +141,9 @@ def risk_analyst_node(state):
     Parses output to drive the Refinement Loop.
     """
     print("--- [Graph] Calling Risk Analyst ---")
+    agent = get_agent("risk_analyst", create_risk_analyst_agent)
     last_plan = state["messages"][-1].content
-    res = run_adk_agent(risk_analyst_agent, f"Evaluate this plan: {last_plan}")
+    res = run_adk_agent(agent, f"Evaluate this plan: {last_plan}")
 
     # Heuristic: Parse the Risk Agent's text output to drive the Loop
     text = res.answer
@@ -122,6 +165,7 @@ def execution_analyst_node(state):
     Parses the JSON output to populate 'execution_plan_output'.
     """
     print("--- [Graph] Calling Execution Analyst (Planner) ---")
+    agent = get_agent("execution_analyst", create_execution_analyst_agent)
     user_msg = state["messages"][-1].content
 
     # INJECT FEEDBACK if the loop pushed us back here
@@ -134,7 +178,7 @@ def execution_analyst_node(state):
         )
         print("--- [Loop] Injecting Risk Feedback ---")
 
-    res = run_adk_agent(execution_analyst_agent, user_msg)
+    res = run_adk_agent(agent, user_msg)
 
     # PARSE JSON Output
     plan_output = None
@@ -171,6 +215,7 @@ def execution_analyst_node(state):
 def governed_trader_node(state):
     """Wraps the Governed Trader agent for LangGraph."""
     print("--- [Graph] Calling Governed Trader ---")
+    agent = get_agent("governed_trader", create_governed_trader_agent)
     last_msg = state["messages"][-1].content
-    res = run_adk_agent(governed_trading_agent, last_msg)
+    res = run_adk_agent(agent, last_msg)
     return {"messages": [("ai", res.answer)]}

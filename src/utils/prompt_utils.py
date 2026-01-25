@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Optional
+
 
 @dataclass
 class Part:
@@ -7,13 +7,13 @@ class Part:
 
 @dataclass
 class Content:
-    parts: List[Part]
+    parts: list[Part]
 
 @dataclass
 class PromptData:
     model: str
-    contents: List[Content]
-    system_instruction: Optional[Content] = None
+    contents: list[Content]
+    system_instruction: Content | None = None
 
 @dataclass
 class Prompt:

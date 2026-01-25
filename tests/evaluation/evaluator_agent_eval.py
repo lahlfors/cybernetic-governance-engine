@@ -1,5 +1,7 @@
 import unittest
+
 from src.evaluator_agent.auditor import evaluator_auditor
+
 
 class TestEvaluatorAuditor(unittest.TestCase):
     def test_audit_trace_safe(self):
