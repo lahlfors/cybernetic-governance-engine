@@ -1,6 +1,5 @@
-from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
 import logging
+from dataclasses import dataclass, field
 
 logger = logging.getLogger("EvaluatorAgent.Ontology")
 
@@ -12,7 +11,7 @@ class Constraint:
     id: str
     description: str
     logic: str  # Simplified representation of the logic (e.g., "cash_balance > 1000")
-    scope: List[str] = field(default_factory=list) # e.g., ["execute_trade", "withdraw"]
+    scope: list[str] = field(default_factory=list) # e.g., ["execute_trade", "withdraw"]
 
 @dataclass
 class STAMP_UCA:
@@ -31,8 +30,8 @@ class TradingKnowledgeGraph:
     """
     Ontology mapping STAMP UCAs to constraints.
     """
-    ucas: Dict[str, STAMP_UCA] = field(default_factory=dict)
-    constraints: Dict[str, Constraint] = field(default_factory=dict)
+    ucas: dict[str, STAMP_UCA] = field(default_factory=dict)
+    constraints: dict[str, Constraint] = field(default_factory=dict)
 
     def __post_init__(self):
         # 1. Map STAMP UCAs (From STPA Analysis)
@@ -109,8 +108,8 @@ class TradingKnowledgeGraph:
     def add_constraint(self, constraint: Constraint):
         self.constraints[constraint.id] = constraint
 
-    def get_rubric(self) -> List[STAMP_UCA]:
+    def get_rubric(self) -> list[STAMP_UCA]:
         return list(self.ucas.values())
 
-    def get_constraints_for_action(self, action_name: str) -> List[Constraint]:
+    def get_constraints_for_action(self, action_name: str) -> list[Constraint]:
         return [c for c in self.constraints.values() if action_name in c.scope]

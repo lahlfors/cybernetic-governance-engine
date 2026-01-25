@@ -1,9 +1,9 @@
+import os
 import uuid
 
-import streamlit as st
-import requests
-import os
 import google.auth.transport.requests
+import requests
+import streamlit as st
 from google.oauth2 import id_token
 
 # Configuration
@@ -15,7 +15,7 @@ def get_auth_token():
         # Check if running locally (proxy) vs Cloud Run
         if "localhost" in BACKEND_URL or "127.0.0.1" in BACKEND_URL:
             return None # Local testing usually doesn't need auth or handles it differently
-            
+
         auth_req = google.auth.transport.requests.Request()
         return id_token.fetch_id_token(auth_req, BACKEND_URL)
     except Exception as e:
@@ -30,10 +30,10 @@ if "user_id" not in st.session_state:
         query_params = st.query_params
     except AttributeError:
         query_params = st.experimental_get_query_params()
-        
+
     # Get user_id from params (handle dict or Proxy object)
     uid_param = query_params.get("user_id") if hasattr(query_params, "get") else None
-    
+
     if uid_param:
         # Handle list if older streamlit returns list
         st.session_state.user_id = uid_param[0] if isinstance(uid_param, list) else uid_param
@@ -52,22 +52,22 @@ def query_agent(prompt: str):
             f"{BACKEND_URL}/agent/query",
             json={
                 "prompt": prompt,
-                "user_id": st.session_state.user_id 
+                "user_id": st.session_state.user_id
             },
             headers=headers,
             timeout=300  # Match Cloud Run timeout for complex operations
         )
 # ...
-        
+
         # Handle specific status codes
         if response.status_code == 403:
             return "⚠️ Authentication failed. The UI cannot access the backend service. Please check service account permissions.", None
-        
+
         response.raise_for_status()
         data = response.json()
         return data.get("response", "No response received."), data.get("trace_id")
     except requests.exceptions.RequestException as e:
-        return f"Error communicating with agent: {str(e)}", None
+        return f"Error communicating with agent: {e!s}", None
 
 # --- Streamlit UI ---
 st.set_page_config(
@@ -82,7 +82,7 @@ st.caption("AI-powered financial analysis with governance guardrails")
 # Sidebar with info
 with st.sidebar:
     st.header("About")
-    
+
     # Display User ID
     st.info(f"**User ID:** `{st.session_state.user_id}`")
     st.markdown("Add `?user_id=your_name` to the URL to persist memory.")
@@ -98,10 +98,10 @@ with st.sidebar:
     
     **All services are provided solely for educational purposes.**
     """)
-    
+
     st.divider()
     st.markdown("**Backend Status**")
-    
+
     # Health check with auth
     try:
         headers = {}
@@ -196,7 +196,7 @@ if prompt := st.chat_input("Ask about market analysis, strategies, or trading...
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
-    
+
     # Get agent response
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):

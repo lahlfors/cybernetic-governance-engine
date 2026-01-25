@@ -1,16 +1,18 @@
 """
 Factory for creating NeMo Guardrails manager with custom Gemini support.
 """
-import os
-import nest_asyncio
-import yaml
 import datetime
 import logging
-from nemoguardrails import LLMRails, RailsConfig
-from nemoguardrails.llm.providers import register_llm_provider
-from nemoguardrails.context import streaming_handler_var
+import os
+from typing import Any
+
+import nest_asyncio
+import yaml
 from langchain_core.language_models.llms import LLM
-from typing import Any, List, Optional
+from nemoguardrails import LLMRails, RailsConfig
+from nemoguardrails.context import streaming_handler_var
+from nemoguardrails.llm.providers import register_llm_provider
+
 from src.infrastructure.telemetry.nemo_exporter import NeMoOTelCallback
 
 # Configure Logging
@@ -19,20 +21,20 @@ logger = logging.getLogger("NeMoManager")
 # Global cache name to be shared with GeminiLLM instances
 CACHED_CONTENT_NAME = None
 
-def _get_or_create_cache(config_path: str, model_name: str) -> Optional[str]:
+def _get_or_create_cache(config_path: str, model_name: str) -> str | None:
     """
     Creates a Vertex AI CachedContent resource for the NeMo system prompts.
     Returns the cache resource name (ID).
     """
     try:
-        from vertexai.preview.generative_models import CachedContent, Part, Content
+        from vertexai.preview.generative_models import CachedContent, Content, Part
 
         # 1. Read System Instructions from Config
         config_file = os.path.join(config_path, "config.yml")
         if not os.path.exists(config_file):
             return None
 
-        with open(config_file, "r") as f:
+        with open(config_file) as f:
             config_data = yaml.safe_load(f)
 
         instructions = config_data.get("instructions", [])
@@ -74,19 +76,19 @@ def _get_or_create_cache(config_path: str, model_name: str) -> Optional[str]:
 
 class GeminiLLM(LLM):
     """Custom LangChain-compatible wrapper for Google Gemini using Vertex AI."""
-    
+
     model: str = os.environ.get("GUARDRAILS_MODEL_NAME", "gemini-2.0-flash")
-    
+
     @property
     def _llm_type(self) -> str:
         return "gemini"
-    
-    def _call(self, prompt: str, stop: Optional[List[str]] = None, **kwargs: Any) -> str:
+
+    def _call(self, prompt: str, stop: list[str] | None = None, **kwargs: Any) -> str:
         """Call the Gemini model via Vertex AI."""
         try:
             # Use Vertex AI integration (works with service account)
             from langchain_google_vertexai import ChatVertexAI
-            
+
             # Inject Cache if available
             llm_kwargs = {}
             if CACHED_CONTENT_NAME:
@@ -116,12 +118,12 @@ class GeminiLLM(LLM):
                 return f"Error calling Gemini: {e}"
         except Exception as e:
             return f"Error calling Gemini: {e}"
-    
-    async def _acall(self, prompt: str, stop: Optional[List[str]] = None, **kwargs: Any) -> str:
+
+    async def _acall(self, prompt: str, stop: list[str] | None = None, **kwargs: Any) -> str:
         """Async call to the Gemini model via Vertex AI."""
         try:
             from langchain_google_vertexai import ChatVertexAI
-            
+
             llm_kwargs = {}
             if CACHED_CONTENT_NAME:
                 llm_kwargs["cached_content"] = CACHED_CONTENT_NAME
@@ -147,7 +149,7 @@ class GeminiLLM(LLM):
                 return f"Error calling Gemini: {e}"
         except Exception as e:
             return f"Error calling Gemini: {e}"
-    
+
     @property
     def _identifying_params(self) -> dict:
         return {"model": self.model}

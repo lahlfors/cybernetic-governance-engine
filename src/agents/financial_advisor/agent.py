@@ -14,13 +14,16 @@
 
 """Financial coordinator: provide reasonable investment strategies."""
 
+import logging
+
 from google.adk.agents import LlmAgent
+
+from config.settings import MODEL_NAME
 from src.tools.router import route_request
 from src.utils.telemetry import configure_telemetry
-from .prompt import get_financial_coordinator_instruction
-from config.settings import MODEL_NAME
+
 from .callbacks import otel_interceptor_callback
-import logging
+from .prompt import get_financial_coordinator_instruction
 
 logger = logging.getLogger("FinancialCoordinator")
 
@@ -62,7 +65,7 @@ financial_coordinator = LlmAgent(
     ],
     # Expose ONLY the deterministic router tool.
     tools=[
-        route_request, 
+        route_request,
     ],
 )
 

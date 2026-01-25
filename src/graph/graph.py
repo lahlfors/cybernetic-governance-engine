@@ -1,14 +1,18 @@
-from langgraph.graph import StateGraph, END
-from .state import AgentState
-from .nodes.supervisor_node import supervisor_node
+from langgraph.graph import END, StateGraph
+
+from .checkpointer import get_checkpointer
 from .nodes.adapters import (
     data_analyst_node,
-    risk_analyst_node,
     execution_analyst_node,
-    governed_trader_node
+    governed_trader_node,
 )
-from .nodes.optimistic_nodes import optimistic_execution_node, route_optimistic_execution
-from .checkpointer import get_checkpointer
+from .nodes.optimistic_nodes import (
+    optimistic_execution_node,
+    route_optimistic_execution,
+)
+from .nodes.supervisor_node import supervisor_node
+from .state import AgentState
+
 
 def create_graph(redis_url="redis://localhost:6379"):
     workflow = StateGraph(AgentState)

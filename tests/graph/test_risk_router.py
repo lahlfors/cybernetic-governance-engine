@@ -7,7 +7,6 @@ Tests the conditional routing logic that drives the Refinement Loop:
 - UNKNOWN -> governed_trader (default)
 """
 
-import pytest
 
 
 def risk_router(state: dict) -> str:

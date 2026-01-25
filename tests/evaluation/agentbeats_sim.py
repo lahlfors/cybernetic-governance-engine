@@ -1,5 +1,7 @@
 import unittest
+
 from src.evaluator_agent.simulator import AgentBeatsSimulator, mock_financial_agent
+
 
 class TestAgentBeats(unittest.TestCase):
     def test_simulation_run(self):

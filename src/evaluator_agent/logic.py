@@ -1,6 +1,7 @@
-from typing import Dict, Any, List, Optional
 import logging
-from .ontology import TradingKnowledgeGraph, Constraint
+from typing import Any
+
+from .ontology import Constraint, TradingKnowledgeGraph
 
 logger = logging.getLogger("EvaluatorAgent.Logic")
 
@@ -12,7 +13,7 @@ class SymbolicReasoner:
     def __init__(self, ontology: TradingKnowledgeGraph):
         self.ontology = ontology
 
-    def evaluate_plan(self, plan: Dict[str, Any]) -> Dict[str, Any]:
+    def evaluate_plan(self, plan: dict[str, Any]) -> dict[str, Any]:
         """
         Audits a structured execution plan.
         Returns a decision dictionary: {"status": "APPROVED" | "REJECTED", "violations": []}
@@ -47,7 +48,7 @@ class SymbolicReasoner:
             "violations": violations
         }
 
-    def _check_constraint(self, constraint: Constraint, params: Dict[str, Any]) -> bool:
+    def _check_constraint(self, constraint: Constraint, params: dict[str, Any]) -> bool:
         """
         Evaluates a single constraint logic against parameters.
         This is a simplified rule engine. In production, use OPA/Rego or Prolog.

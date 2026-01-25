@@ -1,6 +1,7 @@
-import pytest
-from src.graph.graph import create_graph
 from langgraph.graph.state import CompiledStateGraph
+
+from src.graph.graph import create_graph
+
 
 def test_graph_compilation():
     # Use a mock Redis URL or None if checkpointer allows
@@ -17,8 +18,11 @@ def test_graph_nodes_exist():
 
 def test_optimistic_execution_node_logic():
     # Unit test the node logic directly
-    from src.graph.nodes.optimistic_nodes import optimistic_execution_node, route_optimistic_execution
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import patch
+
+    from src.graph.nodes.optimistic_nodes import (
+        optimistic_execution_node,
+    )
 
     mock_state = {"execution_plan_output": {"symbol": "AAPL"}}
 

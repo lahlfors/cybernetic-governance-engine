@@ -25,10 +25,6 @@ source/
 *.log
 agents_log/
 
-# Vertex Agent Engine
-.manifest
-
-
 # Project Specific
 opa
 verification_*.txt

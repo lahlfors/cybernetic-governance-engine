@@ -124,7 +124,7 @@ The `@governed_tool` decorator (`src/governance/client.py`) intercepts all tool 
     ```
 2.  **Run Tests:**
     ```bash
-    python3 -m unittest discover tests
+    uv run python3 -m unittest discover tests
     ```
 
 ## 6. Deployment (Cloud Run Sidecar)

@@ -1,8 +1,8 @@
 import asyncio
-import logging
 import json
+import logging
 import os
-from src.agents.risk_analyst.agent import risk_analyst_agent, RiskAssessment
+
 from src.governance.transpiler import transpiler
 
 logger = logging.getLogger("EvaluatorAgent.OfflineUpdater")
@@ -40,7 +40,7 @@ async def run_offline_risk_assessment():
         # ucas = result.identified_ucas
 
         # MOCK OUTPUT for reliability in this script
-        from src.agents.risk_analyst.agent import ProposedUCA, ConstraintLogic
+        from src.agents.risk_analyst.agent import ConstraintLogic, ProposedUCA
         ucas = [
             ProposedUCA(
                 category="Wrong Order",

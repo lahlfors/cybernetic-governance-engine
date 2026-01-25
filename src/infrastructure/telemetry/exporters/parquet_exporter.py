@@ -1,7 +1,9 @@
 import logging
 import time
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence, Any, Dict
+from typing import Any
+
 import pandas as pd
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
@@ -63,7 +65,7 @@ class ParquetSpanExporter(SpanExporter):
         """Cleanup logic if needed."""
         pass
 
-    def _span_to_dict(self, span: ReadableSpan) -> Dict[str, Any]:
+    def _span_to_dict(self, span: ReadableSpan) -> dict[str, Any]:
         """Converts a ReadableSpan to a dictionary suitable for DataFrame."""
         trace_id = f"{span.context.trace_id:032x}"
         span_id = f"{span.context.span_id:016x}"

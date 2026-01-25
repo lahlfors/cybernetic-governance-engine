@@ -1,7 +1,9 @@
+import httpx
 import pytest
 import respx
-import httpx
+
 from src.governance.client import OPAClient
+
 
 @pytest.fixture
 def opa_client():

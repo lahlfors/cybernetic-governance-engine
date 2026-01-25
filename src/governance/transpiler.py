@@ -1,11 +1,11 @@
 import logging
-import os
-from typing import List, Dict, Any, Tuple
-from src.agents.risk_analyst.agent import ProposedUCA
-from config.settings import MODEL_REASONING, Config
+from typing import Any
 
 # Import Vertex AI integration
 from langchain_google_genai import ChatGoogleGenerativeAI
+
+from config.settings import MODEL_REASONING, Config
+from src.agents.risk_analyst.agent import ProposedUCA
 
 logger = logging.getLogger("Governance.Transpiler")
 
@@ -263,7 +263,7 @@ Requirements:
         logger.warning("Using Template Fallback for Rego Transpilation")
         return self._generate_rego_template(uca)
 
-    def generate_safety_params(self, ucas: List[ProposedUCA]) -> Dict[str, Any]:
+    def generate_safety_params(self, ucas: list[ProposedUCA]) -> dict[str, Any]:
         """
         Extracts safety parameters from UCAs for dynamic configuration (Phase 3.5).
         Returns a dictionary suitable for 'safety_params.json'.
@@ -286,7 +286,7 @@ Requirements:
 
         return params
 
-    def transpile_policy(self, ucas: List[ProposedUCA]) -> Tuple[str, str]:
+    def transpile_policy(self, ucas: list[ProposedUCA]) -> tuple[str, str]:
         """
         Generates both Python and Rego policy artifacts.
         Returns: (python_code, rego_code)

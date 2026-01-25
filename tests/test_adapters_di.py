@@ -1,6 +1,14 @@
-import pytest
 from unittest.mock import MagicMock
-from src.graph.nodes.adapters import get_agent, inject_agent, clear_agent_cache, data_analyst_node
+
+import pytest
+
+from src.graph.nodes.adapters import (
+    clear_agent_cache,
+    data_analyst_node,
+    get_agent,
+    inject_agent,
+)
+
 
 @pytest.fixture(autouse=True)
 def clean_di():

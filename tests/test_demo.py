@@ -1,7 +1,10 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
-from src.demo.state import demo_state, DemoState
+
 from src.demo.pipeline_manager import submit_vertex_pipeline
+from src.demo.state import DemoState, demo_state
+
 
 @pytest.fixture
 def clean_state():

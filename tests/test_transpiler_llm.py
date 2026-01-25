@@ -1,7 +1,10 @@
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import MagicMock, patch
+
+from src.agents.risk_analyst.agent import ConstraintLogic, ProposedUCA
 from src.governance.transpiler import PolicyTranspiler
-from src.agents.risk_analyst.agent import ProposedUCA, ConstraintLogic
+
 
 @pytest.fixture
 def mock_uca():

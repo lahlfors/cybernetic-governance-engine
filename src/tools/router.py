@@ -1,8 +1,10 @@
 from enum import Enum
+
 from google.adk.tools import transfer_to_agent
 from google.adk.tools.tool_context import ToolContext
-from pydantic import BaseModel, Field
+
 from src.utils.telemetry import get_tracer
+
 
 class RouterIntent(str, Enum):
     MARKET_ANALYSIS = "MARKET_ANALYSIS"
@@ -16,7 +18,7 @@ def route_request(intent: RouterIntent, tool_context: ToolContext) -> str:
     This enforces the State Graph structure by restricting transitions to valid paths.
     """
     tracer = get_tracer()
-    
+
     def _do_route():
         if intent == RouterIntent.MARKET_ANALYSIS:
             transfer_to_agent("data_analyst_agent", tool_context)
@@ -35,7 +37,7 @@ def route_request(intent: RouterIntent, tool_context: ToolContext) -> str:
             return "Routing to Risk Analyst.", "risk_analyst_agent"
 
         return "Error: Invalid Intent.", None
-    
+
     # Create a trace span for routing
     if tracer:
         with tracer.start_as_current_span("route_request") as span:

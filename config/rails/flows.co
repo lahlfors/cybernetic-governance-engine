@@ -1,35 +1,81 @@
-import core
-import guardrails
 
-flow main
-  activate check_authorization
-  activate check_latency
-  activate check_financial_risk
-  activate check_atomic_execution
-
-flow check_authorization
-  user said "execute trade"
-  $allowed = await check_approval_token
+define flow check authorization
+  user ask "execute trade"
+  $allowed = execute src.governance.nemo_actions.check_approval_token
   if not $allowed
-    bot say "Request denied: Authorization check failed."
+    bot refuse to respond
+    stop
 
-flow check_latency
-  user said "execute trade"
-  $allowed = await check_data_latency
+define flow check latency
+  user ask "execute trade"
+  $allowed = execute src.governance.nemo_actions.check_data_latency
   if not $allowed
-    bot say "Request denied: Data latency check failed."
+    bot refuse to respond
+    stop
 
-flow check_financial_risk
-  user said "execute trade"
-  $drawdown_ok = await check_drawdown_limit
+define flow check financial risk
+  user ask "execute trade"
+  $drawdown_ok = execute src.governance.nemo_actions.check_drawdown_limit
   if not $drawdown_ok
-    bot say "Request denied: Drawdown limit exceeded."
-  $slippage_ok = await check_slippage_risk
+    bot refuse to respond
+    stop
+  $slippage_ok = execute src.governance.nemo_actions.check_slippage_risk
   if not $slippage_ok
-    bot say "Request denied: Slippage risk too high."
+    bot refuse to respond
+    stop
 
-flow check_atomic_execution
-  user said "execute multi-leg trade"
-  $atomic_ok = await check_atomic_execution
+define flow check atomic execution
+  user ask "execute multi-leg trade"
+  $atomic_ok = execute src.governance.nemo_actions.check_atomic_execution
   if not $atomic_ok
-    bot say "Request denied: Atomic execution check failed."
+    bot refuse to respond
+    stop
+
+# --- Advanced Governance: Parallel Rails (Colang 2.0) ---
+
+define user ask high_risk_intent
+  "transfer funds"
+  "modify account"
+  "access pii"
+
+# Wrapper flows to return status for parallel execution
+flow check_topical_rail
+  # Check Authorization (RBAC)
+   = execute src.governance.nemo_actions.check_approval_token
+  if not
+     = "blocked"
+  else
+     = "allowed"
+
+flow check_safety_rail
+  # Check Financial Risk (Drawdown)
+   = execute src.governance.nemo_actions.check_drawdown_limit
+  if not
+     = "blocked"
+  else
+     = "allowed"
+
+flow check_fact_checking_rail
+  # Check Data Integrity (Latency)
+   = execute src.governance.nemo_actions.check_data_latency
+  if not
+     = "blocked"
+  else
+     = "allowed"
+
+flow parallel_governance_check
+  user ask high_risk_intent
+  priority 1.0
+
+  # Trigger parallel execution
+  (execute check_topical_rail) and (execute check_safety_rail) and (execute check_fact_checking_rail)
+
+  if $check_topical_rail.status == "blocked" or $check_safety_rail.status == "blocked" or $check_fact_checking_rail.status == "blocked"
+    bot refuse to respond
+    stop
+  else
+    # Allow the conversation to proceed (flow finishes)
+    bot continue to execution
+
+define bot continue to execution
+  "Proceeding with transaction."

@@ -1,4 +1,5 @@
-from typing import Dict, Optional, Any
+from typing import Any
+
 
 class DemoState:
     _instance = None
@@ -12,10 +13,10 @@ class DemoState:
     def reset(self):
         """Resets the state to default."""
         self.simulated_latency: float = 0.0
-        self.forced_risk_profile: Optional[str] = None
-        self.pipeline_status: Dict[str, Any] = {"status": "idle", "message": "Ready to start."}
+        self.forced_risk_profile: str | None = None
+        self.pipeline_status: dict[str, Any] = {"status": "idle", "message": "Ready to start."}
         self.latest_generated_rules: str = ""
-        self.latest_trace_id: Optional[str] = None
+        self.latest_trace_id: str | None = None
 
 # Global Singleton
 demo_state = DemoState()

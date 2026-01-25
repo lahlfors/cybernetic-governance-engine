@@ -1,13 +1,14 @@
-import unittest
-import yaml
 import os
-from unittest.mock import MagicMock, patch
+import unittest
+
+import yaml
+
 
 class TestDeploymentConfig(unittest.TestCase):
 
     def test_service_yaml_structure(self):
         """Validates that service.yaml has the correct sidecar structure."""
-        with open("deployment/service.yaml", "r") as f:
+        with open("deployment/service.yaml") as f:
             config = yaml.safe_load(f)
 
         containers = config['spec']['template']['spec']['containers']

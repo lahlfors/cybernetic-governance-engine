@@ -1,7 +1,10 @@
-from pydantic import BaseModel, Field, field_validator
-from src.governance.client import governed_tool
 import re
 import uuid
+
+from pydantic import BaseModel, Field, field_validator
+
+from src.governance.client import governed_tool
+
 
 class TradeOrder(BaseModel):
     """
@@ -11,7 +14,7 @@ class TradeOrder(BaseModel):
     symbol: str = Field(..., description="Ticker symbol of the asset")
     amount: float = Field(..., description="Amount to trade")
     currency: str = Field(..., description="Currency code (e.g. USD, EUR)")
-    
+
     # System-generated fields with defaults
     transaction_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique UUID for the transaction")
     trader_id: str = Field(default="agent_001", description="ID of the trader initiating the request (e.g. 'trader_001')")

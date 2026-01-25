@@ -1,5 +1,5 @@
-from typing import List, Dict, Any
 import logging
+from typing import Any
 
 logger = logging.getLogger("EvaluatorAgent.Memory")
 
@@ -10,7 +10,7 @@ class HistoryAnalyst:
     def __init__(self):
         self.context_window = []
 
-    def analyze_history(self, history: List[Any]) -> Dict[str, Any]:
+    def analyze_history(self, history: list[Any]) -> dict[str, Any]:
         """
         Scans history for slow-moving risks or context drift.
         """

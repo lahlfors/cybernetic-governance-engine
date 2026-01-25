@@ -15,10 +15,14 @@
 """data_analyst_agent for finding information using google search"""
 
 from google.adk import Agent
-from google.adk.tools.google_search_agent_tool import GoogleSearchAgentTool, create_google_search_agent
 from google.adk.tools import transfer_to_agent
-from src.utils.prompt_utils import Prompt, PromptData, Content, Part
+from google.adk.tools.google_search_agent_tool import (
+    GoogleSearchAgentTool,
+    create_google_search_agent,
+)
+
 from config.settings import MODEL_NAME
+from src.utils.prompt_utils import Content, Part, Prompt, PromptData
 
 DATA_ANALYST_PROMPT_OBJ = Prompt(
     prompt_data=PromptData(

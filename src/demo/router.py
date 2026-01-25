@@ -1,7 +1,8 @@
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
-from src.demo.state import demo_state
+
 from src.demo.pipeline_manager import submit_vertex_pipeline
+from src.demo.state import demo_state
 
 demo_router = APIRouter(prefix="/demo", tags=["demo"])
 

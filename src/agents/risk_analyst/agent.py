@@ -14,19 +14,21 @@
 
 """Risk Analysis Agent for providing the final risk evaluation and identifying UCAs"""
 
+
 from google.adk import Agent
 from google.adk.tools import transfer_to_agent
-from src.utils.prompt_utils import Prompt, PromptData, Content, Part
-from config.settings import MODEL_REASONING
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+
+from config.settings import MODEL_REASONING
+from src.utils.prompt_utils import Content, Part, Prompt, PromptData
+
 
 # Define schema for Constraint Logic (Structured)
 class ConstraintLogic(BaseModel):
     variable: str = Field(description="The variable to check (e.g., 'order_size', 'drawdown', 'latency')")
     operator: str = Field(description="Comparison operator (e.g., '<', '>', '==')")
     threshold: str = Field(description="Threshold value or reference (e.g., '0.01 * daily_volume', '200')")
-    condition: Optional[str] = Field(description="Pre-condition (e.g., 'order_type == MARKET')")
+    condition: str | None = Field(description="Pre-condition (e.g., 'order_type == MARKET')")
 
 # Define schema for Financial UCA Identification
 class ProposedUCA(BaseModel):
@@ -37,7 +39,7 @@ class ProposedUCA(BaseModel):
 
 class RiskAssessment(BaseModel):
     risk_level: str = Field(description="Overall risk level: Low, Medium, High, Critical")
-    identified_ucas: List[ProposedUCA] = Field(description="List of specific Financial UCAs identified")
+    identified_ucas: list[ProposedUCA] = Field(description="List of specific Financial UCAs identified")
     analysis_text: str = Field(description="Detailed textual analysis of risks")
 
 RISK_ANALYST_PROMPT_OBJ = Prompt(

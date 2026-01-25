@@ -1,5 +1,6 @@
 import logging
-from typing import Dict, Any, Optional
+from typing import Any
+
 from src.infrastructure.redis_client import redis_client
 
 logger = logging.getLogger("SafetyLayer")
@@ -31,7 +32,7 @@ class ControlBarrierFunction:
         """
         return cash_balance - self.min_cash_balance
 
-    def verify_action(self, action_name: str, payload: Dict[str, Any]) -> str:
+    def verify_action(self, action_name: str, payload: dict[str, Any]) -> str:
         """
         Verifies if the action is safe relative to the *shared* state in Redis.
         """

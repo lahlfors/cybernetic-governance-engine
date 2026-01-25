@@ -1,8 +1,11 @@
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock
-from src.graph.graph import create_graph
 from langchain_core.messages import HumanMessage
+
+from src.graph.graph import create_graph
 from src.graph.nodes.adapters import AgentResponse
+
 
 @pytest.fixture
 def graph():

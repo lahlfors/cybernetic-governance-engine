@@ -1,5 +1,5 @@
+from src.agents.risk_analyst.agent import ConstraintLogic, ProposedUCA
 from src.governance.transpiler import transpiler
-from src.agents.risk_analyst.agent import ProposedUCA, ConstraintLogic
 
 uca = ProposedUCA(
     description="Do not trade when latency is high",

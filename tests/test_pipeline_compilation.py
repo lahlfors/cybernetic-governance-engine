@@ -1,8 +1,11 @@
-import unittest
-import os
 import json
-from src.pipelines.green_stack_pipeline import governance_pipeline
+import os
+import unittest
+
 from kfp import compiler
+
+from src.pipelines.green_stack_pipeline import governance_pipeline
+
 
 class TestPipelineCompilation(unittest.TestCase):
     def test_pipeline_compiles(self):
@@ -15,7 +18,7 @@ class TestPipelineCompilation(unittest.TestCase):
             )
             self.assertTrue(os.path.exists(output_file))
 
-            with open(output_file, 'r') as f:
+            with open(output_file) as f:
                 pipeline_spec = json.load(f)
                 # Check for KFP v2 spec keys
                 self.assertIn("pipelineInfo", pipeline_spec)

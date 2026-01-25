@@ -1,13 +1,15 @@
 """
 Telemetry configuration for GCP Cloud Logging and Cloud Trace.
 """
-import logging
-import sys
-import os
 import contextlib
+import logging
+import os
 import random
-from typing import Any, Dict
+import sys
+from typing import Any
+
 from pythonjsonlogger import jsonlogger
+
 
 # Configure Structured JSON Logging immediately
 class TraceIdFilter(logging.Filter):
@@ -90,23 +92,28 @@ def configure_telemetry():
     global _telemetry_configured
     if _telemetry_configured:
         return
-    
+
     try:
         # Import optional dependencies
         from opentelemetry import trace
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
-        
+
         # Try to configure Google Cloud Trace
         try:
             from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
-            from src.infrastructure.telemetry.processors.genai_cost_optimizer import GenAICostOptimizerProcessor
-            from src.infrastructure.telemetry.exporters.parquet_exporter import ParquetSpanExporter
-            
+
+            from src.infrastructure.telemetry.exporters.parquet_exporter import (
+                ParquetSpanExporter,
+            )
+            from src.infrastructure.telemetry.processors.genai_cost_optimizer import (
+                GenAICostOptimizerProcessor,
+            )
+
             # Set up tracer provider
             provider = TracerProvider()
             trace.set_tracer_provider(provider)
-            
+
             # 1. Define Exporters
             # Hot Tier: Cloud Trace
             cloud_exporter = CloudTraceSpanExporter()
@@ -128,7 +135,7 @@ def configure_telemetry():
 
             logger.info("✅ OpenTelemetry: Tiered Observability (Cost Optimizer) configured.")
             logger.info("✅ OpenTelemetry: Google Cloud Trace Exporter configured.")
-            
+
             # Instrument the requests and httpx libraries for HTTP tracing
             try:
                 from opentelemetry.instrumentation.requests import RequestsInstrumentor
@@ -137,7 +144,9 @@ def configure_telemetry():
 
                 # Instrument httpx if available
                 try:
-                    from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+                    from opentelemetry.instrumentation.httpx import (
+                        HTTPXClientInstrumentor,
+                    )
                     HTTPXClientInstrumentor().instrument()
                     logger.info("✅ OpenTelemetry: HTTPX library instrumented.")
                 except ImportError:
@@ -147,10 +156,10 @@ def configure_telemetry():
                 logger.warning("⚠️ Requests/HTTPX instrumentation not available")
             except Exception as e:
                 logger.warning(f"⚠️ HTTP instrumentation failed: {e}")
-                
+
         except Exception as e:
             logger.warning(f"⚠️ OpenTelemetry Cloud Trace not configured: {e}")
-        
+
         # Configure Google Cloud Logging (if explicitly needed, but JSON to stdout is often enough for Cloud Run)
         # We prefer our custom JSON handler for consistency, but if GCL client is used, it might attach its own handler.
         # We will wrap it in try-except but mostly rely on our setup_canonical_logging
@@ -163,10 +172,10 @@ def configure_telemetry():
                  # For Phase 1/2, stdout JSON is best practice.
         except Exception as e:
              logger.warning(f"⚠️ Google Cloud Logging check failed: {e}")
-        
+
         _telemetry_configured = True
         logger.info("✅ Telemetry configuration complete.")
-        
+
     except ImportError as e:
         logger.warning(f"⚠️ Telemetry dependencies not available: {e}")
     except Exception as e:
@@ -193,7 +202,7 @@ def genai_span(name: str, prompt: str = None, model: str = None):
     if tracer is None:
         yield None
         return
-    
+
     try:
         from opentelemetry import trace as otel_trace
         with tracer.start_as_current_span(name) as span:

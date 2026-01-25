@@ -20,15 +20,16 @@ Handles secret creation, image building, service deployment, and infrastructure 
 Configuration is read from .env file as the single source of truth.
 """
 
-import yaml
 import argparse
 import os
 import secrets
 import subprocess
 import sys
 import tempfile
-import concurrent.futures
 from pathlib import Path
+
+import yaml
+
 
 # Load .env file as single source of truth
 def load_dotenv():
@@ -145,21 +146,7 @@ def check_service_exists(project_id, region, service_name):
     result = run_command(cmd, check=False, capture_output=True)
     if result.returncode == 0 and result.stdout.strip():
         return result.stdout.strip()
-    if result.returncode == 0 and result.stdout.strip():
-        return result.stdout.strip()
     return None
-
-
-def build_container_image(project_id, image_uri, source_dir):
-    """Builds a container image using Cloud Build."""
-    print(f"\n🏗️ Building image: {image_uri}...")
-    run_command([
-        "gcloud", "builds", "submit",
-        "--tag", image_uri,
-        "--project", project_id,
-        source_dir
-    ])
-    print(f"✅ Built: {image_uri}")
 
 
 def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=False):
@@ -186,11 +173,18 @@ def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=
         print("   Skipping UI deployment.")
         return None
 
-    # Build UI image (Handled externally or skipped)
+    # Build UI image
     ui_image_uri = f"gcr.io/{project_id}/financial-advisor-ui:latest"
+    print("\n🏗️ Building UI container image...")
+    run_command([
+        "gcloud", "builds", "submit",
+        "--tag", ui_image_uri,
+        "--project", project_id,
+        ui_dir
+    ])
 
     # Deploy UI service
-    print(f"\n🚀 Deploying UI service to Cloud Run...")
+    print("\n🚀 Deploying UI service to Cloud Run...")
     print("ℹ️  Note: If you see 'Setting IAM policy failed', it is due to Organization Policy.")
     print("    The service will still deploy but will require authenticated access.")
     run_command([
@@ -325,44 +319,30 @@ def main():
     # OPA Config
     create_secret(project_id, "opa-configuration", file_path="deployment/opa_config.yaml")
 
-    # 3. Build Images (Parallel)
-    backend_image_uri = f"gcr.io/{project_id}/financial-advisor:latest"
-    ui_image_uri = f"gcr.io/{project_id}/financial-advisor-ui:latest"
-    ui_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ui")
-
+    # 3. Build Image
+    image_uri = f"gcr.io/{project_id}/financial-advisor:latest"
     if not args.skip_build:
-        print("\n--- 🏗️ Starting Parallel Builds ---")
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = []
-            # Backend Build
-            futures.append(executor.submit(build_container_image, project_id, backend_image_uri, "."))
-            
-            # UI Build (if not skipped)
-            if not args.skip_ui and os.path.exists(ui_dir):
-                 futures.append(executor.submit(build_container_image, project_id, ui_image_uri, ui_dir))
-            
-            # Wait for all
-            for future in concurrent.futures.as_completed(futures):
-                try:
-                    future.result()
-                except Exception as e:
-                    print(f"❌ Build failed: {e}")
-                    sys.exit(1)
-        print("✅ All builds completed.")
+        print("\n--- 🏗️ Building Container Image ---")
+        run_command([
+            "gcloud", "builds", "submit",
+            "--tag", image_uri,
+            "--project", project_id,
+            "."
+        ])
     else:
-        print(f"\n--- ⏭️ Skipping Builds ---")
+        print(f"\n--- ⏭️ Skipping Build (Image: {image_uri}) ---")
 
     # 4. Prepare Service YAML
     print("\n--- 📝 Preparing Service Configuration ---")
 
-    with open("deployment/service.yaml", "r") as f:
+    with open("deployment/service.yaml") as f:
         service_config = yaml.safe_load(f)
 
     # Update Ingress Image and Inject Environment Variables
     containers = service_config["spec"]["template"]["spec"]["containers"]
     for container in containers:
         if container["name"] == "ingress-agent":
-            container["image"] = backend_image_uri
+            container["image"] = image_uri
 
             # Environment Variables Injection
             env = container.setdefault("env", [])
@@ -381,7 +361,6 @@ def main():
             add_env("GOOGLE_CLOUD_LOCATION", region)
             add_env("GOOGLE_GENAI_USE_VERTEXAI", os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "true"))
             add_env("OPA_URL", os.environ.get("OPA_URL", "http://localhost:8181/v1/data/finance/allow"))
-            add_env("DEPLOY_NONCE", secrets.token_hex(8))
 
             print(f"✅ Injected Envs from .env: REDIS_HOST={redis_host}, GOOGLE_GENAI_USE_VERTEXAI={os.environ.get('GOOGLE_GENAI_USE_VERTEXAI', 'true')}")
             break
@@ -430,9 +409,9 @@ def main():
 
         # 6. Deploy UI Service
         ui_url = deploy_ui_service(
-            project_id, 
-            region, 
-            args.ui_service_name, 
+            project_id,
+            region,
+            args.ui_service_name,
             backend_url,
             skip_ui=args.skip_ui
         )

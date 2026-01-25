@@ -1,4 +1,5 @@
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -28,3 +29,11 @@ class Config:
     # Governance
     OPA_URL = os.getenv("OPA_URL", "http://localhost:8181/v1/data/finance/decision")
     OPA_AUTH_TOKEN = os.getenv("OPA_AUTH_TOKEN")
+
+    @staticmethod
+    def get_llm_config(profile="default"):
+        return {
+            "model": Config.DEFAULT_MODEL,
+            "temperature": 0.0,
+            "google_api_key": Config.GOOGLE_API_KEY
+        }

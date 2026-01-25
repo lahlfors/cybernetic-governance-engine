@@ -1,10 +1,12 @@
-from typing import TypedDict, Annotated, List, Literal, Dict, Any
+from typing import Annotated, Any, Literal, TypedDict
+
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
+
 class AgentState(TypedDict):
     # The shared conversation history
-    messages: Annotated[List[BaseMessage], add_messages]
+    messages: Annotated[list[BaseMessage], add_messages]
 
     # Routing Control
     next_step: Literal["data_analyst", "risk_analyst", "execution_analyst", "governed_trader", "human_review", "FINISH"]
@@ -15,7 +17,7 @@ class AgentState(TypedDict):
 
     # Safety & Optimization Control
     safety_status: Literal["APPROVED", "BLOCKED", "ESCALATED", "SKIPPED"]
-    trader_prep_output: Dict[str, Any] | None
+    trader_prep_output: dict[str, Any] | None
 
     # User Profile
     risk_attitude: str | None

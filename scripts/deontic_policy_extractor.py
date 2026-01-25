@@ -1,6 +1,5 @@
-import re
 import os
-import sys
+import re
 
 # Configuration
 INPUT_FILE = "docs/banking_regs.md"
@@ -89,7 +88,7 @@ def main():
         print(f"Error: Input file {INPUT_FILE} not found.")
         return
 
-    with open(INPUT_FILE, "r") as f:
+    with open(INPUT_FILE) as f:
         content = f.read()
 
     policies = extract_policies(content)

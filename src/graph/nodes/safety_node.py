@@ -1,11 +1,12 @@
 import logging
-from typing import Dict, Any, Literal
-from src.graph.state import AgentState
+from typing import Any, Literal
+
 from src.governance.client import opa_client
+from src.graph.state import AgentState
 
 logger = logging.getLogger("SafetyNode")
 
-async def safety_check_node(state: AgentState) -> Dict[str, Any]:
+async def safety_check_node(state: AgentState) -> dict[str, Any]:
     """
     Explicit Safety Interceptor Node (Layer 2 Enforcement).
     Intercepts the plan from the Execution Analyst before it reaches the Trader.

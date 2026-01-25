@@ -127,25 +127,6 @@ class OPAClient:
                 span.set_status(trace.Status(trace.StatusCode.ERROR))
                 return "DENY"
 
-    def check_policy(self, input_data: dict[str, Any]) -> bool:
-        """
-        Deprecated synchronous wrapper.
-        WARNING: Do not use in async contexts if possible.
-        """
-        import asyncio
-        try:
-             # Check if we are in an event loop
-             loop = asyncio.get_running_loop()
-             if loop.is_running():
-                 logger.error("❌ check_policy (sync) called from within running event loop. Use evaluate_policy (async) instead.")
-                 # We can't run_until_complete here.
-                 # We must fail or assume the caller knows what they are doing (they don't).
-                 return False
-        except RuntimeError:
-             pass
-
-        return asyncio.run(self.evaluate_policy(input_data)) == "ALLOW"
-
 # Instantiate the real client
 opa_client = OPAClient()
 

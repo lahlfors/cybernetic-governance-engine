@@ -1,12 +1,12 @@
 import logging
-import traceback
-from opentelemetry import trace
+
 from google.cloud import aiplatform
 from kfp import compiler
+from opentelemetry import trace
 
+from config.settings import Config
 from src.demo.state import demo_state
 from src.pipelines.green_stack_pipeline import governance_pipeline
-from config.settings import Config
 
 logger = logging.getLogger("Demo.PipelineManager")
 tracer = trace.get_tracer("src.demo.pipeline")
@@ -64,6 +64,6 @@ async def submit_vertex_pipeline(strategy_description: str):
 
         except Exception as e:
             logger.error(f"❌ Vertex Submission Failed: {e}")
-            demo_state.pipeline_status = {"status": "error", "mode": "vertex", "message": f"Vertex Submission Failed: {str(e)}"}
+            demo_state.pipeline_status = {"status": "error", "mode": "vertex", "message": f"Vertex Submission Failed: {e!s}"}
             # Do NOT fallback to local. User requested Vertex ONLY.
             raise e

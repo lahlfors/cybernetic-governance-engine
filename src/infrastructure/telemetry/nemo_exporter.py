@@ -1,7 +1,8 @@
 import logging
-from typing import Any, Dict, Optional, List
-from opentelemetry import trace
+from typing import Any
+
 from nemoguardrails.streaming import StreamingHandler
+from opentelemetry import trace
 
 logger = logging.getLogger("NeMoOTelExporter")
 tracer = trace.get_tracer("src.governance.nemo")

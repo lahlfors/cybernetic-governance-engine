@@ -14,24 +14,27 @@
 
 """Execution_analyst_agent for finding the ideal execution strategy"""
 
+from typing import Any
+
 from google.adk import Agent
 from google.adk.tools import transfer_to_agent
-from src.utils.prompt_utils import Prompt, PromptData, Content, Part
-from config.settings import MODEL_FAST
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any
+
+from config.settings import MODEL_FAST
+from src.utils.prompt_utils import Content, Part, Prompt, PromptData
+
 
 # Define the Pydantic schema for the execution plan
 class PlanStep(BaseModel):
     id: str = Field(description="Unique identifier for the step")
     action: str = Field(description="Action to perform (e.g., execute_trade, check_price)")
     description: str = Field(description="Description of the step")
-    parameters: Dict[str, Any] = Field(description="Parameters for the action")
+    parameters: dict[str, Any] = Field(description="Parameters for the action")
 
 class ExecutionPlan(BaseModel):
     plan_id: str = Field(description="Unique identifier for the plan")
-    steps: List[PlanStep] = Field(description="Ordered list of execution steps")
-    risk_factors: List[str] = Field(description="List of identified risk factors")
+    steps: list[PlanStep] = Field(description="Ordered list of execution steps")
+    risk_factors: list[str] = Field(description="List of identified risk factors")
     reasoning: str = Field(description="Detailed reasoning for the strategy")
 
 EXECUTION_ANALYST_PROMPT_OBJ = Prompt(
