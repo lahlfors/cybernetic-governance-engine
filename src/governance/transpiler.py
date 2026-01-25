@@ -6,6 +6,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 from config.settings import MODEL_REASONING, Config
 from src.agents.risk_analyst.agent import ProposedUCA
+from src.governance.judge import JudgeAgent
 
 logger = logging.getLogger("Governance.Transpiler")
 
@@ -27,6 +28,7 @@ class PolicyTranspiler:
                 temperature=0.0,
                 google_api_key=Config.GOOGLE_API_KEY
             )
+            self.judge = JudgeAgent()
             self.use_llm = True
         except Exception as e:
             logger.warning(f"Could not initialize LLM for Transpiler: {e}. Falling back to templates.")
@@ -232,6 +234,7 @@ Requirements:
     def generate_rego_policy(self, uca: ProposedUCA) -> str:
         """
         Transpiles a single UCA into a Rego rule block using LLM or Fallback.
+        Includes a 'Judge Agent' loop to verify the generated code matches the intent.
         """
         logger.info(f"Transpiling UCA to Rego: {uca.description}")
         logic = uca.constraint_logic
@@ -257,8 +260,14 @@ Requirements:
 5. OUTPUT ONLY THE REGO CODE. NO MARKDOWN.
 """
             result = self._generate_with_llm(prompt)
+
+            # Verify with Judge Agent
             if result:
-                return result
+                is_valid = self.judge.verify(uca.description, result)
+                if is_valid:
+                    return result
+                else:
+                    logger.warning(f"Judge Agent rejected generated Rego for {uca.hazard}. Falling back to template.")
 
         logger.warning("Using Template Fallback for Rego Transpilation")
         return self._generate_rego_template(uca)
