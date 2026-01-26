@@ -1,3 +1,4 @@
+import asyncio
 import traceback
 
 import uvicorn
@@ -58,23 +59,46 @@ async def query_agent(req: QueryRequest):
             # Capture trace_id for UI
             trace_id = f"{current_span.get_span_context().trace_id:032x}"
 
-        # 1. NeMo Security
-        is_safe, msg = await validate_with_nemo(req.prompt, rails)
-        if not is_safe:
-            return {"response": msg}
-
-        # 2. Graph Execution (Calls Existing Agents)
-        # Using ainvoke to run the graph asynchronously
-        res = await graph.ainvoke(
+        # 1. Optimistic Parallel Execution: Start NeMo Security & Graph concurrently
+        # This reduces latency by overlapping the governance check with the agent reasoning.
+        nemo_task = asyncio.create_task(validate_with_nemo(req.prompt, rails))
+        graph_task = asyncio.create_task(graph.ainvoke(
             {"messages": [("user", req.prompt)]},
             config={"recursion_limit": 20, "configurable": {"thread_id": req.thread_id}}
-        )
+        ))
 
-        # Extract the last message content
-        return {
-            "response": res["messages"][-1].content,
-            "trace_id": trace_id
-        }
+        try:
+            # 2. Wait for NeMo Guardrails first (Fail Fast)
+            is_safe, msg = await nemo_task
+            if not is_safe:
+                graph_task.cancel()  # Stop the expensive graph execution
+                try:
+                    await graph_task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as e:
+                    print(f"⚠️ Graph task failed during cancellation: {e}")
+                return {"response": msg}
+
+            # 3. Await Graph Result (if safe)
+            res = await graph_task
+
+            # Extract the last message content
+            return {
+                "response": res["messages"][-1].content,
+                "trace_id": trace_id
+            }
+        except Exception:
+            # Cleanup graph task if an error occurs (e.g. NeMo failure)
+            if not graph_task.done():
+                graph_task.cancel()
+                try:
+                    await graph_task
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    pass
+            raise
 
     except Exception as e:
         print(f"❌ Error invoking agent graph: {e}")
