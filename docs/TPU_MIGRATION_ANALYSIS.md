@@ -43,12 +43,28 @@ The migration involves switching the backing engine of vLLM from CUDA to XLA/Pal
 | **Speculative Decoding**| Supported (Draft Model) | **Not Supported** | ❌ Higher latency per token. |
 | **Attention Backend** | FlashInfer / FlashAttn | PagedAttention (XLA) | ✅ Functional parity. |
 
-**Critical Blocker:**
-If your application relies on **Speculative Decoding** to meet strict TTFT (Time To First Token) or latency SLAs, the migration to TPU will degrade performance until that feature is stabilized in vLLM TPU.
+---
+
+## 4. Critical Feasibility Assessment: The Latency Gap
+
+The current architecture ("Latency as Currency") relies on a "Latency Surplus" to offset the 200–500ms overhead of governance checks (NeMo Guardrails & OPA).
+
+### The Mathematical Problem
+*   **Current State (H100 + SpecDec):**
+    *   TTFT: ~15-30ms
+    *   Surplus: ~170ms (available for Governance)
+    *   Result: **SLA Met (<200ms)**
+*   **Migrated State (TPU v5e + No SpecDec):**
+    *   TTFT (Est.): ~50-80ms (due to lack of SpecDec + TP=8 overhead)
+    *   Governance Overhead: ~200ms
+    *   Total TTFT: ~250-300ms
+    *   Result: **SLA Violation (>200ms)**
+
+**Conclusion:** Migrating the "Fast Path" (User-Facing Inference) to TPU v5e at this stage presents a **High Risk** of consistent SLA violations. The loss of Speculative Decoding means we cannot generate tokens fast enough to "pay" for the governance overhead.
 
 ---
 
-## 4. Technical Implementation Plan
+## 5. Technical Implementation Plan
 
 ### A. Infrastructure (GKE)
 1.  **Create TPU Node Pool:**
@@ -84,23 +100,17 @@ Changes required to the Kubernetes deployment:
     *   Remove `--quantization fp8`.
     *   Remove `--speculative-model ...`.
 
-### C. Automation Scripts
-Update `deployment/deploy_all.py` to support a new `--target tpu` flag that applies the above transformations dynamically.
-
 ---
 
-## 5. Risks & Mitigation
+## 6. Revised Recommendation
 
-1.  **Availability:** TPU v5e resources can be scarce in certain zones.
-    *   *Mitigation:* Use GKE Autopilot or reserved capacity if guaranteed uptime is needed.
-2.  **Latency Regression:** Loss of Speculative Decoding and FP8.
-    *   *Mitigation:* Benchmark BF16 on TPU v5e-8. The high bandwidth of 8 chips often compensates for the lack of quantization.
-3.  **Feature Lag:** vLLM TPU features lag behind CUDA.
-    *   *Mitigation:* Monitor `vllm-project/tpu-inference` for updates on Speculative Decoding.
+Given the strict 200ms TTFT SLA required by the governance architecture:
 
-## 6. Conclusion
+1.  **Do NOT Migrate the "Fast Path" Yet:**
+    Keep the user-facing inference on **NVIDIA H100 with Speculative Decoding**. The latency surplus is critical for your governance budget.
 
-Moving to **TPU v5e (8-chip)** is a viable cost-reduction strategy that eliminates dependency on scarce H100 GPUs. However, it requires accepting a **"Plain BF16"** inference pipeline, sacrificing advanced optimizations like FP8 and Speculative Decoding.
+2.  **Migrate Offline Workloads:**
+    Move batch jobs (e.g., Risk Analyst pipelines, Bulk Evidence generation) to **TPU v5e**. These workloads are throughput-sensitive but not latency-sensitive, making them perfect candidates for the 80% cost reduction of TPUs.
 
-**Recommendation:**
-Proceed with a **Proof of Concept (PoC)** deployment on a standard GKE cluster to benchmark the actual latency of Gemma 3 27B on TPU v5e-8 before fully decommissioning the H100 setup.
+3.  **Monitor Speculative Decoding on TPU:**
+    Wait for vLLM to stabilize Speculative Decoding on TPU (Pallas backend). Once this feature lands, re-evaluate the Fast Path migration.
