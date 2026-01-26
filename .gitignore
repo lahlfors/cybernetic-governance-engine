@@ -36,3 +36,6 @@ logs/cold_tier/
 tests/temp_*/
 GEMINI.md
 .manifest
+
+# ML Artifacts
+models/*.pkl

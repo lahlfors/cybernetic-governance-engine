@@ -125,6 +125,16 @@ async def optimistic_execution_node(state: AgentState) -> dict[str, Any]:
     opa_ok = safety_status in ["APPROVED", "SKIPPED"]
     nemo_ok = nemo_status in ["APPROVED", "SKIPPED"]
 
+    # Handle UNCERTAIN (System 2 Trigger)
+    if safety_status == "UNCERTAIN":
+        logger.info("🤔 OPA UNCERTAIN. Cancelling Optimistic Tool and routing to System 2.")
+        tool_task.cancel()
+        try:
+            await tool_task
+        except asyncio.CancelledError:
+            pass
+        return rail_results
+
     if opa_ok and nemo_ok:
         logger.info("✅ All Rails Approved. Waiting for Tool Result...")
         try:
@@ -157,13 +167,16 @@ async def optimistic_execution_node(state: AgentState) -> dict[str, Any]:
 
         return rail_results
 
-def route_optimistic_execution(state: AgentState) -> Literal["governed_trader", "execution_analyst"]:
+def route_optimistic_execution(state: AgentState) -> Literal["governed_trader", "execution_analyst", "system_2_simulation"]:
     """
     Router determining if we proceed to the Write Action (Governed Trader)
     or fallback to replanning.
     """
     safety = state.get("safety_status")
     nemo = state.get("nemo_status")
+
+    if safety == "UNCERTAIN":
+        return "system_2_simulation"
 
     if (safety == "APPROVED" or safety == "SKIPPED") and \
        (nemo == "APPROVED" or nemo == "SKIPPED"):

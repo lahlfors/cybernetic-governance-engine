@@ -114,6 +114,8 @@ class OPAClient:
                         logger.info(f"✅ OPA ALLOWED | Action: {input_data.get('action')}")
                     elif result == "MANUAL_REVIEW":
                          logger.warning(f"⚠️ OPA MANUAL REVIEW | Action: {input_data.get('action')}")
+                    elif result == "UNCERTAIN":
+                         logger.info(f"🤔 OPA UNCERTAIN | Action: {input_data.get('action')} | Triggering System 2")
                     else:
                         logger.warning(f"⛔ OPA DENIED | Action: {input_data.get('action')} | Input: {input_data}")
 
