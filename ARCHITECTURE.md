@@ -22,6 +22,12 @@ This document describes the hybrid architecture of the Cybernetic Governance Eng
 │  │    Data     │    │  Execution  │    │    Risk     │    │   Governed   │ │
 │  │   Analyst   │    │   Analyst   │    │   Analyst   │    │    Trader    │ │
 │  └─────────────┘    └─────────────┘    └─────────────┘    └──────────────┘ │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                          CAUSAL PLANE (System 2 Fallback)                   │
+│  ┌───────────────────────┐                                                   │
+│  │     Causal Engine     │ (Embedded Python Module)                          │
+│  │  (ProductionSCM.pkl)  │                                                   │
+│  └───────────────────────┘                                                   │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -98,6 +104,21 @@ sequenceDiagram
     
     Graph-->>Server: Final state
     Server-->>User: JSON response
+```
+
+## Causal Fallback Flow (System 2)
+
+When **OPA** returns `UNCERTAIN` for an action (e.g., blocking a high-tenure user), the request is routed to the embedded **Causal Engine**.
+
+```mermaid
+graph TD
+    A[Optimistic Execution] -->|Action + Context| B{OPA Policy}
+    B -->|ALLOW| C[Execute Action]
+    B -->|DENY| D[Block Action]
+    B -->|UNCERTAIN| E[System 2: Causal Engine]
+    E -->|Simulate Intervention| F{Risk > Threshold?}
+    F -->|Yes| D
+    F -->|No| C
 ```
 
 ---

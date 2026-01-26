@@ -78,16 +78,18 @@ This system demonstrates a **Hybrid Cognitive Architecture** designed for regula
 *   **Redis State Store:** Session state is persisted to Redis (Cloud Memorystore) for reliable recovery across stateless compute instances.
 *   **Zero-Hop Policy (OPA Sidecar):** Regulatory checks happen over `localhost` or UDS. There is **no network latency** penalty for compliance, enabling high-frequency decision auditing.
 
-The architecture enforces "Defense in Depth" through six distinct layers (0-5), combining symbolic AI (Hard Logic) with Generative AI (Soft Logic):
+The architecture enforces "Defense in Depth" through seven distinct layers (0-6), combining symbolic AI (Hard Logic) with Generative AI (Soft Logic):
 
 1.  **Conversational Guardrails (Layer 0):** **NeMo Guardrails** ensures the model stays on topic and prevents jailbreaks before any tool execution.
 2.  **Structural Validation (Layer 1):** Strict **Pydantic** schemas validate all inputs/outputs.
 3.  **Policy Engine (Layer 2):** **Open Policy Agent (OPA)** enforces Role-Based Access Control (RBAC) and business logic (e.g., trading limits) external to the Python code.
 4.  **Semantic Verification (Layer 3):** A specialized **Verifier Agent** audits the proposed actions of a "Worker" agent to prevent hallucinations (Propose-Verify-Execute pattern).
-5.  **Consensus Engine (Layer 4):** Simulates an ensemble vote for high-stakes actions.
-6.  **Deterministic Routing (LangGraph):** The system uses **LangGraph** to implement a strict State Graph, replacing probabilistic tool use with deterministic workflow control. This enforces the Strategy → Risk → Execution workflow and enables self-correcting loops.
+5.  **Rational Fallback (System 2):** The **Causal Engine** (DoWhy) runs probabilistic simulations when System 1 rules are uncertain, catching risks like "Insult Effects" (High Tenure + Block).
+6.  **Consensus Engine (Layer 5):** Simulates an ensemble vote for high-stakes actions.
+7.  **Deterministic Routing (LangGraph):** The system uses **LangGraph** to implement a strict State Graph, replacing probabilistic tool use with deterministic workflow control. This enforces the Strategy → Risk → Execution workflow and enables self-correcting loops.
 
 For a deep dive into the theory and implementation, read **[README_GOVERNANCE.md](README_GOVERNANCE.md)**.
+For the Causal Engine details, see **[docs/CAUSAL_ENGINE.md](docs/CAUSAL_ENGINE.md)**.
 
 ## Agent Team
 
