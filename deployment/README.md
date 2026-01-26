@@ -52,6 +52,16 @@ python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID \
     --accelerator tpu \
     --zone us-east1-c
 
+# Deploy Gemma 27B on H100 (Default: Llama 3 8B)
+python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID \
+    --model-family gemma \
+    --accelerator-type a100
+
+# Deploy Custom Model ID
+python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID \
+    --model-id "google/gemma-3-1b-it" \
+    --model-family gemma
+
 # Deploy to specific region
 python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --region europe-west1
 
