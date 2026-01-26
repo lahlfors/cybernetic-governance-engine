@@ -11,6 +11,7 @@ from .nodes.optimistic_nodes import (
     route_optimistic_execution,
 )
 from .nodes.supervisor_node import supervisor_node
+from .nodes.system_2_nodes import system_2_simulation_node
 from .state import AgentState
 
 
@@ -27,6 +28,9 @@ def create_graph(redis_url="redis://localhost:6379"):
 
     # 2b. Add Optimistic Execution Node (Parallel Safety + Prep)
     workflow.add_node("optimistic_execution", optimistic_execution_node)
+
+    # 2c. Add System 2 Node (Rational Fallback)
+    workflow.add_node("system_2_simulation", system_2_simulation_node)
 
     workflow.add_node("governed_trader", governed_trader_node)
     workflow.add_node("human_review", lambda x: x)
@@ -48,16 +52,18 @@ def create_graph(redis_url="redis://localhost:6379"):
     # Execution Analyst (Planner) -> Optimistic Execution
     workflow.add_edge("execution_analyst", "optimistic_execution")
 
-    # Optimistic Execution -> Conditional (Trader OR Back to Planner)
+    # Optimistic Execution -> Conditional (Trader OR Back to Planner OR System 2)
     workflow.add_conditional_edges("optimistic_execution", route_optimistic_execution, {
         "governed_trader": "governed_trader",
-        "execution_analyst": "execution_analyst" # Rejected, try again
+        "execution_analyst": "execution_analyst", # Rejected, try again
+        "system_2_simulation": "system_2_simulation" # UNCERTAIN -> Causal Check
     })
 
     # 6. Return to Supervisor
     workflow.add_edge("data_analyst", "supervisor")
     workflow.add_edge("governed_trader", "supervisor")
     workflow.add_edge("human_review", "supervisor")
+    workflow.add_edge("system_2_simulation", "supervisor") # System 2 reports back to root
 
     return workflow.compile(
         checkpointer=get_checkpointer(redis_url),

@@ -16,7 +16,7 @@ class AgentState(TypedDict):
     risk_feedback: str | None
 
     # Safety & Optimization Control
-    safety_status: Literal["APPROVED", "BLOCKED", "ESCALATED", "SKIPPED"]
+    safety_status: Literal["APPROVED", "BLOCKED", "ESCALATED", "SKIPPED", "UNCERTAIN"]
     trader_prep_output: dict[str, Any] | None
 
     # User Profile

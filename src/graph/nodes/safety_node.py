@@ -51,6 +51,13 @@ async def safety_check_node(state: AgentState) -> dict[str, Any]:
             "error": "Governance Policy requires Manual Review."
         }
 
+    elif decision == "UNCERTAIN":
+        logger.warning(f"🤔 Safety Check UNCERTAIN: {opa_input['action']}")
+        return {
+            "safety_status": "UNCERTAIN",
+            "risk_feedback": "Governance Policy returned UNCERTAIN. System 2 Analysis required."
+        }
+
     else: # DENY
         logger.critical(f"⛔ Safety Check BLOCKED: {opa_input['action']}")
         return {
