@@ -36,7 +36,7 @@ ${RESOURCE_LIMITS}
             requests:
 ${RESOURCE_REQUESTS}
               memory: "32Gi"
-              cpu: "8"
+              cpu: "12"
           volumeMounts:
             - mountPath: /dev/shm
               name: dshm

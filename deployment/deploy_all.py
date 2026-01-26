@@ -99,8 +99,8 @@ def check_tool_availability(tool_name):
     """Checks if a CLI tool is available in the PATH."""
     return shutil.which(tool_name) is not None
 
-def generate_vllm_manifest(accelerator):
-    """Generates the vLLM deployment YAML based on the accelerator."""
+def generate_vllm_manifest(accelerator, args=None):
+    """Generates the vLLM deployment YAML based on the accelerator and custom args."""
     tpl_path = Path("deployment/k8s/vllm-deployment.yaml.tpl")
     if not tpl_path.exists():
         print(f"❌ Template not found: {tpl_path}")
@@ -112,35 +112,49 @@ def generate_vllm_manifest(accelerator):
     if accelerator == "tpu":
         print("ℹ️ Generating TPU-specific vLLM manifest...")
         image_name = "vllm/vllm-tpu:latest"
-        # 8 chips for v5e-8
         resource_limits = '              google.com/tpu: "8"'
         resource_requests = '              google.com/tpu: "8"'
         env_vars = '            - name: VLLM_TARGET_DEVICE\n              value: "tpu"'
         # TP=8, no quantization, no spec dec
-        args = """            - "--tensor-parallel-size"
+        vllm_args = """            - "--tensor-parallel-size"
             - "8" """
     else:
-        print("ℹ️ Generating GPU (H100/NVIDIA) vLLM manifest...")
-        # Default to H100/GPU settings from before
-        image_name = "vllm/vllm-openai:v0.6.3"
+        # GPU (NVIDIA) Logic - Consolidating A100/T4 specifics
+        print(f"ℹ️ Generating GPU vLLM manifest (Type: {args.accelerator_type if args else 't4'})...")
+        image_name = "vllm/vllm-openai:latest"
         resource_limits = '              nvidia.com/gpu: "1"'
         resource_requests = '              nvidia.com/gpu: "1"'
-        env_vars = '            - name: VLLM_ATTENTION_BACKEND\n              value: "FLASH_ATTN"'
-        # TP=1, FP8, Spec Dec
-        args = """            - "--speculative-model"
-            - "google/gemma-3-4b-it"
-            - "--num-speculative-tokens"
-            - "5"
-            - "--tensor-parallel-size"
-            - "1"
-            - "--quantization"
-            - "fp8" """
+        
+        # Base settings
+        vllm_args_list = [
+            '            - "--quantization"',
+            '            - "gptq"',
+            '            - "--served-model-name"',
+            '            - "meta-llama/Meta-Llama-3.1-8B-Instruct"'
+        ]
+        
+        env_vars_list = []
+        
+        if args and args.accelerator_type == "a100":
+            # A100 Optimizations
+            vllm_args_list.append('            - "--dtype"')
+            vllm_args_list.append('            - "bfloat16"')
+            vllm_args_list.append('            - "--enable-chunked-prefill"')
+        else:
+            # T4 Compatibility fallback
+            vllm_args_list.append('            - "--dtype"')
+            vllm_args_list.append('            - "float16"')
+            vllm_args_list.append('            - "--enforce-eager"')
+            env_vars_list.append('            - name: VLLM_ATTENTION_BACKEND\n              value: "TORCH_SDPA"')
+
+        vllm_args = "\n".join(vllm_args_list)
+        env_vars = "\n".join(env_vars_list) if env_vars_list else ""
 
     content = content.replace("${IMAGE_NAME}", image_name)
     content = content.replace("${RESOURCE_LIMITS}", resource_limits)
     content = content.replace("${RESOURCE_REQUESTS}", resource_requests)
     content = content.replace("${ENV_VARS}", env_vars)
-    content = content.replace("${ARGS}", args)
+    content = content.replace("${ARGS}", vllm_args)
 
     return content
 
@@ -269,7 +283,7 @@ def setup_networking(project_id, region):
     else:
         print(f"✅ NAT {nat_name} exists.")
 
-def ensure_gke_cluster(project_id, region, cluster_name="governance-cluster"):
+def ensure_gke_cluster(project_id, region, cluster_name="governance-cluster", args=None):
     """
     Checks for GKE cluster. Creates one if not exists (Standard with GPU pool).
     Configures kubectl context. 
@@ -278,9 +292,12 @@ def ensure_gke_cluster(project_id, region, cluster_name="governance-cluster"):
     print(f"\n--- ☸️ Verifying GKE Cluster: {cluster_name} ---")
     
     # Check if exists
+    location_flag = "--zone" if args and args.zone else "--region"
+    location_value = args.zone if args and args.zone else region
+
     result = run_command([
         "gcloud", "container", "clusters", "describe", cluster_name,
-        "--region", region,
+        location_flag, location_value,
         "--project", project_id,
         "--format", "value(status)"
     ], check=False, capture_output=True)
@@ -297,15 +314,28 @@ def ensure_gke_cluster(project_id, region, cluster_name="governance-cluster"):
         # Ensure Networking for Private Cluster
         setup_networking(project_id, region)
         
+        # Machine Type and Accelerator Logic
+        machine_type = "n1-standard-4"
+        accelerator_type = "nvidia-tesla-t4"
+        disk_size = "50"
+        
+        if args and args.accelerator_type == "a100":
+             machine_type = "a2-highgpu-1g"
+             accelerator_type = "nvidia-tesla-a100"
+             disk_size = "100"
+             print("🚀 Configuring cluster for NVIDIA A100 (a2-highgpu-1g)...")
+        else:
+             print("ℹ️ Configuring cluster for NVIDIA T4 (n1-standard-4)...")
+
         # Create Private Standard cluster
-        run_command([
+        cmd = [
             "gcloud", "container", "clusters", "create", cluster_name,
-            "--region", region,
+            location_flag, location_value,
             "--project", project_id,
             "--num-nodes", "1",
-            "--machine-type", "n1-standard-4", # Needed for T4
-            "--accelerator", "type=nvidia-tesla-t4,count=1",
-            "--disk-size", "50",
+            "--machine-type", machine_type,
+            "--accelerator", f"type={accelerator_type},count=1",
+            "--disk-size", disk_size,
             "--scopes", "cloud-platform",
             # Security / Policy Compliance
             "--shielded-secure-boot",
@@ -315,22 +345,30 @@ def ensure_gke_cluster(project_id, region, cluster_name="governance-cluster"):
             "--enable-ip-alias", # Required for private
             "--enable-master-authorized-networks",
             "--master-authorized-networks", "0.0.0.0/0"
-        ])
+        ]
+        
+        if args and args.spot:
+             print("💰 Using Spot VMs (Preemptible) for cost savings...")
+             cmd.append("--spot")
+
+        run_command(cmd)
         
         # Install GPU drivers (daemonset)
         print("🔧 Installing Nvidia Drivers...")
         run_command([
             "gcloud", "container", "clusters", "update", cluster_name,
-            "--region", region,
+            location_flag, location_value,
             "--project", project_id,
             "--update-addons=NodeLocalDNS=ENABLED" 
         ], check=False)
 
     # Get Credentials
     print("🔑 Configuring kubectl credentials...")
+    location_flag = "--zone" if args and args.zone else "--region"
+    location_value = args.zone if args and args.zone else region
     run_command([
         "gcloud", "container", "clusters", "get-credentials", cluster_name,
-        "--region", region,
+        location_flag, location_value,
         "--project", project_id
     ])
 
@@ -383,11 +421,12 @@ def ensure_accelerator_node_pool(project_id, region, cluster_name, accelerator):
     run_command(create_cmd)
 
 
-def deploy_k8s_infra(project_id, region, accelerator="gpu"):
+def deploy_k8s_infra(project_id, region, args=None):
     """
     Deploys Kubernetes manifests for Backend & vLLM.
     Ensures kubectl and Cluster are ready.
     """
+    accelerator = args.accelerator if args and hasattr(args, "accelerator") else "gpu"
     print(f"\n--- ☸️ Deploying K8s Infrastructure (vLLM) [Accelerator: {accelerator}] ---")
 
     if not check_tool_availability("kubectl"):
@@ -398,7 +437,7 @@ def deploy_k8s_infra(project_id, region, accelerator="gpu"):
         return
 
     # Ensure Cluster & Auth
-    ensure_gke_cluster(project_id, region)
+    ensure_gke_cluster(project_id, region, args=args)
 
     # Ensure Node Pool for Accelerator
     ensure_accelerator_node_pool(project_id, region, "governance-cluster", accelerator)
@@ -410,7 +449,7 @@ def deploy_k8s_infra(project_id, region, accelerator="gpu"):
 
     # Generate Dynamic Manifests
     print(f"📄 Generating vLLM manifest for {accelerator}...")
-    vllm_yaml = generate_vllm_manifest(accelerator)
+    vllm_yaml = generate_vllm_manifest(accelerator, args=args)
     if not vllm_yaml:
         print("❌ Failed to generate vLLM manifest.")
         return
@@ -547,6 +586,7 @@ def main():
     )
     parser.add_argument("--project-id", required=True, help="Google Cloud Project ID")
     parser.add_argument("--region", default="us-central1", help="Cloud Run Region")
+    parser.add_argument("--zone", help="GKE Cluster Zone (optional, overrides region for GKE)")
     parser.add_argument("--service-name", default="governed-financial-advisor", help="Cloud Run Service Name")
 
     # Build/Deploy Skip Flags
@@ -564,6 +604,8 @@ def main():
 
     # New Argument for Accelerator Support
     parser.add_argument("--accelerator", default="gpu", choices=["gpu", "tpu"], help="Inference accelerator type (gpu=H100/NVIDIA, tpu=v5e/Google)")
+    parser.add_argument("--accelerator-type", default="t4", choices=["t4", "a100"], help="GPU Accelerator Type")
+    parser.add_argument("--spot", action="store_true", help="Use Spot VMs for GKE nodes")
 
     args = parser.parse_args()
 
@@ -589,7 +631,7 @@ def main():
 
     # 2. Kubernetes Infrastructure (vLLM)
     if not args.skip_k8s:
-        deploy_k8s_infra(project_id, region, accelerator)
+        deploy_k8s_infra(project_id, region, args=args)
     else:
         print("\n--- ⏭️ Skipping K8s deployment (--skip-k8s flag set) ---")
 
@@ -692,7 +734,7 @@ def main():
 
     try:
         if args.target == "hybrid" or args.target == "gke":
-             deploy_hybrid(project_id, region, image_uri, redis_host, redis_port, accelerator)
+             deploy_hybrid(project_id, region, image_uri, redis_host, redis_port, args=args)
              return
 
         # 6. Deploy Main Service
@@ -733,13 +775,14 @@ def main():
 
 # --- Hybrid Deployment Logic ---
 
-def deploy_hybrid(project_id, region, image_uri, redis_host, redis_port, accelerator="gpu"):
+def deploy_hybrid(project_id, region, image_uri, redis_host, redis_port, args=None):
     """
     Orchestrates Hybrid Deployment:
     1. Deploys vLLM & Backend to GKE.
     2. Retrieves Backend External IP.
     3. Deploys UI to Cloud Run pointed at Backend IP.
     """
+    accelerator = args.accelerator if args and hasattr(args, "accelerator") else "gpu"
     print(f"\n--- 🌐 Starting Hybrid Deployment (GKE + Cloud Run) [Accelerator: {accelerator}] ---")
     
     # 1. Deploy GKE Infrastructure (vLLM)

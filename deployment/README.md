@@ -38,8 +38,19 @@ The `deploy_all.py` script is the central entry point for deploying the entire C
 By default, the script **deploys all services** (Redis, UI, Main Service). Use `--skip-*` flags to opt out.
 
 ```bash
-# Full deployment (deploys everything)
+# Full deployment (default: T4 GPU, Regional)
 python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID
+
+# Deploy optimized for A100 (Spot Instance, Single Zone)
+python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID \
+    --accelerator-type a100 \
+    --spot \
+    --zone us-central1-f
+
+# Deploy on TPU v5e (Zonal)
+python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID \
+    --accelerator tpu \
+    --zone us-east1-c
 
 # Deploy to specific region
 python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --region europe-west1
