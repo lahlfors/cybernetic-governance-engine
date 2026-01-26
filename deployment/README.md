@@ -35,35 +35,41 @@ The `deploy_all.py` script is the central entry point for deploying the entire C
 
 ### Usage
 
-By default, the script **deploys all services** (Redis, UI, Main Service). Use `--skip-*` flags to opt out.
+The deployment script enforces "Golden Path" configurations to ensure reliability and performance. Ad-hoc model configuration (e.g., custom quantization) is disabled.
+
+**Supported Configurations:**
+
+| Family | Default Model | Accelerator | Optimization |
+| :--- | :--- | :--- | :--- |
+| **Llama** | `meta-llama/Llama-3.1-8B-Instruct` | **GPU** (T4, L4, A100) | `gptq`, `float16` |
+| **Gemma** | `google/gemma-3-27b-it` | **GPU** (L4, A100) | `bfloat16` (Text Only) |
+| **Gemma** | `google/gemma-3-27b-it` | **TPU** (v5e) | `bfloat16` |
+
+> **Note:** Gemma models are **blocked** on T4 GPUs due to lack of native bfloat16 support.
 
 ```bash
-# Full deployment (default: T4 GPU, Regional)
+# 1. Llama 3.1 8B (Default Golden Path)
+# Target: NVIDIA T4 (Low Cost)
 python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID
 
-# Deploy optimized for A100 (Spot Instance, Single Zone)
+# 2. Gemma 3 27B on GPU
+# Target: NVIDIA L4 or A100 (Required for bfloat16)
 python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID \
-    --accelerator-type a100 \
-    --spot \
-    --zone us-central1-f
+    --model-family gemma \
+    --accelerator-type l4  # or a100
 
-# Deploy on TPU v5e (Zonal)
+# 3. Gemma 3 27B on TPU
+# Target: TPU v5e
 python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID \
+    --model-family gemma \
     --accelerator tpu \
     --zone us-east1-c
 
-# Deploy Gemma 27B on H100 (Default: Llama 3 8B)
+# 4. Custom Model ID (Must match Family Golden Path)
+# Example: Deploying a fine-tuned Llama 8B
 python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID \
-    --model-family gemma \
-    --accelerator-type a100
-
-# Deploy Custom Model ID
-python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID \
-    --model-id "google/gemma-3-1b-it" \
-    --model-family gemma
-
-# Deploy to specific region
-python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --region europe-west1
+    --model-family llama \
+    --model-id "my-org/my-finetuned-llama-8b"
 
 # Skip specific services
 python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --skip-build  # Skip container build
