@@ -59,6 +59,23 @@ def load_dotenv():
 
 load_dotenv()
 
+# --- Model Configurations ---
+
+MODEL_CONFIGS = {
+    "llama": {
+        "default_model": "meta-llama/Llama-3.1-8B-Instruct",
+        "base_args": ["--max-model-len", "8192"],
+        "gpu_args": ["--quantization", "gptq", "--dtype", "float16"],
+        "tpu_args": []
+    },
+    "gemma": {
+        "default_model": "google/gemma-3-27b-it",
+        "base_args": ["--max-model-len", "8192", "--task", "generate"],
+        "gpu_args": ["--dtype", "bfloat16"],
+        "tpu_args": ["--dtype", "bfloat16"]
+    }
+}
+
 
 # --- Helper Functions ---
 
@@ -109,46 +126,94 @@ def generate_vllm_manifest(accelerator, args=None):
     with open(tpl_path) as f:
         content = f.read()
 
+    # 1. Determine Model Configuration
+    model_family = args.model_family if args and hasattr(args, "model_family") else "llama"
+    if model_family not in MODEL_CONFIGS:
+        print(f"⚠️ Unknown model family '{model_family}', defaulting to 'llama'")
+        model_family = "llama"
+
+    config = MODEL_CONFIGS[model_family]
+    model_id = args.model_id if args and args.model_id else config["default_model"]
+
+    print(f"ℹ️ Configuring vLLM for Model: {model_id} (Family: {model_family})")
+
+    # 2. Build Argument List
+    vllm_args_list = [
+        '            - "--model"',
+        f'            - "{model_id}"',
+        '            - "--served-model-name"',
+        f'            - "{model_id}"'
+    ]
+
+    # Add Base Args
+    for arg in config["base_args"]:
+        vllm_args_list.append(f'            - "{arg}"')
+
+    env_vars_list = []
+
     if accelerator == "tpu":
         print("ℹ️ Generating TPU-specific vLLM manifest...")
         image_name = "vllm/vllm-tpu:latest"
         resource_limits = '              google.com/tpu: "8"'
         resource_requests = '              google.com/tpu: "8"'
-        env_vars = '            - name: VLLM_TARGET_DEVICE\n              value: "tpu"'
-        # TP=8, no quantization, no spec dec
-        vllm_args = """            - "--tensor-parallel-size"
-            - "8" """
+        env_vars_list.append('            - name: VLLM_TARGET_DEVICE\n              value: "tpu"')
+
+        # TPU Specific Args
+        vllm_args_list.extend([
+            '            - "--tensor-parallel-size"',
+            '            - "8"'
+        ])
+        for arg in config.get("tpu_args", []):
+             vllm_args_list.append(f'            - "{arg}"')
+
     else:
-        # GPU (NVIDIA) Logic - Consolidating A100/T4 specifics
+        # GPU (NVIDIA) Logic
         print(f"ℹ️ Generating GPU vLLM manifest (Type: {args.accelerator_type if args else 't4'})...")
         image_name = "vllm/vllm-openai:latest"
         resource_limits = '              nvidia.com/gpu: "1"'
         resource_requests = '              nvidia.com/gpu: "1"'
         
-        # Base settings
-        vllm_args_list = [
-            '            - "--quantization"',
-            '            - "gptq"',
-            '            - "--served-model-name"',
-            '            - "meta-llama/Meta-Llama-3.1-8B-Instruct"'
-        ]
-        
-        env_vars_list = []
-        
+        # Add GPU Config Args
+        current_gpu_args = list(config.get("gpu_args", []))
+
+        # Hardware-Specific Overrides
         if args and args.accelerator_type == "a100":
             # A100 Optimizations
-            vllm_args_list.append('            - "--dtype"')
-            vllm_args_list.append('            - "bfloat16"')
-            vllm_args_list.append('            - "--enable-chunked-prefill"')
+            if "--dtype" in current_gpu_args and "float16" in current_gpu_args:
+                # Upgrade float16 to bfloat16 for A100 if present
+                idx = current_gpu_args.index("--dtype")
+                if idx + 1 < len(current_gpu_args) and current_gpu_args[idx+1] == "float16":
+                    current_gpu_args[idx+1] = "bfloat16"
+
+            # Ensure bfloat16 if not set (for safety on A100)
+            if "--dtype" not in current_gpu_args:
+                 current_gpu_args.extend(["--dtype", "bfloat16"])
+
+            current_gpu_args.append("--enable-chunked-prefill")
         else:
-            # T4 Compatibility fallback
-            vllm_args_list.append('            - "--dtype"')
-            vllm_args_list.append('            - "float16"')
-            vllm_args_list.append('            - "--enforce-eager"')
+            # T4 / Default
+            if "--dtype" not in current_gpu_args:
+                 current_gpu_args.extend(["--dtype", "float16"])
+
+            # WARNING: T4 does not support bfloat16 natively.
+            if "--dtype" in current_gpu_args:
+                 try:
+                     dtype_idx = current_gpu_args.index("--dtype")
+                     if dtype_idx + 1 < len(current_gpu_args) and current_gpu_args[dtype_idx+1] == "bfloat16":
+                         print("⚠️  WARNING: You are deploying with bfloat16 on a T4 GPU. T4 does not support native bfloat16.")
+                         print("             Performance may be degraded or the deployment may fail.")
+                 except ValueError:
+                     pass
+
+            current_gpu_args.append("--enforce-eager")
             env_vars_list.append('            - name: VLLM_ATTENTION_BACKEND\n              value: "TORCH_SDPA"')
 
-        vllm_args = "\n".join(vllm_args_list)
-        env_vars = "\n".join(env_vars_list) if env_vars_list else ""
+        # Add to main list
+        for arg in current_gpu_args:
+            vllm_args_list.append(f'            - "{arg}"')
+
+    vllm_args = "\n".join(vllm_args_list)
+    env_vars = "\n".join(env_vars_list) if env_vars_list else ""
 
     content = content.replace("${IMAGE_NAME}", image_name)
     content = content.replace("${RESOURCE_LIMITS}", resource_limits)
@@ -607,6 +672,10 @@ def main():
     parser.add_argument("--accelerator-type", default="t4", choices=["t4", "a100"], help="GPU Accelerator Type")
     parser.add_argument("--spot", action="store_true", help="Use Spot VMs for GKE nodes")
 
+    # Model Configuration
+    parser.add_argument("--model-family", default="llama", choices=["llama", "gemma"], help="Model family to deploy")
+    parser.add_argument("--model-id", help="Specific HuggingFace Model ID (overrides family default)")
+
     args = parser.parse_args()
 
     project_id = args.project_id
@@ -786,7 +855,7 @@ def deploy_hybrid(project_id, region, image_uri, redis_host, redis_port, args=No
     print(f"\n--- 🌐 Starting Hybrid Deployment (GKE + Cloud Run) [Accelerator: {accelerator}] ---")
     
     # 1. Deploy GKE Infrastructure (vLLM)
-    deploy_k8s_infra(project_id, region, accelerator)
+    deploy_k8s_infra(project_id, region, args=args)
     
     # 2. Deploy Backend to GKE
     print("\n--- ☸️ Deploying Backend to GKE ---")

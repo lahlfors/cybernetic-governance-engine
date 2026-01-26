@@ -68,12 +68,7 @@ ${ENV_VARS}
             - "python3"
             - "-m"
             - "vllm.entrypoints.openai.api_server"
-            - "--model"
-            - "google/gemma-3-27b-it"
 ${ARGS}
             - "--gpu-memory-utilization"
             - "0.90"
-            - "--max-model-len"
-            - "8192"
-            - "--enable-chunked-prefill"
             - "--disable-log-stats"
