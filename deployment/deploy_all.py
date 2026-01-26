@@ -99,6 +99,51 @@ def check_tool_availability(tool_name):
     """Checks if a CLI tool is available in the PATH."""
     return shutil.which(tool_name) is not None
 
+def generate_vllm_manifest(accelerator):
+    """Generates the vLLM deployment YAML based on the accelerator."""
+    tpl_path = Path("deployment/k8s/vllm-deployment.yaml.tpl")
+    if not tpl_path.exists():
+        print(f"❌ Template not found: {tpl_path}")
+        return None
+
+    with open(tpl_path) as f:
+        content = f.read()
+
+    if accelerator == "tpu":
+        print("ℹ️ Generating TPU-specific vLLM manifest...")
+        image_name = "vllm/vllm-tpu:latest"
+        # 8 chips for v5e-8
+        resource_limits = '              google.com/tpu: "8"'
+        resource_requests = '              google.com/tpu: "8"'
+        env_vars = '            - name: VLLM_TARGET_DEVICE\n              value: "tpu"'
+        # TP=8, no quantization, no spec dec
+        args = """            - "--tensor-parallel-size"
+            - "8" """
+    else:
+        print("ℹ️ Generating GPU (H100/NVIDIA) vLLM manifest...")
+        # Default to H100/GPU settings from before
+        image_name = "vllm/vllm-openai:v0.6.3"
+        resource_limits = '              nvidia.com/gpu: "1"'
+        resource_requests = '              nvidia.com/gpu: "1"'
+        env_vars = '            - name: VLLM_ATTENTION_BACKEND\n              value: "FLASH_ATTN"'
+        # TP=1, FP8, Spec Dec
+        args = """            - "--speculative-model"
+            - "google/gemma-3-4b-it"
+            - "--num-speculative-tokens"
+            - "5"
+            - "--tensor-parallel-size"
+            - "1"
+            - "--quantization"
+            - "fp8" """
+
+    content = content.replace("${IMAGE_NAME}", image_name)
+    content = content.replace("${RESOURCE_LIMITS}", resource_limits)
+    content = content.replace("${RESOURCE_REQUESTS}", resource_requests)
+    content = content.replace("${ENV_VARS}", env_vars)
+    content = content.replace("${ARGS}", args)
+
+    return content
+
 
 # --- Infrastructure Steps ---
 
@@ -294,12 +339,56 @@ def ensure_gke_cluster(project_id, region, cluster_name="governance-cluster"):
     # Using shell=True for pipe
     subprocess.run("kubectl create namespace governance-stack --dry-run=client -o yaml | kubectl apply -f -", shell=True, check=False)
 
-def deploy_k8s_infra(project_id, region):
+def ensure_accelerator_node_pool(project_id, region, cluster_name, accelerator):
+    """Ensures the appropriate node pool exists for the accelerator."""
+
+    if accelerator == "gpu":
+        # Default GPU is managed by ensure_gke_cluster (T4).
+        # We assume the user has provisioned H100s if they want to use them, or we fallback to what's there.
+        # Automating A3 provisioning is complex due to quota.
+        return
+
+    # TPU Logic
+    pool_name = "tpu-pool"
+    print(f"\n--- ⚡ Verifying TPU Node Pool: {pool_name} ---")
+
+    cmd = [
+        "gcloud", "container", "node-pools", "describe", pool_name,
+        "--cluster", cluster_name, "--region", region, "--project", project_id,
+        "--format", "value(status)"
+    ]
+    if run_command(cmd, check=False, capture_output=True).returncode == 0:
+        print(f"✅ Node pool '{pool_name}' exists.")
+        return
+
+    print(f"⚠️ Node pool '{pool_name}' not found. Creating TPU v5e-8t pool...")
+    print("⏳ This operation may take 10-15 minutes.")
+
+    # Note: TPU v5e-8t (ct5lp-hightpu-8t) is zonal. We need to pick a zone.
+    # We'll use {region}-a as a default guess, or rely on region if supported (Autopilot/Nap).
+    # Standard GKE requires specific zone for TPUs usually.
+    node_location = f"{region}-a"
+
+    create_cmd = [
+        "gcloud", "container", "node-pools", "create", pool_name,
+        "--cluster", cluster_name,
+        "--region", region,
+        "--project", project_id,
+        "--num-nodes", "1",
+        "--machine-type", "ct5lp-hightpu-8t",
+        "--node-locations", node_location,
+        "--enable-image-streaming" # Good for large images
+    ]
+
+    run_command(create_cmd)
+
+
+def deploy_k8s_infra(project_id, region, accelerator="gpu"):
     """
     Deploys Kubernetes manifests for Backend & vLLM.
     Ensures kubectl and Cluster are ready.
     """
-    print("\n--- ☸️ Deploying K8s Infrastructure (vLLM) ---")
+    print(f"\n--- ☸️ Deploying K8s Infrastructure (vLLM) [Accelerator: {accelerator}] ---")
 
     if not check_tool_availability("kubectl"):
         install_kubectl()
@@ -311,10 +400,25 @@ def deploy_k8s_infra(project_id, region):
     # Ensure Cluster & Auth
     ensure_gke_cluster(project_id, region)
 
+    # Ensure Node Pool for Accelerator
+    ensure_accelerator_node_pool(project_id, region, "governance-cluster", accelerator)
+
     k8s_dir = Path("deployment/k8s")
     if not k8s_dir.exists():
         print(f"⚠️ K8s directory {k8s_dir} not found. Skipping.")
         return
+
+    # Generate Dynamic Manifests
+    print(f"📄 Generating vLLM manifest for {accelerator}...")
+    vllm_yaml = generate_vllm_manifest(accelerator)
+    if not vllm_yaml:
+        print("❌ Failed to generate vLLM manifest.")
+        return
+
+    # Write generated manifest to the directory so kubectl apply finds it
+    vllm_path = k8s_dir / "vllm-deployment.yaml"
+    with open(vllm_path, 'w') as f:
+        f.write(vllm_yaml)
 
     # Apply all manifests
     print("🚀 Applying manifests from deployment/k8s/...")
@@ -458,10 +562,14 @@ def main():
     parser.add_argument("--ui-service-name", default="financial-advisor-ui", help="Cloud Run UI Service Name")
     parser.add_argument("--target", default="cloud_run", choices=["cloud_run", "hybrid", "gke"], help="Deployment target")
 
+    # New Argument for Accelerator Support
+    parser.add_argument("--accelerator", default="gpu", choices=["gpu", "tpu"], help="Inference accelerator type (gpu=H100/NVIDIA, tpu=v5e/Google)")
+
     args = parser.parse_args()
 
     project_id = args.project_id
     region = args.region
+    accelerator = args.accelerator
 
     # 0. Enable APIs
     enable_apis(project_id)
@@ -481,7 +589,7 @@ def main():
 
     # 2. Kubernetes Infrastructure (vLLM)
     if not args.skip_k8s:
-        deploy_k8s_infra(project_id, region)
+        deploy_k8s_infra(project_id, region, accelerator)
     else:
         print("\n--- ⏭️ Skipping K8s deployment (--skip-k8s flag set) ---")
 
@@ -584,7 +692,7 @@ def main():
 
     try:
         if args.target == "hybrid" or args.target == "gke":
-             deploy_hybrid(project_id, region, image_uri, redis_host, redis_port)
+             deploy_hybrid(project_id, region, image_uri, redis_host, redis_port, accelerator)
              return
 
         # 6. Deploy Main Service
@@ -625,17 +733,17 @@ def main():
 
 # --- Hybrid Deployment Logic ---
 
-def deploy_hybrid(project_id, region, image_uri, redis_host, redis_port):
+def deploy_hybrid(project_id, region, image_uri, redis_host, redis_port, accelerator="gpu"):
     """
     Orchestrates Hybrid Deployment:
     1. Deploys vLLM & Backend to GKE.
     2. Retrieves Backend External IP.
     3. Deploys UI to Cloud Run pointed at Backend IP.
     """
-    print("\n--- 🌐 Starting Hybrid Deployment (GKE + Cloud Run) ---")
+    print(f"\n--- 🌐 Starting Hybrid Deployment (GKE + Cloud Run) [Accelerator: {accelerator}] ---")
     
     # 1. Deploy GKE Infrastructure (vLLM)
-    deploy_k8s_infra(project_id, region)
+    deploy_k8s_infra(project_id, region, accelerator)
     
     # 2. Deploy Backend to GKE
     print("\n--- ☸️ Deploying Backend to GKE ---")
@@ -712,4 +820,3 @@ def deploy_hybrid(project_id, region, image_uri, redis_host, redis_port):
 
 if __name__ == "__main__":
     main()
-

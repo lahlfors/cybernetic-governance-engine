@@ -26,15 +26,15 @@ spec:
             type: DirectoryOrCreate
       containers:
         - name: vllm
-          image: vllm/vllm-openai:v0.6.3
+          image: ${IMAGE_NAME}
           imagePullPolicy: IfNotPresent
           resources:
             limits:
-              nvidia.com/gpu: "1"  # Single H100 GPU for Gemma 3 27B
+${RESOURCE_LIMITS}
               memory: "64Gi"
               cpu: "16"
             requests:
-              nvidia.com/gpu: "1"
+${RESOURCE_REQUESTS}
               memory: "32Gi"
               cpu: "8"
           volumeMounts:
@@ -48,8 +48,7 @@ spec:
                 secretKeyRef:
                   name: hf-token-secret
                   key: token
-            - name: VLLM_ATTENTION_BACKEND
-              value: "FLASH_ATTN"
+${ENV_VARS}
           ports:
             - containerPort: 8000
               name: http
@@ -71,17 +70,10 @@ spec:
             - "vllm.entrypoints.openai.api_server"
             - "--model"
             - "google/gemma-3-27b-it"
-            - "--speculative-model"
-            - "google/gemma-3-4b-it"
-            - "--num-speculative-tokens"
-            - "5"
-            - "--tensor-parallel-size"
-            - "1"  # Single GPU optimization
+${ARGS}
             - "--gpu-memory-utilization"
             - "0.90"
             - "--max-model-len"
             - "8192"
-            - "--quantization"
-            - "fp8"  # H100 Optimization (W8A8)
             - "--enable-chunked-prefill"
             - "--disable-log-stats"
