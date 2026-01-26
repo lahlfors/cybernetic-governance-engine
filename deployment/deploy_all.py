@@ -61,18 +61,19 @@ load_dotenv()
 
 # --- Model Configurations ---
 
-MODEL_CONFIGS = {
+CONFIG_MATRIX = {
     "llama": {
-        "default_model": "meta-llama/Llama-3.1-8B-Instruct",
-        "base_args": ["--max-model-len", "8192"],
-        "gpu_args": ["--quantization", "gptq", "--dtype", "float16"],
-        "tpu_args": []
+        "model_id": "meta-llama/Llama-3.1-8B-Instruct",
+        "gpu_args": ["--quantization", "gptq", "--dtype", "float16", "--max-model-len", "8192"],
+        "allowed_accelerators": ["gpu"],
+        "disallowed_gpu_types": []
     },
     "gemma": {
-        "default_model": "google/gemma-3-27b-it",
-        "base_args": ["--max-model-len", "8192", "--task", "generate"],
-        "gpu_args": ["--dtype", "bfloat16"],
-        "tpu_args": ["--dtype", "bfloat16"]
+        "model_id": "google/gemma-3-27b-it",
+        "gpu_args": ["--dtype", "bfloat16", "--max-model-len", "8192", "--task", "generate"],
+        "tpu_args": ["--dtype", "bfloat16", "--max-model-len", "8192"],
+        "allowed_accelerators": ["gpu", "tpu"],
+        "disallowed_gpu_types": ["t4"] # T4 lacks native bfloat16
     }
 }
 
@@ -126,14 +127,26 @@ def generate_vllm_manifest(accelerator, args=None):
     with open(tpl_path) as f:
         content = f.read()
 
-    # 1. Determine Model Configuration
+    # 1. Determine Model & Validate Configuration
     model_family = args.model_family if args and hasattr(args, "model_family") else "llama"
-    if model_family not in MODEL_CONFIGS:
+    if model_family not in CONFIG_MATRIX:
         print(f"⚠️ Unknown model family '{model_family}', defaulting to 'llama'")
         model_family = "llama"
 
-    config = MODEL_CONFIGS[model_family]
-    model_id = args.model_id if args and args.model_id else config["default_model"]
+    config = CONFIG_MATRIX[model_family]
+    model_id = args.model_id if args and args.model_id else config["model_id"]
+    accelerator_type = args.accelerator_type if args else "t4"
+
+    # STRICT VALIDATION: Golden Path Enforcement
+    if accelerator not in config["allowed_accelerators"]:
+        print(f"❌ Error: Model family '{model_family}' is not supported on accelerator '{accelerator}'.")
+        print(f"   Supported accelerators: {config['allowed_accelerators']}")
+        sys.exit(1)
+
+    if accelerator == "gpu" and accelerator_type in config.get("disallowed_gpu_types", []):
+         print(f"❌ Error: Model family '{model_family}' is not supported on GPU type '{accelerator_type}'.")
+         print(f"   Reason: Performance degradation or lack of hardware features (e.g. bfloat16).")
+         sys.exit(1)
 
     print(f"ℹ️ Configuring vLLM for Model: {model_id} (Family: {model_family})")
 
@@ -144,10 +157,6 @@ def generate_vllm_manifest(accelerator, args=None):
         '            - "--served-model-name"',
         f'            - "{model_id}"'
     ]
-
-    # Add Base Args
-    for arg in config["base_args"]:
-        vllm_args_list.append(f'            - "{arg}"')
 
     env_vars_list = []
 
@@ -168,7 +177,7 @@ def generate_vllm_manifest(accelerator, args=None):
 
     else:
         # GPU (NVIDIA) Logic
-        print(f"ℹ️ Generating GPU vLLM manifest (Type: {args.accelerator_type if args else 't4'})...")
+        print(f"ℹ️ Generating GPU vLLM manifest (Type: {accelerator_type})...")
         image_name = "vllm/vllm-openai:latest"
         resource_limits = '              nvidia.com/gpu: "1"'
         resource_requests = '              nvidia.com/gpu: "1"'
@@ -176,37 +185,13 @@ def generate_vllm_manifest(accelerator, args=None):
         # Add GPU Config Args
         current_gpu_args = list(config.get("gpu_args", []))
 
-        # Hardware-Specific Overrides
-        if args and args.accelerator_type == "a100":
-            # A100 Optimizations
-            if "--dtype" in current_gpu_args and "float16" in current_gpu_args:
-                # Upgrade float16 to bfloat16 for A100 if present
-                idx = current_gpu_args.index("--dtype")
-                if idx + 1 < len(current_gpu_args) and current_gpu_args[idx+1] == "float16":
-                    current_gpu_args[idx+1] = "bfloat16"
-
-            # Ensure bfloat16 if not set (for safety on A100)
-            if "--dtype" not in current_gpu_args:
-                 current_gpu_args.extend(["--dtype", "bfloat16"])
-
-            current_gpu_args.append("--enable-chunked-prefill")
+        # Hardware-Specific Optimizations (Safe additions only)
+        if accelerator_type == "a100":
+             current_gpu_args.append("--enable-chunked-prefill")
         else:
-            # T4 / Default
-            if "--dtype" not in current_gpu_args:
-                 current_gpu_args.extend(["--dtype", "float16"])
-
-            # WARNING: T4 does not support bfloat16 natively.
-            if "--dtype" in current_gpu_args:
-                 try:
-                     dtype_idx = current_gpu_args.index("--dtype")
-                     if dtype_idx + 1 < len(current_gpu_args) and current_gpu_args[dtype_idx+1] == "bfloat16":
-                         print("⚠️  WARNING: You are deploying with bfloat16 on a T4 GPU. T4 does not support native bfloat16.")
-                         print("             Performance may be degraded or the deployment may fail.")
-                 except ValueError:
-                     pass
-
-            current_gpu_args.append("--enforce-eager")
-            env_vars_list.append('            - name: VLLM_ATTENTION_BACKEND\n              value: "TORCH_SDPA"')
+             # T4/L4
+             current_gpu_args.append("--enforce-eager")
+             env_vars_list.append('            - name: VLLM_ATTENTION_BACKEND\n              value: "TORCH_SDPA"')
 
         # Add to main list
         for arg in current_gpu_args:
@@ -389,6 +374,11 @@ def ensure_gke_cluster(project_id, region, cluster_name="governance-cluster", ar
              accelerator_type = "nvidia-tesla-a100"
              disk_size = "100"
              print("🚀 Configuring cluster for NVIDIA A100 (a2-highgpu-1g)...")
+        elif args and args.accelerator_type == "l4":
+             machine_type = "g2-standard-4"
+             accelerator_type = "nvidia-l4"
+             disk_size = "100"
+             print("🚀 Configuring cluster for NVIDIA L4 (g2-standard-4)...")
         else:
              print("ℹ️ Configuring cluster for NVIDIA T4 (n1-standard-4)...")
 
@@ -669,7 +659,7 @@ def main():
 
     # New Argument for Accelerator Support
     parser.add_argument("--accelerator", default="gpu", choices=["gpu", "tpu"], help="Inference accelerator type (gpu=H100/NVIDIA, tpu=v5e/Google)")
-    parser.add_argument("--accelerator-type", default="t4", choices=["t4", "a100"], help="GPU Accelerator Type")
+    parser.add_argument("--accelerator-type", default="t4", choices=["t4", "l4", "a100"], help="GPU Accelerator Type")
     parser.add_argument("--spot", action="store_true", help="Use Spot VMs for GKE nodes")
 
     # Model Configuration
