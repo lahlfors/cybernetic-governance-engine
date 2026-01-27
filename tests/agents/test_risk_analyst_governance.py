@@ -1,7 +1,7 @@
 
 import sys
 import unittest
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
 # 1. Mock dependencies
 
@@ -47,7 +47,7 @@ mock_adk.Agent = mock_agent
 # Mock tools
 mock_tools = MagicMock()
 mock_transfer = MagicMock()
-mock_transfer.__name__ = "transfer_to_agent" # Fix for AttributeError
+mock_transfer.__name__ = "transfer_to_agent"
 mock_tools.transfer_to_agent = mock_transfer
 
 mock_google.adk = mock_adk
@@ -88,9 +88,8 @@ class TestRiskAnalystGovernance(unittest.TestCase):
         pass
 
     @patch("src.agents.risk_analyst.agent.GovernanceClient")
-    @patch("src.agents.risk_analyst.agent.asyncio.run")
-    def test_perform_governed_risk_assessment(self, mock_asyncio_run, MockGovernanceClient):
-        """Test that the tool correctly invokes GovernanceClient."""
+    def test_perform_governed_risk_assessment(self, MockGovernanceClient):
+        """Test that the tool correctly invokes GovernanceClient.generate_structured_sync."""
 
         mock_client_instance = MockGovernanceClient.return_value
 
@@ -100,13 +99,14 @@ class TestRiskAnalystGovernance(unittest.TestCase):
             analysis_text="Safe."
         )
 
-        mock_asyncio_run.return_value = expected_assessment
+        # Mock the synchronous method
+        mock_client_instance.generate_structured_sync.return_value = expected_assessment
 
         context = "Analyze this trade."
         result = perform_governed_risk_assessment(context)
 
         MockGovernanceClient.assert_called_once()
-        mock_client_instance.generate_structured.assert_called_once_with(
+        mock_client_instance.generate_structured_sync.assert_called_once_with(
             prompt=context,
             schema=RiskAssessment
         )

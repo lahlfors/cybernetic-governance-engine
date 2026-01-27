@@ -14,7 +14,6 @@
 
 """Risk Analysis Agent for providing the final risk evaluation and identifying UCAs"""
 
-import asyncio
 import json
 from google.adk import Agent
 from google.adk.tools import transfer_to_agent
@@ -59,12 +58,12 @@ def perform_governed_risk_assessment(risk_analysis_context: str) -> dict:
     """
     client = GovernanceClient()
 
-    # Execute the async client method synchronously for the tool
+    # Use the synchronous method to avoid asyncio event loop conflicts in tools
     try:
-        result = asyncio.run(client.generate_structured(
+        result = client.generate_structured_sync(
             prompt=risk_analysis_context,
             schema=RiskAssessment
-        ))
+        )
         return result.model_dump()
     except Exception as e:
         # Fallback or error handling

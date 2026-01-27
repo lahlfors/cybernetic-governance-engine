@@ -1,6 +1,6 @@
-# Architecture: Hybrid LangGraph + Google ADK + Hybrid Inference
+# Architecture: Hybrid LangGraph + Google ADK + Hybrid Inference + In-Process Governance
 
-This document describes the hybrid architecture of the Cybernetic Governance Engine, which combines **LangGraph** for deterministic workflow orchestration with **Google ADK** for LLM-powered agent reasoning, supported by a **Hybrid Inference Stack** (vLLM + Vertex AI).
+This document describes the hybrid architecture of the Cybernetic Governance Engine, which combines **LangGraph** for deterministic workflow orchestration with **Google ADK** for LLM-powered agent reasoning, supported by a **Hybrid Inference Stack** (vLLM + Vertex AI) and specialized **In-Process Governance**.
 
 ## Overview
 
@@ -49,6 +49,16 @@ To fund the "Governance Budget" (overhead of NeMo/OPA checks), we utilize a self
 
 See [docs/LATENCY_STRATEGY.md](docs/LATENCY_STRATEGY.md) for details.
 
+## In-Process Governance (The "Governance Sandwich")
+
+For high-stakes decisions (e.g., Final Risk Assessment), we do not rely on probabilistic LLM instruction following for output formatting. Instead, we use a "Governance Sandwich" pattern:
+
+1.  **The Brain (Reasoning):** The Agent (e.g., Risk Analyst) runs on **Gemini 2.5 Pro** (Vertex AI) to perform complex analysis.
+2.  **The Tool (Enforcement):** The Agent invokes a specialized tool (`perform_governed_risk_assessment`).
+3.  **The Enforcer (Compliance):** This tool calls the self-hosted **vLLM** instance with `guided_json` (FSM/outlines). This injects a Logit Processor that mathematically constrains the model's output to valid JSON matching the `RiskAssessment` Pydantic schema.
+
+This ensures **Zero-Hallucination Structure** while leveraging **SOTA Reasoning Capabilities**.
+
 ---
 
 ## Request Flow
@@ -63,6 +73,7 @@ sequenceDiagram
     participant Adapter as ADK Adapter
     participant Agent as ADK LlmAgent
     participant HybridClient as Hybrid LLM Client
+    participant GovernanceClient as Governance Client
     participant vLLM as Self-Hosted Inference
     participant Vertex as Vertex AI
 
@@ -90,9 +101,15 @@ sequenceDiagram
     
     Note over Supervisor: Intercepts tool call<br/>to determine routing
     
-    Supervisor-->>Graph: {next_step: "data_analyst"}
-    Graph->>Adapter: data_analyst_node()
-    Adapter->>Agent: Runner.run(data_analyst)
+    Supervisor-->>Graph: {next_step: "risk_analyst"}
+    Graph->>Adapter: risk_analyst_node()
+    Adapter->>Agent: Runner.run(risk_analyst)
+    Agent->>Vertex: Analyze Risk (Reasoning)
+    Vertex-->>Agent: "I need to formalize this."
+    Agent->>GovernanceClient: perform_governed_risk_assessment()
+    GovernanceClient->>vLLM: Request + guided_json Schema
+    vLLM-->>GovernanceClient: Valid JSON (FSM Enforced)
+    GovernanceClient-->>Agent: RiskAssessment Object
     Agent-->>Adapter: Analysis result
     Adapter-->>Graph: {messages: [...]}
     
@@ -106,7 +123,7 @@ sequenceDiagram
 
 ### 1. LangGraph Orchestration (`src/graph/`)
 
-**Purpose**: Deterministic workflow control—no LLM decides the flow.
+**Purpose**: Deterministic workflow orchestration.
 
 | File | Responsibility |
 |------|----------------|
@@ -134,7 +151,7 @@ src/agents/
 │   └── callbacks.py        # OTel Interceptor (ISO 42001)
 ├── data_analyst/agent.py   # Market research agent
 ├── execution_analyst/agent.py  # Strategy planning agent
-├── risk_analyst/agent.py   # Risk evaluation agent
+├── risk_analyst/agent.py   # Risk evaluation agent (Uses GovernanceClient)
 └── governed_trader/agent.py    # Trade execution with Propose-Verify pattern
 ```
 

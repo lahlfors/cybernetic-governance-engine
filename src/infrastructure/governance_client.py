@@ -38,6 +38,20 @@ class GovernanceClient:
         self.model_name = model_name
         self.timeout = timeout_seconds
 
+    def _prepare_request(self, prompt: str, schema: Type[T], system_instruction: str) -> dict:
+        """Helper to prepare the request payload."""
+        json_schema = schema.model_json_schema()
+        return {
+            "model": self.model_name,
+            "messages": [
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.0,
+            "guided_json": json_schema,
+            "max_tokens": 4096
+        }
+
     async def generate_structured(
         self,
         prompt: str,
@@ -45,57 +59,54 @@ class GovernanceClient:
         system_instruction: str = "You are a strict governance engine."
     ) -> T:
         """
-        Generates a structured response strictly adhering to the provided Pydantic schema.
-        Uses vLLM's `guided_json` (FSM/Outlines) to physically prevent invalid token generation.
-
-        Args:
-            prompt: The user input or context for the assessment.
-            schema: The Pydantic model class defining the required structure.
-            system_instruction: System prompt.
-
-        Returns:
-            An instance of the provided Pydantic schema class.
+        Generates a structured response strictly adhering to the provided Pydantic schema (Async).
         """
-        # 1. Convert Pydantic model to JSON Schema
-        json_schema = schema.model_json_schema()
-
-        # 2. Construct the payload with `guided_json`
-        # This tells vLLM to compile the schema into an FSM/Regex for logit masking.
-        payload = {
-            "model": self.model_name,
-            "messages": [
-                {"role": "system", "content": system_instruction},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.0,  # Deterministic for governance
-            "guided_json": json_schema, # The "Governance Sandwich" magic
-            "max_tokens": 4096
-        }
-
+        payload = self._prepare_request(prompt, schema, system_instruction)
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
-
         url = f"{self.base_url}/chat/completions"
 
-        logger.info(f"Sending Governed Request to {url} with schema {schema.__name__}")
+        logger.info(f"Sending Governed Request (Async) to {url} with schema {schema.__name__}")
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 response = await client.post(url, json=payload, headers=headers)
                 response.raise_for_status()
-
                 result_data = response.json()
                 content = result_data["choices"][0]["message"]["content"]
-
-                # 3. Parse and Validate
-                # vLLM guarantees the structure, but we parse it back to the Pydantic model
                 return schema.model_validate_json(content)
+            except Exception as e:
+                logger.error(f"Governance Validation Error: {str(e)}")
+                raise
 
-            except httpx.HTTPError as e:
-                logger.error(f"Governance Engine Communication Error: {str(e)}")
-                raise RuntimeError(f"Governance Node failed: {str(e)}")
+    def generate_structured_sync(
+        self,
+        prompt: str,
+        schema: Type[T],
+        system_instruction: str = "You are a strict governance engine."
+    ) -> T:
+        """
+        Generates a structured response strictly adhering to the provided Pydantic schema (Sync).
+        Use this when calling from synchronous tool functions to avoid event loop conflicts.
+        """
+        payload = self._prepare_request(prompt, schema, system_instruction)
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        url = f"{self.base_url}/chat/completions"
+
+        logger.info(f"Sending Governed Request (Sync) to {url} with schema {schema.__name__}")
+
+        with httpx.Client(timeout=self.timeout) as client:
+            try:
+                response = client.post(url, json=payload, headers=headers)
+                response.raise_for_status()
+                result_data = response.json()
+                content = result_data["choices"][0]["message"]["content"]
+                return schema.model_validate_json(content)
             except Exception as e:
                 logger.error(f"Governance Validation Error: {str(e)}")
                 raise
