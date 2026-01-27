@@ -435,7 +435,7 @@ def ensure_accelerator_node_pool(project_id, region, cluster_name, config=None, 
 
     print(f"⚠️ Node pool '{pool_name}' not found. Creating GPU pool...")
     
-    machine_type = "g2-standard-4" # Correct machine type for L4
+    machine_type = "g2-standard-16" # Upgraded to match vLLM requests (12 vCPU, 32Gi Mem)
     accelerator_type = config.get("accelerator_type", "nvidia-l4")
     gpu_count = config.get("count", 1)
     disk_size = "200"
@@ -445,10 +445,13 @@ def ensure_accelerator_node_pool(project_id, region, cluster_name, config=None, 
         "--cluster", cluster_name,
         location_flag, location,
         "--project", project_id,
+        "--node-locations", "us-central1-a", # Force single zone for reliability/quota
         "--num-nodes", "1",
         "--machine-type", machine_type,
         "--accelerator", f"type={accelerator_type},count={gpu_count}",
-        "--disk-size", disk_size
+        "--disk-size", disk_size,
+        "--shielded-secure-boot",
+        "--shielded-integrity-monitoring"
     ]
 
     # Add Spot logic only if requested
