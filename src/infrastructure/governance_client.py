@@ -17,11 +17,14 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 class GovernanceClient:
+    # Default to the "Goldilocks" model: 9B parameters, fits on L4
+    DEFAULT_MODEL_ID = "google/gemma-2-9b-it"
+
     def __init__(
         self,
         base_url: str = "http://vllm-service.governance-stack.svc.cluster.local:8000/v1",
         api_key: str = "EMPTY",
-        model_name: str = os.getenv("VLLM_MODEL", "google/gemma-3-27b-it"),
+        model_name: Optional[str] = None,
         timeout_seconds: float = 30.0
     ):
         """
@@ -35,7 +38,8 @@ class GovernanceClient:
         """
         self.base_url = base_url
         self.api_key = api_key
-        self.model_name = model_name
+        # Prioritize init arg, then env var, then class constant
+        self.model_name = model_name or os.getenv("VLLM_MODEL", self.DEFAULT_MODEL_ID)
         self.timeout = timeout_seconds
 
     def _prepare_request(self, prompt: str, schema: Type[T], system_instruction: str) -> dict:
@@ -49,7 +53,7 @@ class GovernanceClient:
             ],
             "temperature": 0.0,
             "guided_json": json_schema,
-            "max_tokens": 4096
+            "max_tokens": 8192 # Increased for complex risk reports
         }
 
     async def generate_structured(

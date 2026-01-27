@@ -34,30 +34,22 @@ This document describes the hybrid architecture of the Cybernetic Governance Eng
 | **Observability** | ✅ Explicit graph tracing | ✅ Built-in telemetry |
 | **Checkpointing** | ✅ Redis/memory savers | ✅ Session service |
 
-**The Insight**: Use LangGraph for what it does best (deterministic control flow, conditional routing, loops) and ADK for what it does best (LLM-powered reasoning, tool use, multi-turn conversations).
-
-## Hybrid Inference Strategy (Latency as Currency)
-
-To fund the "Governance Budget" (overhead of NeMo/OPA checks), we utilize a self-hosted high-performance inference stack.
-
-*   **Fast Path:** **vLLM** on Kubernetes (GKE) with NVIDIA H100 GPUs.
-    *   **Model:** `google/gemma-3-27b-it` (Target) + `google/gemma-3-4b-it` (Draft).
-    *   **Technique:** Speculative Decoding (FP8).
-    *   **SLA:** Time-To-First-Token (TTFT) < 200ms.
-*   **Reliable Path:** **Vertex AI** (Gemini 2.5 Pro).
-    *   **Fallback:** Triggered on connection error or SLA violation.
-
-See [docs/LATENCY_STRATEGY.md](docs/LATENCY_STRATEGY.md) for details.
-
 ## In-Process Governance (The "Governance Sandwich")
 
-For high-stakes decisions (e.g., Final Risk Assessment), we do not rely on probabilistic LLM instruction following for output formatting. Instead, we use a "Governance Sandwich" pattern:
+We implement a strict separation of concerns to guarantee safety and structure without sacrificing reasoning depth.
 
-1.  **The Brain (Reasoning):** The Agent (e.g., Risk Analyst) runs on **Gemini 2.5 Pro** (Vertex AI) to perform complex analysis.
-2.  **The Tool (Enforcement):** The Agent invokes a specialized tool (`perform_governed_risk_assessment`).
-3.  **The Enforcer (Compliance):** This tool calls the self-hosted **vLLM** instance with `guided_json` (FSM/outlines). This injects a Logit Processor that mathematically constrains the model's output to valid JSON matching the `RiskAssessment` Pydantic schema.
+### 1. The Brain (Reasoning)
+*   **Model:** `gemini-2.5-pro` (Vertex AI).
+*   **Role:** Complex analysis, document understanding, and "System 2" thinking.
+*   **Safety:** Wrapped by NeMo Guardrails for semantic policy checks (e.g., preventing toxicity).
 
-This ensures **Zero-Hallucination Structure** while leveraging **SOTA Reasoning Capabilities**.
+### 2. The Enforcer (Structure)
+*   **Model:** `google/gemma-2-9b-it` (Self-Hosted on GKE with NVIDIA L4).
+*   **Role:** Syntactic enforcement of JSON schemas via Finite State Machines (FSM).
+*   **Technique:** We use vLLM's `guided_json` with **Prefix Caching** to achieve low-latency (<50ms) schema validation.
+*   **Why:** A smaller, instruction-tuned model running locally is faster and more deterministic for formatting tasks than a large reasoning model.
+
+This pattern ensures **Zero-Hallucination Structure** while leveraging **SOTA Reasoning Capabilities**.
 
 ---
 
@@ -72,10 +64,9 @@ sequenceDiagram
     participant Supervisor as Supervisor Node
     participant Adapter as ADK Adapter
     participant Agent as ADK LlmAgent
-    participant HybridClient as Hybrid LLM Client
     participant GovernanceClient as Governance Client
-    participant vLLM as Self-Hosted Inference
-    participant Vertex as Vertex AI
+    participant vLLM as The Enforcer (Gemma 9B)
+    participant Vertex as The Brain (Gemini Pro)
 
     User->>Server: POST /agent/query
     Server->>NeMo: Validate input
@@ -85,16 +76,8 @@ sequenceDiagram
     Graph->>Supervisor: Entry Point
     Supervisor->>Adapter: run_adk_agent(root_agent)
     Adapter->>Agent: Runner.run()
-    Agent->>HybridClient: generate()
-
-    alt Fast Path (vLLM)
-        HybridClient->>vLLM: Stream Request
-        vLLM-->>HybridClient: First Token (<200ms)
-        vLLM-->>HybridClient: Full Response
-    else Slow/Error
-        HybridClient->>Vertex: Fallback Request
-        Vertex-->>HybridClient: Response
-    end
+    Agent->>Vertex: "Analyze this loan."
+    Vertex-->>Agent: Reasoning + Tool Call
 
     Agent-->>Adapter: Response + route_request tool call
     Adapter-->>Supervisor: AgentResponse
@@ -104,136 +87,17 @@ sequenceDiagram
     Supervisor-->>Graph: {next_step: "risk_analyst"}
     Graph->>Adapter: risk_analyst_node()
     Adapter->>Agent: Runner.run(risk_analyst)
-    Agent->>Vertex: Analyze Risk (Reasoning)
-    Vertex-->>Agent: "I need to formalize this."
+    Agent->>Vertex: "Reason about these risks."
+    Vertex-->>Agent: "Risks identified. Need formal assessment."
     Agent->>GovernanceClient: perform_governed_risk_assessment()
     GovernanceClient->>vLLM: Request + guided_json Schema
     vLLM-->>GovernanceClient: Valid JSON (FSM Enforced)
     GovernanceClient-->>Agent: RiskAssessment Object
     Agent-->>Adapter: Analysis result
-    Adapter-->>Graph: {messages: [...]}
     
     Graph-->>Server: Final state
     Server-->>User: JSON response
 ```
-
----
-
-## Component Breakdown
-
-### 1. LangGraph Orchestration (`src/graph/`)
-
-**Purpose**: Deterministic workflow orchestration.
-
-| File | Responsibility |
-|------|----------------|
-| `graph.py` | Defines the `StateGraph` with nodes, edges, and conditional routing |
-| `state.py` | Typed state schema (`AgentState`) with message history and control signals |
-| `router.py` | Helper functions for conditional edge logic |
-| `checkpointer.py` | Redis-backed or in-memory persistence for conversation state |
-
-**Key Pattern: Conditional Edges**
-```python
-workflow.add_conditional_edges("risk_analyst", risk_router, {
-    "execution_analyst": "execution_analyst",  # Loop back if rejected
-    "governed_trader": "governed_trader"       # Proceed if approved
-})
-```
-
-### 2. Google ADK Agents (`src/agents/`)
-
-**Purpose**: LLM-powered reasoning with Vertex AI/Gemini.
-
-```
-src/agents/
-├── financial_advisor/
-│   ├── agent.py            # Coordinator (Root Agent)
-│   └── callbacks.py        # OTel Interceptor (ISO 42001)
-├── data_analyst/agent.py   # Market research agent
-├── execution_analyst/agent.py  # Strategy planning agent
-├── risk_analyst/agent.py   # Risk evaluation agent (Uses GovernanceClient)
-└── governed_trader/agent.py    # Trade execution with Propose-Verify pattern
-```
-
-Each agent is a `google.adk.agents.LlmAgent` with:
-- Custom instructions
-- Specialized tools
-- Model configuration (Gemini via Vertex AI)
-
-### 3. The Adapter Layer (`src/graph/nodes/adapters.py`)
-
-**Purpose**: Bridge between LangGraph's sync node functions and ADK's async runners.
-
-```python
-def run_adk_agent(agent_instance, user_msg: str, session_id: str, user_id: str):
-    """Execute an ADK agent and return results for LangGraph."""
-    
-    # 1. Ensure session exists
-    asyncio.run(ensure_session())
-    
-    # 2. Create Runner
-    runner = Runner(agent=agent_instance, session_service=session_service)
-    
-    # 3. Execute and collect events
-    for event in runner.run(user_id, session_id, new_message):
-        # Extract text and function calls
-        ...
-    
-    return AgentResponse(answer=..., function_calls=...)
-```
-
----
-
-## The Supervisor Pattern
-
-The Supervisor Node is the "brain" that:
-1. **Runs the ADK root agent** to understand user intent
-2. **Intercepts tool calls** (specifically `route_request`) to determine routing
-3. **Returns a control signal** (`next_step`) that LangGraph uses for deterministic routing
-
-```python
-def supervisor_node(state):
-    # 1. Run the coordinator agent
-    response = run_adk_agent(root_agent, last_msg)
-    
-    # 2. Intercept routing tool call
-    for call in response.function_calls:
-        if call.name == "route_request":
-            target = call.args.get("target")
-            # Map to graph node
-            if "data" in target.lower():
-                next_step = "data_analyst"
-            ...
-    
-    # 3. Return control signal for LangGraph
-    return {"messages": [...], "next_step": next_step}
-```
-
-This pattern ensures:
-- ✅ The LLM decides **intent** (what the user wants)
-- ✅ The graph decides **execution** (how to fulfill it)
-
----
-
-## Risk Refinement Loop
-
-A key feature is the **self-correcting loop** between the Execution Analyst and Risk Analyst:
-
-```mermaid
-graph LR
-    EA[Execution Analyst] -->|Strategy| RA[Risk Analyst]
-    RA -->|APPROVED| GT[Governed Trader]
-    RA -->|REJECTED_REVISE| EA
-    
-    style RA fill:#f9f,stroke:#333
-    style EA fill:#bbf,stroke:#333
-```
-
-**How it works**:
-1. Execution Analyst proposes a strategy
-2. Risk Analyst evaluates (heuristic keyword detection: "high risk", "reject", etc.)
-3. If rejected, LangGraph routes back to Execution Analyst with feedback injected
-4. Loop continues until approved or escalated to human review
 
 ---
 

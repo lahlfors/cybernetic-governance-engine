@@ -66,37 +66,20 @@ load_dotenv()
 # updated endpoint for in-cluster Langfuse
 OTEL_ENDPOINT = "http://langfuse-web.langfuse.svc.cluster.local:4317/api/public/otel/v1/traces"
 
+# Strict Production Configuration
+# Removed Llama and TPU variants to enforce "Goldilocks" architecture.
 CONFIG_MATRIX = {
-    # --- Llama 8B (E2E Agent Class) ---
-    "llama-8b_gpu": { 
-        "model_id": "meta-llama/Llama-3.1-8B-Instruct",
-        "defaults": {
-            "nvidia-l4": {
-                "vllm_args": ["--dtype", "bfloat16", "--collect-detailed-traces", "all"]
-            }
-        }
-    },
-    "llama-8b_tpu": {
-        "model_id": "meta-llama/Llama-3.1-8B-Instruct",
-        "machine_type": "ct5lp-hightpu-4t", # v5e-4 (4 chips)
-        "topology": "2x2",
-        "vllm_args": ["--tensor-parallel-size", "4", "--disable-log-stats"]
-    },
-    
-    # --- Gemma 9B (E2E Agent Class) ---
-    "gemma-9b_gpu": {
+    "production": {
         "model_id": "google/gemma-2-9b-it",
-        "defaults": {
-            "nvidia-l4": {
-                "vllm_args": ["--dtype", "bfloat16"]
-            }
-        }
-    },
-    "gemma-9b_tpu": {
-        "model_id": "google/gemma-2-9b-it",
-        "machine_type": "ct5lp-hightpu-4t", # v5e-4 (4 chips)
-        "topology": "2x2",
-        "vllm_args": ["--tensor-parallel-size", "4", "--disable-log-stats"]
+        "accelerator_type": "nvidia-l4",
+        "count": 1,
+        "vllm_args": [
+            "--dtype", "bfloat16",
+            "--enable-prefix-caching", # CRITICAL: For Governance Speed
+            "--max-model-len", "8192",
+            "--enforce-eager",
+            "--tensor-parallel-size", "1"
+        ]
     }
 }
 
@@ -142,44 +125,19 @@ def check_tool_availability(tool_name):
 
 def validate_config(args):
     """
-    Validates the configuration against the E2E Benchmark CONFIG_MATRIX.
-    Returns the flattened config dictionary if valid, or exits if invalid.
+    Validates and returns the strict production configuration.
+    Args are now mostly for overrides of infrastructure names, not architecture.
     """
-    key = f"{args.model_family}_{args.accelerator}"
-    
-    if key not in CONFIG_MATRIX:
-         print(f"❌ Invalid configuration: {key}")
-         print(f"   Supported keys: {list(CONFIG_MATRIX.keys())}")
-         sys.exit(1)
+    config = CONFIG_MATRIX["production"].copy()
 
-    base_config = CONFIG_MATRIX[key]
-    
-    # Deep copy to allow modification
-    config = base_config.copy()
-
-    # Hardware Resolution (GPU specific mapping)
-    if args.accelerator == "gpu":
-        acc_type = args.accelerator_type or "nvidia-l4" # Default to L4
-        config["accelerator_type"] = acc_type
-        
-        # Resolve 'defaults' based on accelerator type
-        defaults = base_config.get("defaults", {})
-        specific_settings = defaults.get(acc_type, {})
-        
-        # Merge settings
-        config.update(specific_settings)
-        # Set count default if not present
-        if "count" not in config:
-            config["count"] = 1
-
-    print(f"✅ Configuration verified: {key}")
+    print(f"✅ Configuration verified: Production")
     print(f"   Model: {config['model_id']}")
-    print(f"   Hardware: {config.get('machine_type', 'GPU')} (Accelerator: {config.get('accelerator_type', 'N/A')})")
+    print(f"   Accelerator: {config['accelerator_type']} x {config['count']}")
 
-    return config, key
+    return config
 
-def generate_vllm_manifest(config, accelerator, enable_tracing=None):
-    """Generates the vLLM deployment YAML based on the validated config."""
+def generate_vllm_manifest(config, enable_tracing=None):
+    """Generates the vLLM deployment YAML based on the strict config."""
     tpl_path = Path("deployment/k8s/vllm-deployment.yaml.tpl")
     if not tpl_path.exists():
         print(f"❌ Template not found: {tpl_path}")
@@ -189,7 +147,7 @@ def generate_vllm_manifest(config, accelerator, enable_tracing=None):
         content = f.read()
 
     model_id = config["model_id"]
-    print(f"ℹ️ Generating vLLM manifest for: {model_id} on {accelerator}...")
+    print(f"ℹ️ Generating vLLM manifest for: {model_id}...")
 
     # 1. Base Arguments
     vllm_args_list = [
@@ -204,70 +162,29 @@ def generate_vllm_manifest(config, accelerator, enable_tracing=None):
          vllm_args_list.append(f'            - "{arg}"')
 
     # 2. Observability (Dynamic Injection)
-    # Default: Enable for GPU, Disable for TPU (unless forced)
-    should_trace = enable_tracing if enable_tracing is not None else (accelerator == "gpu")
+    # Default: Enable for GPU
+    should_trace = enable_tracing if enable_tracing is not None else True
     
     if should_trace:
         print("ℹ️ Injecting OTLP Tracing arguments...")
         vllm_args_list.append(f'            - "--otlp-traces-endpoint"')
         vllm_args_list.append(f'            - "{OTEL_ENDPOINT}"')
     else:
-        print("ℹ️ Skipping OTLP Tracing (TPU image compatibility or disabled).")
-        # Ensure we disable log stats if not tracing to reduce noise
         if "--disable-log-stats" not in str(vllm_args_list):
              vllm_args_list.append('            - "--disable-log-stats"')
 
     env_vars_list = []
 
-    if accelerator == "tpu":
-        image_name = "vllm/vllm-tpu:latest"
-        # TPU Resource Limits
-        # For v5e, we request "google.com/tpu" chips. count matches config args logic roughly, 
-        # but manifest expects integer.
-        # topology 1x1 = 1 chip. 2x2 = 4 chips.
-        topology = config.get("topology", "1x1")
-        if topology == "1x1":
-            tpu_count = "1"
-        elif topology == "2x2":
-            tpu_count = "4"
-        elif topology == "2x4":
-            tpu_count = "8"
-        else:
-            tpu_count = "1" # Default fallback
-            
-        resource_limits = f'              google.com/tpu: "{tpu_count}"'
-        resource_requests = f'              google.com/tpu: "{tpu_count}"'
-        
-        env_vars_list.append('            - name: VLLM_TPU_CONFIG\n              value: "1"')
-        env_vars_list.append('            - name: OTEL_SERVICE_NAME\n              value: "vllm-inference"') # Tag for Langfuse
-        # Larger shared memory often needed for XLA
-        
-        # TPU Node Selectors
-        node_selector_lines = [
-            '        cloud.google.com/gke-tpu-accelerator: "tpu-v5-lite-podslice"',
-            f'        cloud.google.com/gke-tpu-topology: "{topology}"'
-        ]
-        
-    else:
-        # GPU Logic
-        image_name = "vllm/vllm-openai:latest"
-        gpu_count = str(config.get("count", 1))
-        resource_limits = f'              nvidia.com/gpu: "{gpu_count}"'
-        resource_requests = f'              nvidia.com/gpu: "{gpu_count}"'
-        
-        node_selector_lines = []
-        if config.get("machine_type"):
-            # Optional: Match machine type or accelerator
-            pass
+    # Defaults for L4 (GPU)
+    image_name = "vllm/vllm-openai:latest"
+    gpu_count = str(config.get("count", 1))
+    resource_limits = f'              nvidia.com/gpu: "{gpu_count}"'
+    resource_requests = f'              nvidia.com/gpu: "{gpu_count}"'
 
-    # Spot logic - Add to node selectors if used (wait, previously handled via template? No, I added placeholder)
-    # The snippet has hardcoded spot tolerations and now I added nodeSelector placeholder.
-    # I should add spot selector here if I want strict placement.
-    # "cloud.google.com/gke-spot": "true"
-    # But I turned off spot for TPU? 
-    # Current script has disabled spot creation for TPU. So I should NOT add spot selector for TPU.
-    # But I should for GPU?
-    # Simpler: Only add specific TPU selectors here. Spot selector logic I'll leave out for TPU for now.
+    # Strict Node Selection for L4
+    node_selector_lines = [
+        '        cloud.google.com/gke-accelerator: "nvidia-l4"'
+    ]
     
     node_selector_str = "\n".join(node_selector_lines)
 
@@ -482,124 +399,52 @@ def ensure_gke_cluster(project_id, region, cluster_name="governance-cluster", co
     # Ensure Namespace
     subprocess.run("kubectl create namespace governance-stack --dry-run=client -o yaml | kubectl apply -f -", shell=True, check=False)
 
-def ensure_accelerator_node_pool(project_id, region, cluster_name, accelerator, config=None, args=None):
-    """Ensures the appropriate node pool exists for the accelerator."""
+def ensure_accelerator_node_pool(project_id, region, cluster_name, config=None, args=None):
+    """Ensures the appropriate GPU node pool exists."""
 
-    if accelerator == "gpu":
-        pool_name = "gpu-pool"
-        print(f"\n--- ⚡ Verifying GPU Node Pool: {pool_name} ---")
-        
-        # Location logic (use zone if provided)
-        if args and args.zone:
-            location_flag = "--zone"
-            location = args.zone
-        else:
-            location_flag = "--region"
-            location = region
+    pool_name = "gpu-pool"
+    print(f"\n--- ⚡ Verifying GPU Node Pool: {pool_name} ---")
 
-        cmd = [
-            "gcloud", "container", "node-pools", "describe", pool_name,
-            "--cluster", cluster_name, location_flag, location, "--project", project_id,
-            "--format", "value(status)"
-        ]
-        if run_command(cmd, check=False, capture_output=True).returncode == 0:
-            print(f"✅ Node pool '{pool_name}' exists.")
-            return
-
-        print(f"⚠️ Node pool '{pool_name}' not found. Creating GPU pool...")
-        
-        machine_type = config.get("machine_type", "g2-standard-4")
-        accelerator_type = config.get("accelerator_type", "nvidia-l4")
-        gpu_count = config.get("count", 1)
-        disk_size = "200"
-
-        create_cmd = [
-            "gcloud", "container", "node-pools", "create", pool_name,
-            "--cluster", cluster_name,
-            location_flag, location,
-            "--project", project_id,
-            "--num-nodes", "1",
-            "--machine-type", machine_type,
-            "--accelerator", f"type={accelerator_type},count={gpu_count}",
-            "--disk-size", disk_size,
-            "--spot",
-            "--node-taints", "cloud.google.com/gke-spot=true:NoSchedule"
-        ]
-        
-        run_command(create_cmd)
-        
-        # Install drivers if needed (often auto-installed on GPU pools, but ensuring won't hurt)
-        # Actually gcloud container clusters update handling looks at cluster level, 
-        # but node pools usually come with drivers if using GKE standard.
-        return
-
-    # TPU Logic
-    pool_name = "tpu-pool"
-    print(f"\n--- ⚡ Verifying TPU Node Pool: {pool_name} ---")
-
-    # Determine scope (Region or Zone)
+    # Location logic (use zone if provided)
     if args and args.zone:
         location_flag = "--zone"
-        location_value = args.zone
+        location = args.zone
     else:
         location_flag = "--region"
-        location_value = region
+        location = region
 
     cmd = [
         "gcloud", "container", "node-pools", "describe", pool_name,
-        "--cluster", cluster_name, location_flag, location_value, "--project", project_id,
+        "--cluster", cluster_name, location_flag, location, "--project", project_id,
         "--format", "value(status)"
     ]
-
-    run_command(cmd, check=False, capture_output=True) # First run to capture output
-    status = run_command(cmd, check=False, capture_output=True).stdout.strip()
-    
-    if status == "RUNNING":
-        print(f"✅ Node pool '{pool_name}' exists and is RUNNING.")
+    if run_command(cmd, check=False, capture_output=True).returncode == 0:
+        print(f"✅ Node pool '{pool_name}' exists.")
         return
-    elif status == "ERROR":
-         print(f"⚠️ Node pool '{pool_name}' is in ERROR state. Deleting and recreating...")
-         run_command([
-             "gcloud", "container", "node-pools", "delete", pool_name,
-             "--cluster", cluster_name, location_flag, location_value,
-             "--project", project_id, "--quiet"
-         ])
-    elif "NOT_FOUND" not in status and status:
-         # Some other state
-         print(f"ℹ️ Node pool status: {status}")
 
-    print(f"⚠️ Node pool '{pool_name}' not found or broken. Creating TPU pool...")
-    print("⏳ This operation may take 10-15 minutes.")
+    print(f"⚠️ Node pool '{pool_name}' not found. Creating GPU pool...")
     
-    # TPU Machine Type from Config (Maps topology 1x1->1t, 2x2->4t)
-    machine_type = config.get("machine_type", "ct5lp-hightpu-1t")
+    machine_type = "g2-standard-4" # Correct machine type for L4
+    accelerator_type = config.get("accelerator_type", "nvidia-l4")
+    gpu_count = config.get("count", 1)
     disk_size = "200"
-
-    # Note: TPU v5e is zonal. We need to pick a zone.
-    if args and args.zone:
-        node_location = args.zone
-    else:
-        # We'll use {region}-a as a default guess if no zone specified
-        node_location = f"{region}-a"
-    
-    print(f"ℹ️ Provisioning TPU Pool ({machine_type}) in zone: {node_location}")
 
     create_cmd = [
         "gcloud", "container", "node-pools", "create", pool_name,
         "--cluster", cluster_name,
-        location_flag, location_value,
+        location_flag, location,
         "--project", project_id,
         "--num-nodes", "1",
         "--machine-type", machine_type,
-        "--node-locations", node_location,
+        "--accelerator", f"type={accelerator_type},count={gpu_count}",
         "--disk-size", disk_size,
-        "--disk-size", disk_size,
-        "--enable-image-streaming",
-        "--shielded-secure-boot",
-        "--shielded-integrity-monitoring" # FIX: Both required together
+        "--spot",
+        "--node-taints", "cloud.google.com/gke-spot=true:NoSchedule"
     ]
 
     run_command(create_cmd)
+
+    return
 
 
 def deploy_k8s_infra(project_id, region, config=None, args=None):
@@ -607,8 +452,7 @@ def deploy_k8s_infra(project_id, region, config=None, args=None):
     Deploys Kubernetes manifests for Backend & vLLM.
     Ensures kubectl and Cluster are ready.
     """
-    accelerator = args.accelerator if args and hasattr(args, "accelerator") else "gpu"
-    print(f"\n--- ☸️ Deploying K8s Infrastructure (vLLM) [Accelerator: {accelerator}] ---")
+    print(f"\n--- ☸️ Deploying K8s Infrastructure (vLLM) ---")
 
     if not check_tool_availability("kubectl"):
         install_kubectl()
@@ -621,7 +465,7 @@ def deploy_k8s_infra(project_id, region, config=None, args=None):
     ensure_gke_cluster(project_id, region, cluster_name=args.cluster_name, config=config, args=args)
 
     # Ensure Node Pool for Accelerator
-    ensure_accelerator_node_pool(project_id, region, args.cluster_name, accelerator, config=config, args=args)
+    ensure_accelerator_node_pool(project_id, region, args.cluster_name, config=config, args=args)
 
     k8s_dir = Path("deployment/k8s")
     if not k8s_dir.exists():
@@ -629,10 +473,10 @@ def deploy_k8s_infra(project_id, region, config=None, args=None):
         return
 
     # Generate Dynamic Manifests
-    print(f"📄 Generating vLLM manifest for {accelerator}...")
+    print(f"📄 Generating vLLM manifest...")
     # Pass optional tracing flag
     enable_tracing = getattr(args, "enable_tracing", None) 
-    vllm_yaml = generate_vllm_manifest(config, accelerator, enable_tracing=enable_tracing)
+    vllm_yaml = generate_vllm_manifest(config, enable_tracing=enable_tracing)
     if not vllm_yaml:
         print("❌ Failed to generate vLLM manifest.")
         return
@@ -831,30 +675,19 @@ def main():
     parser.add_argument("--ui-service-name", default="financial-advisor-ui", help="Cloud Run UI Service Name")
     parser.add_argument("--target", default="cloud_run", choices=["cloud_run", "hybrid", "gke"], help="Deployment target")
 
-    # New Argument for Accelerator Support
-    parser.add_argument("--accelerator", default="gpu", choices=["gpu", "tpu"], help="Inference accelerator type (gpu=H100/NVIDIA, tpu=v5e/Google)")
-    parser.add_argument("--accelerator-type", default="t4", choices=["t4", "l4", "a100"], help="GPU Accelerator Type")
-    parser.add_argument("--spot", action="store_true", help="Use Spot VMs for GKE nodes")
-    
     # Observability
-    parser.add_argument("--enable-tracing", action="store_true", default=None, help="Force enable vLLM OTLP tracing (default: true for GPU, false for TPU)")
+    parser.add_argument("--enable-tracing", action="store_true", default=None, help="Force enable vLLM OTLP tracing")
     parser.add_argument("--disable-tracing", action="store_false", dest="enable_tracing", help="Force disable vLLM OTLP tracing")
 
-    # Model Configuration
-    # Model Configuration
-    # Model Configuration
-    parser.add_argument("--model-family", default="llama-8b", choices=["llama-8b", "gemma-9b"], help="Model family to deploy")
-    parser.add_argument("--model-id", help="Specific HuggingFace Model ID (overrides family default)")
     parser.add_argument("--cluster-name", default="governance-cluster", help="GKE Cluster Name") # Added arg
 
     args = parser.parse_args()
 
     project_id = args.project_id
     region = args.region
-    accelerator = args.accelerator
 
     # 0. Validate Configuration (Strict Golden Path)
-    config, config_key = validate_config(args)
+    config = validate_config(args)
 
     # 1. Enable APIs
     enable_apis(project_id)
@@ -1035,11 +868,11 @@ def deploy_hybrid(project_id, region, image_uri, redis_host, redis_port, args=No
     2. Retrieves Backend External IP.
     3. Deploys UI to Cloud Run pointed at Backend IP.
     """
-    accelerator = args.accelerator if args and hasattr(args, "accelerator") else "gpu"
-    print(f"\n--- 🌐 Starting Hybrid Deployment (GKE + Cloud Run) [Accelerator: {accelerator}] ---")
+    # Force GPU path for production
+    print(f"\n--- 🌐 Starting Hybrid Deployment (GKE + Cloud Run) [Production: NVIDIA L4] ---")
     
     # 1. Deploy GKE Infrastructure (vLLM)
-    deploy_k8s_infra(project_id, region, args=args)
+    deploy_k8s_infra(project_id, region, config=CONFIG_MATRIX["production"], args=args)
     
     # 2. Deploy Backend to GKE
     print("\n--- ☸️ Deploying Backend to GKE ---")
