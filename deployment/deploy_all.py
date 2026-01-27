@@ -136,7 +136,7 @@ def validate_config(args):
 
     return config
 
-def generate_vllm_manifest(config, enable_tracing=None):
+def generate_vllm_manifest(config, enable_tracing=None, spot_enabled=False):
     """Generates the vLLM deployment YAML based on the strict config."""
     tpl_path = Path("deployment/k8s/vllm-deployment.yaml.tpl")
     if not tpl_path.exists():
@@ -188,6 +188,16 @@ def generate_vllm_manifest(config, enable_tracing=None):
     
     node_selector_str = "\n".join(node_selector_lines)
 
+    # 3. Tolerations for Spot Instances
+    tolerations_list = []
+    if spot_enabled:
+        tolerations_list.append('      - key: "cloud.google.com/gke-spot"')
+        tolerations_list.append('        operator: "Equal"')
+        tolerations_list.append('        value: "true"')
+        tolerations_list.append('        effect: "NoSchedule"')
+
+    tolerations_str = "\n".join(tolerations_list) if tolerations_list else ""
+
     vllm_args = "\n".join(vllm_args_list)
     env_vars = "\n".join(env_vars_list) if env_vars_list else ""
 
@@ -197,6 +207,7 @@ def generate_vllm_manifest(config, enable_tracing=None):
     content = content.replace("${ENV_VARS}", env_vars)
     content = content.replace("${ARGS}", vllm_args)
     content = content.replace("${NODE_SELECTOR}", node_selector_str)
+    content = content.replace("${TOLERATIONS}", tolerations_str)
 
     return content
 
@@ -437,10 +448,14 @@ def ensure_accelerator_node_pool(project_id, region, cluster_name, config=None, 
         "--num-nodes", "1",
         "--machine-type", machine_type,
         "--accelerator", f"type={accelerator_type},count={gpu_count}",
-        "--disk-size", disk_size,
-        "--spot",
-        "--node-taints", "cloud.google.com/gke-spot=true:NoSchedule"
+        "--disk-size", disk_size
     ]
+
+    # Add Spot logic only if requested
+    if args and args.spot:
+        create_cmd.append("--spot")
+        create_cmd.append("--node-taints")
+        create_cmd.append("cloud.google.com/gke-spot=true:NoSchedule")
 
     run_command(create_cmd)
 
@@ -476,7 +491,7 @@ def deploy_k8s_infra(project_id, region, config=None, args=None):
     print(f"📄 Generating vLLM manifest...")
     # Pass optional tracing flag
     enable_tracing = getattr(args, "enable_tracing", None) 
-    vllm_yaml = generate_vllm_manifest(config, enable_tracing=enable_tracing)
+    vllm_yaml = generate_vllm_manifest(config, enable_tracing=enable_tracing, spot_enabled=args.spot)
     if not vllm_yaml:
         print("❌ Failed to generate vLLM manifest.")
         return
@@ -675,6 +690,11 @@ def main():
     parser.add_argument("--ui-service-name", default="financial-advisor-ui", help="Cloud Run UI Service Name")
     parser.add_argument("--target", default="cloud_run", choices=["cloud_run", "hybrid", "gke"], help="Deployment target")
 
+    # New Argument for Accelerator Support
+    parser.add_argument("--accelerator", default="gpu", choices=["gpu", "tpu"], help="Inference accelerator type (gpu=H100/NVIDIA, tpu=v5e/Google)")
+    parser.add_argument("--accelerator-type", default="l4", choices=["t4", "l4", "a100"], help="GPU Accelerator Type")
+    parser.add_argument("--spot", action="store_true", help="Use Spot VMs for GKE nodes")
+
     # Observability
     parser.add_argument("--enable-tracing", action="store_true", default=None, help="Force enable vLLM OTLP tracing")
     parser.add_argument("--disable-tracing", action="store_false", dest="enable_tracing", help="Force disable vLLM OTLP tracing")
@@ -685,6 +705,7 @@ def main():
 
     project_id = args.project_id
     region = args.region
+    accelerator = args.accelerator
 
     # 0. Validate Configuration (Strict Golden Path)
     config = validate_config(args)
