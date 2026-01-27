@@ -24,15 +24,15 @@ spec:
           emptyDir: {}
       containers:
         - name: vllm
-          image: ${IMAGE_NAME}
+          image: vllm/vllm-tpu:latest
           imagePullPolicy: IfNotPresent
           resources:
             limits:
-${RESOURCE_LIMITS}
+              google.com/tpu: "4"
               memory: "64Gi"
               cpu: "16"
             requests:
-${RESOURCE_REQUESTS}
+              google.com/tpu: "4"
               memory: "32Gi"
               cpu: "12"
           volumeMounts:
@@ -46,7 +46,10 @@ ${RESOURCE_REQUESTS}
                 secretKeyRef:
                   name: hf-token-secret
                   key: token
-${ENV_VARS}
+            - name: VLLM_TPU_CONFIG
+              value: "1"
+            - name: OTEL_SERVICE_NAME
+              value: "vllm-inference"
           ports:
             - containerPort: 8000
               name: http
@@ -66,12 +69,19 @@ ${ENV_VARS}
             - "python3"
             - "-m"
             - "vllm.entrypoints.openai.api_server"
-${ARGS}
+            - "--model"
+            - "google/gemma-2-9b-it"
+            - "--served-model-name"
+            - "google/gemma-2-9b-it"
+            - "--tensor-parallel-size"
+            - "4"
+
             - "--gpu-memory-utilization"
             - "0.90"
             - "--disable-log-stats"
       nodeSelector:
-${NODE_SELECTOR}
+        cloud.google.com/gke-tpu-accelerator: "tpu-v5-lite-podslice"
+        cloud.google.com/gke-tpu-topology: "2x2"
       tolerations:
       - key: "cloud.google.com/gke-spot"
         operator: "Equal"
