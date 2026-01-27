@@ -14,7 +14,8 @@
 
 """Risk Analysis Agent for providing the final risk evaluation and identifying UCAs"""
 
-
+import asyncio
+import json
 from google.adk import Agent
 from google.adk.tools import transfer_to_agent
 from pydantic import BaseModel, Field
@@ -22,6 +23,7 @@ from pydantic import BaseModel, Field
 from config.settings import MODEL_REASONING
 from src.utils.prompt_utils import Content, Part, Prompt, PromptData
 from src.governance.policy_loader import PolicyLoader
+from src.infrastructure.governance_client import GovernanceClient
 
 
 # Define schema for Constraint Logic (Structured)
@@ -44,6 +46,31 @@ class RiskAssessment(BaseModel):
     analysis_text: str = Field(description="Detailed textual analysis of risks")
 
 
+def perform_governed_risk_assessment(risk_analysis_context: str) -> dict:
+    """
+    Executes a formal, governed risk assessment using the specialized Governance Engine (vLLM).
+    This enforces strict schema compliance via the 'Governance Sandwich' pattern.
+
+    Args:
+        risk_analysis_context: The detailed context, findings, and data to be assessed against the strict schema.
+
+    Returns:
+        The structured RiskAssessment object as a dictionary.
+    """
+    client = GovernanceClient()
+
+    # Execute the async client method synchronously for the tool
+    try:
+        result = asyncio.run(client.generate_structured(
+            prompt=risk_analysis_context,
+            schema=RiskAssessment
+        ))
+        return result.model_dump()
+    except Exception as e:
+        # Fallback or error handling
+        return {"error": f"Governance assessment failed: {str(e)}"}
+
+
 def get_risk_analyst_instruction() -> str:
     # Use PolicyLoader to fetch dynamic hazard definitions
     loader = PolicyLoader()
@@ -59,12 +86,18 @@ Input:
 - user_risk_attitude
 
 Task:
-Analyze the plan for the following DYNAMICALLY LOADED Hazard Types and define UCAs if risk exists:
+Analyze the plan for the following DYNAMICALLY LOADED Hazard Types.
 
 {dynamic_hazards}
 
+CRITICAL INSTRUCTION:
+You MUST NOT generate the RiskAssessment JSON yourself.
+Instead, after performing your reasoning, you MUST call the `perform_governed_risk_assessment` tool.
+Pass your detailed analysis and context into this tool.
+The tool will invoke the Governance Engine to enforce strict schema compliance and return the final JSON.
+
 Output:
-Return a structured JSON object (RiskAssessment) containing the list of identified UCAs with their structured `constraint_logic`.
+Return the structured JSON object (RiskAssessment) provided by the tool.
 
 IMMEDIATELY AFTER generating this report, you MUST call `transfer_to_agent("financial_coordinator")` to return control to the main agent.
 """
@@ -77,7 +110,7 @@ def create_risk_analyst_agent(model_name: str = MODEL_REASONING) -> Agent:
         name="risk_analyst_agent",
         instruction=get_risk_analyst_instruction(),
         output_key="risk_assessment_output",
-        tools=[transfer_to_agent],
+        tools=[transfer_to_agent, perform_governed_risk_assessment],
         output_schema=RiskAssessment,
         generate_content_config={
             "response_mime_type": "application/json"
