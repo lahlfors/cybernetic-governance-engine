@@ -78,9 +78,8 @@ spec:
             - "--enforce-eager"
             - "--tensor-parallel-size"
             - "1"
-            - "--otlp-traces-endpoint"
-            - "http://langfuse-web.langfuse.svc.cluster.local:4317/api/public/otel/v1/traces"
-            - "--enable-prefix-caching"
+            - "--gpu-memory-utilization"
+            - "0.95"
       nodeSelector:
         cloud.google.com/gke-accelerator: "nvidia-l4"
       tolerations:

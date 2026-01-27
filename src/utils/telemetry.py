@@ -6,6 +6,7 @@ import logging
 import os
 import random
 import sys
+import base64
 from typing import Any
 
 from pythonjsonlogger import jsonlogger
@@ -98,6 +99,7 @@ def configure_telemetry():
         from opentelemetry import trace
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
         # Try to configure Google Cloud Trace
         try:
@@ -122,6 +124,25 @@ def configure_telemetry():
             # Cold Tier: Local Parquet
             parquet_exporter = ParquetSpanExporter()
             cold_processor = BatchSpanProcessor(parquet_exporter)
+
+            # Langfuse Tier: OTLP
+            langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
+            langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+            langfuse_base_url = os.getenv("LANGFUSE_BASE_URL", "http://localhost:3000")
+
+            if langfuse_public_key and langfuse_secret_key:
+                auth_str = f"{langfuse_public_key}:{langfuse_secret_key}"
+                auth_header = f"Basic {base64.b64encode(auth_str.encode()).decode()}"
+                
+                otlp_exporter = OTLPSpanExporter(
+                    endpoint=f"{langfuse_base_url}/api/public/otel/v1/traces",
+                    headers={"Authorization": auth_header}
+                )
+                otlp_processor = BatchSpanProcessor(otlp_exporter)
+                provider.add_span_processor(otlp_processor)
+                logger.info("✅ OpenTelemetry: Langfuse OTLP Exporter configured.")
+            else:
+                 logger.warning("⚠️ Langfuse credentials not found. Skipping OTLP export.")
 
             # 2. Configure Optimizer Processor
             optimizer = GenAICostOptimizerProcessor(

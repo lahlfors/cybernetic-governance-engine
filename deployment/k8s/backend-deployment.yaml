@@ -64,7 +64,7 @@ spec:
             - "--server"
             - "--addr=localhost:8181"
             - "--config-file=/config/opa_config.yaml"
-            - "/policies"
+            - "/policies/finance_policy.rego"
           volumeMounts:
             - name: policy-volume
               mountPath: /policies

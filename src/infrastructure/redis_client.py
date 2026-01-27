@@ -3,6 +3,8 @@ import os
 
 import redis
 
+from src.utils.telemetry import get_tracer
+
 logger = logging.getLogger("Infrastructure.Redis")
 
 class RedisWrapper:
@@ -14,8 +16,10 @@ class RedisWrapper:
     def __init__(self):
         self.host = os.environ.get("REDIS_HOST", "localhost")
         self.port = int(os.environ.get("REDIS_PORT", 6379))
+        self.port = int(os.environ.get("REDIS_PORT", 6379))
         self.client = None
         self._local_cache = {}
+        self.tracer = get_tracer()
 
         try:
             # Socket timeout is critical for fail-fast in sidecar architectures
@@ -33,6 +37,13 @@ class RedisWrapper:
             self.client = None
 
     def get(self, key: str) -> str | None:
+        if self.tracer:
+            with self.tracer.start_as_current_span("redis.get") as span:
+                span.set_attribute("redis.key", key)
+                return self._do_get(key)
+        return self._do_get(key)
+
+    def _do_get(self, key: str) -> str | None:
         try:
             if self.client:
                 return self.client.get(key)
@@ -41,6 +52,14 @@ class RedisWrapper:
         return self._local_cache.get(key)
 
     def set(self, key: str, value: str):
+        if self.tracer:
+            with self.tracer.start_as_current_span("redis.set") as span:
+                span.set_attribute("redis.key", key)
+                self._do_set(key, value)
+        else:
+             self._do_set(key, value)
+
+    def _do_set(self, key: str, value: str):
         try:
             if self.client:
                 self.client.set(key, value)
