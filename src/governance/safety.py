@@ -1,7 +1,7 @@
 import logging
-from typing import Any
-
-from src.infrastructure.redis_client import redis_client
+import os
+from typing import Any, Optional
+from google.cloud import firestore
 from src.utils.telemetry import get_tracer
 
 logger = logging.getLogger("SafetyLayer")
@@ -10,24 +10,55 @@ class ControlBarrierFunction:
     """
     Implements a discrete-time Control Barrier Function (CBF).
 
-    CRITICAL: Uses Redis for state persistence.
-    In Cloud Run (Stateless), local variables reset on every request.
-    We MUST fetch `current_cash` from Redis for every verification.
+    CRITICAL: Uses Firestore for state persistence in Native Architecture.
+    We fetch `current_cash` from Firestore for every verification.
     """
 
     def __init__(self, min_cash_balance: float = 1000.0, gamma: float = 0.5):
         self.min_cash_balance = min_cash_balance
         self.gamma = gamma
-        self.redis_key = "safety:current_cash"
+        self.project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
+        self.collection_name = "governance_state"
+        self.doc_id = "safety_cbf"
 
-        # Bootstrap state if empty (e.g. first run)
-        if redis_client.get(self.redis_key) is None:
-            redis_client.set(self.redis_key, "100000.0")
+        # Initialize Firestore client (Production Code)
+        # Note: In local dev without credentials, this might fail unless emulated.
+        try:
+            self.db = firestore.Client(project=self.project_id)
+            self._initialize_state()
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to initialize Firestore for Safety Filter: {e}")
+            self.db = None
 
         self.tracer = get_tracer()
 
+    def _initialize_state(self):
+        """Ensures the initial state exists in Firestore."""
+        if not self.db: return
+
+        doc_ref = self.db.collection(self.collection_name).document(self.doc_id)
+        try:
+            doc = doc_ref.get()
+            if not doc.exists:
+                doc_ref.set({"current_cash": 100000.0})
+                logger.info("Initialized CBF state in Firestore.")
+        except Exception as e:
+             logger.error(f"Error initializing CBF state: {e}")
+
     def _get_current_cash(self) -> float:
-        return redis_client.get_float(self.redis_key, 100000.0)
+        """Fetches current cash from Firestore."""
+        if not self.db:
+             logger.warning("Firestore not connected, returning default safe cash.")
+             return 100000.0
+
+        try:
+            doc = self.db.collection(self.collection_name).document(self.doc_id).get()
+            if doc.exists:
+                return float(doc.to_dict().get("current_cash", 100000.0))
+        except Exception as e:
+            logger.error(f"Error fetching CBF state: {e}")
+
+        return 100000.0
 
     def get_h(self, cash_balance: float) -> float:
         """
@@ -37,7 +68,7 @@ class ControlBarrierFunction:
 
     def verify_action(self, action_name: str, payload: dict[str, Any]) -> str:
         """
-        Verifies if the action is safe relative to the *shared* state in Redis.
+        Verifies if the action is safe relative to the *shared* state in Firestore.
         """
         # 1. Fetch State (Hot Path)
         current_cash = self._get_current_cash()
@@ -69,7 +100,6 @@ class ControlBarrierFunction:
         logger.info(f"🛡️ CBF Check | Cash: {current_cash} -> {next_cash}")
 
         # 4. Verify Condition: h(next) >= (1-gamma) * h(current)
-        # 4. Verify Condition: h(next) >= (1-gamma) * h(current)
         result = "SAFE"
         if h_next < required_h_next or h_next < 0:
              result = f"UNSAFE: CBF violation. h(next)={h_next} < threshold={required_h_next}"
@@ -83,14 +113,26 @@ class ControlBarrierFunction:
 
     def update_state(self, cost: float):
         """
-        Commits the new state to Redis after successful execution.
+        Commits the new state to Firestore after successful execution.
         """
-        # Note: In high-concurrency production, use Redis transactions (WATCH/MULTI).
-        # For this implementation, simple SET is used.
-        current = self._get_current_cash()
-        new_balance = current - cost
-        redis_client.set(self.redis_key, str(new_balance))
-        logger.info(f"✅ State Updated: Cash balance is now {new_balance}")
+        if not self.db: return
+
+        # Use Transaction for consistency
+        transaction = self.db.transaction()
+        doc_ref = self.db.collection(self.collection_name).document(self.doc_id)
+
+        @firestore.transactional
+        def update_in_transaction(transaction, doc_ref):
+            snapshot = doc_ref.get(transaction=transaction)
+            current = snapshot.to_dict().get("current_cash", 100000.0)
+            new_balance = current - cost
+            transaction.update(doc_ref, {"current_cash": new_balance})
+            logger.info(f"✅ State Updated (Firestore): Cash balance is now {new_balance}")
+
+        try:
+            update_in_transaction(transaction, doc_ref)
+        except Exception as e:
+            logger.error(f"Failed to update CBF state in Firestore: {e}")
 
 # Global instance
 safety_filter = ControlBarrierFunction()

@@ -716,12 +716,15 @@ def main():
     # 1. Enable APIs
     enable_apis(project_id)
 
-    # 1. Infrastructure Provisioning - Redis
-    redis_host = args.redis_host
-    redis_port = args.redis_port
-
-    redis_port = args.redis_port
+    # 1. Infrastructure Provisioning - Firestore (No Redis)
+    # Replaced Redis with Firestore Session Service (Native)
+    print("\n--- 🗄️ Verifying Firestore (Native Session Storage) ---")
+    run_command(["gcloud", "services", "enable", "firestore.googleapis.com", "--project", project_id], check=False)
     
+    # We still keep redis variables for compatibility with hybrid/UI args if needed, but they are generally unused
+    redis_host = None
+    redis_port = "6379"
+
     if args.deploy_langfuse:
         # Just deploy langfuse and exit or continue?
         # Ensure cluster first
@@ -730,14 +733,7 @@ def main():
         if args.skip_k8s and args.skip_build and args.skip_redis:
              return # Exit if only deploying langfuse
 
-    if args.skip_redis:
-        print("\n--- ⏭️ Skipping Redis provisioning (--skip-redis flag set) ---")
-        if not redis_host:
-            print("⚠️ Warning: No Redis host provided. Memory will be ephemeral.")
-    elif not redis_host:
-        redis_host, redis_port = get_redis_host(project_id, region, args.redis_instance_name)
-    else:
-        print(f"\n--- 🗄️ Using provided Redis: {redis_host}:{redis_port} ---")
+    # Redis Provisioning Block Removed - Using Firestore
 
     # 2. Kubernetes Infrastructure (vLLM)
     if not args.skip_k8s:
@@ -809,8 +805,7 @@ def main():
                 env.append({"name": k, "value": str(v)})
 
             # Inject all deployment envs from .env (single source of truth)
-            add_env("REDIS_HOST", redis_host or "")
-            add_env("REDIS_PORT", redis_port or "6379")
+            # REDIS removed
             add_env("GOOGLE_CLOUD_PROJECT", project_id)
             add_env("GOOGLE_CLOUD_LOCATION", region)
             add_env("GOOGLE_GENAI_USE_VERTEXAI", os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "true"))
@@ -913,7 +908,6 @@ def deploy_hybrid(project_id, region, image_uri, redis_host, redis_port, args=No
     timestamp = str(int(time.time()))
     
     manifest_content = manifest_content.replace("${IMAGE_URI}", image_uri)
-    manifest_content = manifest_content.replace("${REDIS_HOST}", redis_host)
     manifest_content = manifest_content.replace("${PROJECT_ID}", project_id)
     manifest_content = manifest_content.replace("${REGION}", region)
     manifest_content = manifest_content.replace("${DEPLOY_TIMESTAMP}", timestamp)
