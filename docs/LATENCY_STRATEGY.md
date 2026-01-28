@@ -6,7 +6,7 @@ This document outlines the performance strategy for the Cybernetic Governance En
 
 Every safe generation incurs a latency penalty:
 1.  **Semantic Guardrails (NeMo):** ~150-300ms (Input/Output checks).
-2.  **Policy Evaluation (OPA):** ~10-50ms (Sidecar network hop + Rego eval).
+2.  **Policy Evaluation (OPA):** ~20-60ms (Remote Service network hop + Rego eval).
 3.  **Syntactic Enforcement (vLLM FSM):** ~50ms (with Prefix Caching).
 
 To maintain a responsive user experience (Total Response Time < 2s for simple queries), the underlying inference engine must be exceptionally fast.
