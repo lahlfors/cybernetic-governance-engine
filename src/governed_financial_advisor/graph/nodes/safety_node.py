@@ -1,8 +1,8 @@
 import logging
 from typing import Any, Literal
 
-from src.governance.client import opa_client
-from src.graph.state import AgentState
+from src.governed_financial_advisor.governance.client import opa_client
+from src.governed_financial_advisor.graph.state import AgentState
 
 logger = logging.getLogger("SafetyNode")
 

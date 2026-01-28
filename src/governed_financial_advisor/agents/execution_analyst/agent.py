@@ -21,7 +21,7 @@ from google.adk.tools import transfer_to_agent
 from pydantic import BaseModel, Field
 
 from config.settings import MODEL_FAST
-from src.utils.prompt_utils import Content, Part, Prompt, PromptData
+from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
 
 
 # Define the Pydantic schema for the execution plan

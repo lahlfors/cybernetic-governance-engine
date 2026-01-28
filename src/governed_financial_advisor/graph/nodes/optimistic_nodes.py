@@ -4,11 +4,14 @@ import time
 from typing import Any, Literal
 
 import httpx
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
-from src.graph.nodes.safety_node import safety_check_node
-from src.graph.state import AgentState
+from src.governed_financial_advisor.graph.nodes.safety_node import safety_check_node
+from src.governed_financial_advisor.graph.state import AgentState
 
 logger = logging.getLogger("OptimisticExecution")
+tracer = trace.get_tracer("src.governed_financial_advisor.graph.nodes.optimistic_nodes")
 
 async def check_nemo_guardrails(state: AgentState) -> dict[str, Any]:
     """
@@ -89,73 +92,110 @@ async def optimistic_execution_node(state: AgentState) -> dict[str, Any]:
     Wrapper Node that executes Safety Check, NeMo Check, and Trader Prep in PARALLEL.
     Demonstrates Optimistic Execution pattern (Governance Budget).
     """
-    logger.info("⚡ Optimistic Execution: Forking Safety (OPA), NeMo, and Prep Threads")
+    # Root Span for the Workflow Execution Phase (Planner-Verifier Handoff)
+    with tracer.start_as_current_span("workflow.execution") as span:
+        logger.info("⚡ Optimistic Execution: Forking Safety (OPA), NeMo, and Prep Threads")
 
-    # 1. Start the Gatekeepers (Rail A & B)
-    opa_task = asyncio.create_task(safety_check_node(state))
-    nemo_task = asyncio.create_task(check_nemo_guardrails(state))
+        start_time = time.time()
 
-    # 2. Start the Tool Execution (Rail C - Optimistic)
-    tool_task = asyncio.create_task(trader_prep_node(state))
+        # 1. Start the Gatekeepers (Rail A & B)
+        # These represent the "Critic" / "Verifier" phase
+        opa_task = asyncio.create_task(safety_check_node(state))
+        nemo_task = asyncio.create_task(check_nemo_guardrails(state))
 
-    # 3. Wait for BOTH Gatekeepers FIRST
-    # We use gather to wait for both rails to complete or fail
-    try:
-        results = await asyncio.gather(opa_task, nemo_task, return_exceptions=True)
+        # 2. Start the Tool Execution (Rail C - Optimistic)
+        tool_task = asyncio.create_task(trader_prep_node(state))
 
-        # Check for exceptions in rails
-        rail_results = {}
-        for i, res in enumerate(results):
-            if isinstance(res, Exception):
-                logger.error(f"Rail {i} failed: {res}")
-                tool_task.cancel()
-                return {"safety_status": "ERROR", "error": str(res)}
-            rail_results.update(res)
-
-    except Exception as e:
-        logger.error(f"Rails execution failed: {e}")
-        tool_task.cancel()
-        return {"safety_status": "ERROR", "error": str(e)}
-
-    # 4. Decide based on Combined Guardrail results
-    safety_status = rail_results.get("safety_status")
-    nemo_status = rail_results.get("nemo_status")
-
-    # Combined Policy: Both must pass (or be skipped/error-open)
-    opa_ok = safety_status in ["APPROVED", "SKIPPED"]
-    nemo_ok = nemo_status in ["APPROVED", "SKIPPED"]
-
-    if opa_ok and nemo_ok:
-        logger.info("✅ All Rails Approved. Waiting for Tool Result...")
+        # 3. Wait for BOTH Gatekeepers FIRST
+        # We use gather to wait for both rails to complete or fail
+        # This block represents the "Verification" overhead
         try:
-            # If allowed, retrieve the already-running tool result
-            prep_result = await tool_task
-            return {**rail_results, **prep_result}
-        except asyncio.CancelledError:
-             logger.warning("Tool task was cancelled unexpectedly.")
-             return {**rail_results, "trader_prep_error": "Cancelled"}
+            with tracer.start_as_current_span("risk.verification.combined") as verify_span:
+                verification_start = time.time()
+
+                results = await asyncio.gather(opa_task, nemo_task, return_exceptions=True)
+
+                verification_duration = (time.time() - verification_start) * 1000
+                span.set_attribute("risk.verification.duration_ms", verification_duration)
+
+                # Check for exceptions in rails
+                rail_results = {}
+                has_error = False
+                for i, res in enumerate(results):
+                    if isinstance(res, Exception):
+                        logger.error(f"Rail {i} failed: {res}")
+                        has_error = True
+                        verify_span.record_exception(res)
+
+                    elif isinstance(res, dict):
+                        rail_results.update(res)
+
+                if has_error:
+                     tool_task.cancel()
+                     verify_span.set_status(Status(StatusCode.ERROR))
+                     return {"safety_status": "ERROR", "error": "Rail execution failed"}
+
         except Exception as e:
-            logger.error(f"Tool execution failed: {e}")
-            return {**rail_results, "trader_prep_error": str(e)}
+            logger.error(f"Rails execution failed: {e}")
+            tool_task.cancel()
+            span.record_exception(e)
+            span.set_status(Status(StatusCode.ERROR))
+            return {"safety_status": "ERROR", "error": str(e)}
 
-    else:
-        # If denied (BLOCKED/ESCALATED), cancel the tool task immediately
-        reason = []
-        if not opa_ok: reason.append(f"OPA: {safety_status}")
-        if not nemo_ok: reason.append(f"NeMo: {nemo_status}")
+        # 4. Decide based on Combined Guardrail results
+        safety_status = rail_results.get("safety_status")
+        nemo_status = rail_results.get("nemo_status")
 
-        logger.warning(f"⛔ Rails Blocked: {', '.join(reason)}. Cancelling Optimistic Tool.")
-        tool_task.cancel()
+        # Combined Policy: Both must pass (or be skipped/error-open)
+        opa_ok = safety_status in ["APPROVED", "SKIPPED"]
+        nemo_ok = nemo_status in ["APPROVED", "SKIPPED"]
 
-        # Await the task to ensure cancellation cleanup completes (optional but good practice)
-        try:
-            await tool_task
-        except asyncio.CancelledError:
-            pass # Expected
-        except Exception as e:
-            logger.error(f"Error during tool cancellation: {e}")
+        # Metric: Verification Overhead Ratio
+        total_time_so_far = (time.time() - start_time) * 1000
+        # Avoid division by zero
+        overhead_ratio = 0.0
+        if total_time_so_far > 0:
+            overhead_ratio = verification_duration / total_time_so_far
+        span.set_attribute("risk.verification.overhead_ratio", overhead_ratio)
 
-        return rail_results
+        # Attribute: Final Verdict
+        final_verdict = "APPROVED" if (opa_ok and nemo_ok) else "REJECTED"
+        span.set_attribute("risk.verification.final_verdict", final_verdict)
+
+        if opa_ok and nemo_ok:
+            logger.info("✅ All Rails Approved. Waiting for Tool Result...")
+            try:
+                # If allowed, retrieve the already-running tool result
+                prep_result = await tool_task
+                return {**rail_results, **prep_result}
+            except asyncio.CancelledError:
+                 logger.warning("Tool task was cancelled unexpectedly.")
+                 return {**rail_results, "trader_prep_error": "Cancelled"}
+            except Exception as e:
+                logger.error(f"Tool execution failed: {e}")
+                span.record_exception(e)
+                return {**rail_results, "trader_prep_error": str(e)}
+
+        else:
+            # If denied (BLOCKED/ESCALATED), cancel the tool task immediately
+            reason = []
+            if not opa_ok: reason.append(f"OPA: {safety_status}")
+            if not nemo_ok: reason.append(f"NeMo: {nemo_status}")
+
+            logger.warning(f"⛔ Rails Blocked: {', '.join(reason)}. Cancelling Optimistic Tool.")
+            tool_task.cancel()
+
+            span.set_attribute("risk.rejection_reason", str(reason))
+
+            # Await the task to ensure cancellation cleanup completes (optional but good practice)
+            try:
+                await tool_task
+            except asyncio.CancelledError:
+                pass # Expected
+            except Exception as e:
+                logger.error(f"Error during tool cancellation: {e}")
+
+            return rail_results
 
 def route_optimistic_execution(state: AgentState) -> Literal["governed_trader", "execution_analyst"]:
     """

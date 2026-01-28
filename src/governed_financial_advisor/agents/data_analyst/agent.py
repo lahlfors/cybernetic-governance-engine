@@ -22,7 +22,7 @@ from google.adk.tools.google_search_agent_tool import (
 )
 
 from config.settings import MODEL_NAME
-from src.utils.prompt_utils import Content, Part, Prompt, PromptData
+from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
 
 DATA_ANALYST_PROMPT_OBJ = Prompt(
     prompt_data=PromptData(

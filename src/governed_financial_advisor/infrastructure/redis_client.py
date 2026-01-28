@@ -3,7 +3,7 @@ import os
 
 import redis
 
-from src.utils.telemetry import get_tracer
+from src.governed_financial_advisor.utils.telemetry import get_tracer
 
 logger = logging.getLogger("Infrastructure.Redis")
 

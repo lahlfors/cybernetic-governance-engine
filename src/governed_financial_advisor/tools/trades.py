@@ -3,7 +3,7 @@ import uuid
 
 from pydantic import BaseModel, Field, field_validator
 
-from src.governance.client import governed_tool
+from src.governed_financial_advisor.governance.client import governed_tool
 
 
 class TradeOrder(BaseModel):

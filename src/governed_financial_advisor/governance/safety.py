@@ -1,8 +1,8 @@
 import logging
 from typing import Any
 
-from src.infrastructure.redis_client import redis_client
-from src.utils.telemetry import get_tracer
+from src.governed_financial_advisor.infrastructure.redis_client import redis_client
+from src.governed_financial_advisor.utils.telemetry import get_tracer
 
 logger = logging.getLogger("SafetyLayer")
 

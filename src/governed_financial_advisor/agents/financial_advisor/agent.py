@@ -19,8 +19,8 @@ import logging
 from google.adk.agents import LlmAgent
 
 from config.settings import MODEL_NAME
-from src.tools.router import route_request
-from src.utils.telemetry import configure_telemetry
+from src.governed_financial_advisor.tools.router import route_request
+from src.governed_financial_advisor.utils.telemetry import configure_telemetry
 
 from .callbacks import otel_interceptor_callback
 from .prompt import get_financial_coordinator_instruction
@@ -31,10 +31,10 @@ logger = logging.getLogger("FinancialCoordinator")
 configure_telemetry()
 
 # Import Factory Functions
-from src.agents.data_analyst import create_data_analyst_agent
-from src.agents.execution_analyst import create_execution_analyst_agent
-from src.agents.governed_trader import create_governed_trader_agent
-from src.agents.risk_analyst import create_risk_analyst_agent
+from src.governed_financial_advisor.agents.data_analyst import create_data_analyst_agent
+from src.governed_financial_advisor.agents.execution_analyst import create_execution_analyst_agent
+from src.governed_financial_advisor.agents.governed_trader import create_governed_trader_agent
+from src.governed_financial_advisor.agents.risk_analyst import create_risk_analyst_agent
 
 # Instantiate Agents
 data_analyst_agent = create_data_analyst_agent()
