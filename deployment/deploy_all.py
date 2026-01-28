@@ -151,7 +151,7 @@ def deploy_hybrid(project_id, region, image_uri, redis_host, redis_port, config)
         subprocess.run("kubectl create secret generic opa-configuration --from-file=opa_config.yaml=deployment/opa_config.yaml -n governance-stack --dry-run=client -o yaml | kubectl apply -f -", shell=True)
 
     # Finance Policy
-    policy_path = "src/governance/policy/finance_policy.rego"
+    policy_path = "src/governed_financial_advisor/governance/policy/finance_policy.rego"
     if not os.path.exists(policy_path) and os.path.exists("deployment/finance_policy.rego"):
          policy_path = "deployment/finance_policy.rego"
          
@@ -171,7 +171,7 @@ def deploy_hybrid(project_id, region, image_uri, redis_host, redis_port, config)
     timestamp = str(int(time.time()))
     
     manifest_content = manifest_content.replace("${IMAGE_URI}", image_uri)
-    manifest_content = manifest_content.replace("${REDIS_HOST}", redis_host)
+    manifest_content = manifest_content.replace("${REDIS_HOST}", redis_host or "redis-master")
     manifest_content = manifest_content.replace("${PROJECT_ID}", project_id)
     manifest_content = manifest_content.replace("${REGION}", region)
     manifest_content = manifest_content.replace("${DEPLOY_TIMESTAMP}", timestamp)
@@ -313,14 +313,14 @@ def main():
     create_secret(project_id, "system-authz-policy", file_path="deployment/system_authz.rego")
 
     # Finance Policy - Strict Check (No Mocks)
-    policy_path = "src/governance/policy/finance_policy.rego"
+    policy_path = "src/governed_financial_advisor/governance/policy/finance_policy.rego"
     if not os.path.exists(policy_path):
         # Fallback to local deployment/ folder if src/ is missing (e.g. in some build contexts)
         if os.path.exists("deployment/finance_policy.rego"):
              policy_path = "deployment/finance_policy.rego"
         else:
             print(f"❌ Critical Error: Finance Policy not found at {policy_path}")
-            print("   Ensure 'src/governance/policy/finance_policy.rego' exists.")
+            print("   Ensure 'src/governed_financial_advisor/governance/policy/finance_policy.rego' exists.")
             sys.exit(1)
 
     print(f"📄 Using Finance Policy from: {policy_path}")

@@ -14,8 +14,9 @@ cluster:
     drivers_version: default
 
 model:
-  name: meta-llama/Meta-Llama-3.1-8B-Instruct
   quantization: null # Explicitly null for BF16 execution
+  max_model_len: 4096 # Verified working on L4
+  gpu_memory_utilization: 0.80 # Conservative for stability
 
 vllm:
   image_tpu: vllm/vllm-tpu:latest

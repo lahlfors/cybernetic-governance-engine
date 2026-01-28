@@ -60,7 +60,7 @@ ${ENV_VARS}
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 300
+            initialDelaySeconds: 600
             periodSeconds: 15
           command:
             - "python3"

@@ -14,11 +14,11 @@ from config.settings import Config
 vertexai.init(project=Config.GOOGLE_CLOUD_PROJECT, location=Config.GOOGLE_CLOUD_LOCATION)
 print(f"✅ Vertex AI initialized: project={Config.GOOGLE_CLOUD_PROJECT}, location={Config.GOOGLE_CLOUD_LOCATION}")
 
-from src.demo.router import demo_router
-from src.graph.graph import create_graph
-from src.utils.context import user_context
-from src.utils.nemo_manager import load_rails, validate_with_nemo
-from src.utils.telemetry import configure_telemetry
+from src.governed_financial_advisor.demo.router import demo_router
+from src.governed_financial_advisor.graph.graph import create_graph
+from src.governed_financial_advisor.utils.context import user_context
+from src.governed_financial_advisor.utils.nemo_manager import load_rails, validate_with_nemo
+from src.governed_financial_advisor.utils.telemetry import configure_telemetry
 
 # Observability
 configure_telemetry()

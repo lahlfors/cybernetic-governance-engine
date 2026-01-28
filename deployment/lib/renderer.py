@@ -23,6 +23,9 @@ def generate_vllm_manifest(accelerator, config):
     image_tpu = vllm_conf.get("image_tpu", "vllm/vllm-tpu:latest")
     image_gpu = vllm_conf.get("image_gpu", "vllm/vllm-openai:latest")
 
+    node_selector = ""
+    tolerations = ""
+
     if accelerator == "tpu":
         print("ℹ️ Generating TPU-specific vLLM manifest...")
         image_name = image_tpu
@@ -58,6 +61,16 @@ def generate_vllm_manifest(accelerator, config):
         if quantization:
             vllm_args_list.append('            - "--quantization"')
             vllm_args_list.append(f'            - "{quantization}"')
+
+        max_model_len = model_conf.get("max_model_len")
+        if max_model_len:
+            vllm_args_list.append('            - "--max-model-len"')
+            vllm_args_list.append(f'            - "{max_model_len}"')
+
+        gpu_mem_util = model_conf.get("gpu_memory_utilization")
+        if gpu_mem_util:
+            vllm_args_list.append('            - "--gpu-memory-utilization"')
+            vllm_args_list.append(f'            - "{gpu_mem_util}"')
         
         env_vars_list = []
         
@@ -76,10 +89,17 @@ def generate_vllm_manifest(accelerator, config):
         vllm_args = "\n".join(vllm_args_list)
         env_vars = "\n".join(env_vars_list) if env_vars_list else ""
 
+
+        node_selector_list = [f'        cloud.google.com/gke-accelerator: {acc_type_full}']
+        node_selector = "\n".join(node_selector_list)
+        tolerations = ""
+
     content = content.replace("${IMAGE_NAME}", image_name)
     content = content.replace("${RESOURCE_LIMITS}", resource_limits)
     content = content.replace("${RESOURCE_REQUESTS}", resource_requests)
     content = content.replace("${ENV_VARS}", env_vars)
     content = content.replace("${ARGS}", vllm_args)
+    content = content.replace("${NODE_SELECTOR}", node_selector)
+    content = content.replace("${TOLERATIONS}", tolerations)
 
     return content

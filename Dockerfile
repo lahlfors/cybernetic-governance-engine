@@ -28,4 +28,4 @@ EXPOSE 8080
 RUN ls -R src
 
 # Run the server
-CMD ["python", "-m", "src.server"]
+CMD ["python", "-m", "src.governed_financial_advisor.server"]
