@@ -78,6 +78,8 @@ class OPAClient:
             self.transport = httpx.AsyncHTTPTransport(retries=0)
             logger.info(f"🌐 OPAClient configured for HTTP: {self.target_url}")
 
+        self.client = httpx.AsyncClient(transport=self.transport, timeout=1.0)
+
     async def evaluate_policy(self, input_data: dict[str, Any]) -> str:
         """
         Evaluates the policy asynchronously.
@@ -91,43 +93,51 @@ class OPAClient:
         with tracer.start_as_current_span("governance.opa_check") as span:
             span.set_attribute("governance.opa_url", self.url)
             span.set_attribute("governance.action", input_data.get("action", "unknown"))
-            # Estimate payload size (approximation)
-            payload_size = len(json.dumps(input_data))
-            span.set_attribute("governance.policy_input_size", payload_size)
 
-            headers = {}
+            # Serialize payload once for telemetry and request
+            payload_wrapper = {"input": input_data}
+            try:
+                # Reuse this string to avoid double serialization
+                json_payload = json.dumps(payload_wrapper)
+            except (TypeError, ValueError) as e:
+                logger.error(f"Failed to serialize payload: {e}")
+                return "DENY"
+
+            # Use the actual payload size (including wrapper) for more accurate metrics
+            span.set_attribute("governance.policy_input_size", len(json_payload))
+
+            headers = {"Content-Type": "application/json"}
             if self.auth_token:
                 headers["Authorization"] = f"Bearer {self.auth_token}"
 
             try:
-                async with httpx.AsyncClient(transport=self.transport) as client:
-                    response = await client.post(
-                        self.target_url,
-                        json={"input": input_data},
-                        headers=headers,
-                        timeout=1.0 # 1s timeout for governance
-                    )
+                # Reuse persistent client
+                response = await self.client.post(
+                    self.target_url,
+                    content=json_payload,
+                    headers=headers
+                )
 
-                    # Record latency manually if needed, though span duration covers it
-                    # span.set_attribute("governance.latency_ms", (time.time() - start_time) * 1000)
+                # Record latency manually if needed, though span duration covers it
+                # span.set_attribute("governance.latency_ms", (time.time() - start_time) * 1000)
 
-                    response.raise_for_status()
+                response.raise_for_status()
 
-                    self.cb.record_success()
+                self.cb.record_success()
 
-                    result = response.json().get("result", "DENY")
-                    span.set_attribute("governance.decision", result)
+                result = response.json().get("result", "DENY")
+                span.set_attribute("governance.decision", result)
 
-                    if result == "ALLOW":
-                        logger.info(f"✅ OPA ALLOWED | Action: {input_data.get('action')}")
-                    elif result == "MANUAL_REVIEW":
-                         logger.warning(f"⚠️ OPA MANUAL REVIEW | Action: {input_data.get('action')}")
-                    else:
-                        logger.warning(f"⛔ OPA DENIED | Action: {input_data.get('action')} | Input: {input_data}")
-                        # Differentiate logic denial from system error
-                        span.set_attribute("governance.denial_reason", "POLICY_VIOLATION")
+                if result == "ALLOW":
+                    logger.info(f"✅ OPA ALLOWED | Action: {input_data.get('action')}")
+                elif result == "MANUAL_REVIEW":
+                     logger.warning(f"⚠️ OPA MANUAL REVIEW | Action: {input_data.get('action')}")
+                else:
+                    logger.warning(f"⛔ OPA DENIED | Action: {input_data.get('action')} | Input: {input_data}")
+                    # Differentiate logic denial from system error
+                    span.set_attribute("governance.denial_reason", "POLICY_VIOLATION")
 
-                    return result
+                return result
 
             except Exception as e:
                 self.cb.record_failure()

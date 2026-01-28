@@ -2,7 +2,7 @@ import httpx
 import pytest
 import respx
 
-from src.governance.client import OPAClient
+from src.governed_financial_advisor.governance.client import OPAClient
 
 
 @pytest.fixture
