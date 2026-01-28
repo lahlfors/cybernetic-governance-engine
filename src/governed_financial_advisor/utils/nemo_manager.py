@@ -267,7 +267,9 @@ async def validate_with_nemo(user_input: str, rails: LLMRails) -> tuple[bool, st
                     response_content = res
 
             # Record outcome
+            verdict = "APPROVED" if is_safe else "REJECTED"
             span.set_attribute("guardrails.outcome", "ALLOWED" if is_safe else "BLOCKED")
+            span.set_attribute("risk.verdict", verdict) # Consistent naming
             span.set_attribute("guardrails.intervened", not is_safe)
 
             return is_safe, response_content

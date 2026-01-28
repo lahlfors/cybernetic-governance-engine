@@ -5,8 +5,8 @@ CRITICAL: This replaces a generic LLM node. It uses the root_agent to decide
 routing by intercepting its route_request tool call.
 """
 
-from src.agents.financial_advisor.agent import root_agent
-from src.graph.nodes.adapters import run_adk_agent
+from src.governed_financial_advisor.agents.financial_advisor.agent import root_agent
+from src.governed_financial_advisor.graph.nodes.adapters import run_adk_agent
 
 
 def supervisor_node(state):

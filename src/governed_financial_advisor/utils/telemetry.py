@@ -99,7 +99,7 @@ def configure_telemetry():
         from opentelemetry import trace
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
-        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
         # Try to configure Google Cloud Trace
         try:
@@ -126,23 +126,40 @@ def configure_telemetry():
             cold_processor = BatchSpanProcessor(parquet_exporter)
 
             # Langfuse Tier: OTLP
+            # Support both manual (Basic Auth) and standard OTEL env vars
             langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
             langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
-            langfuse_base_url = os.getenv("LANGFUSE_BASE_URL", "http://localhost:3000")
 
+            # Prefer standard OTLP env vars if set by deployment script, otherwise construct
+            otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:3000/api/public/otlp")
+            otel_headers = {}
+
+            # If explicit keys provided, override headers
             if langfuse_public_key and langfuse_secret_key:
                 auth_str = f"{langfuse_public_key}:{langfuse_secret_key}"
                 auth_header = f"Basic {base64.b64encode(auth_str.encode()).decode()}"
-                
-                otlp_exporter = OTLPSpanExporter(
-                    endpoint=f"{langfuse_base_url}/api/public/otel/v1/traces",
-                    headers={"Authorization": auth_header}
-                )
-                otlp_processor = BatchSpanProcessor(otlp_exporter)
-                provider.add_span_processor(otlp_processor)
-                logger.info("✅ OpenTelemetry: Langfuse OTLP Exporter configured.")
-            else:
-                 logger.warning("⚠️ Langfuse credentials not found. Skipping OTLP export.")
+                otel_headers["Authorization"] = auth_header
+            elif os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
+                 # Simple parser for "key=value,key2=value2"
+                 pairs = os.getenv("OTEL_EXPORTER_OTLP_HEADERS").split(",")
+                 for pair in pairs:
+                      k, v = pair.split("=", 1)
+                      otel_headers[k] = v
+
+            # Configure OTLP HTTP Exporter
+            # Note: We use the HTTP exporter as per Langfuse Cloud recommendation
+            # Endpoint must be full URL for http exporter e.g. /v1/traces
+            if not otel_endpoint.endswith("/v1/traces"):
+                 otel_endpoint = f"{otel_endpoint}/v1/traces"
+
+            otlp_exporter = OTLPSpanExporter(
+                endpoint=otel_endpoint,
+                headers=otel_headers
+            )
+            otlp_processor = BatchSpanProcessor(otlp_exporter)
+            provider.add_span_processor(otlp_processor)
+            logger.info(f"✅ OpenTelemetry: Langfuse OTLP Exporter configured at {otel_endpoint}")
+
 
             # 2. Configure Optimizer Processor
             optimizer = GenAICostOptimizerProcessor(

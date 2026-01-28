@@ -25,8 +25,8 @@ from google.adk.tools import FunctionTool, transfer_to_agent
 from pydantic import BaseModel, Field
 
 from config.settings import MODEL_FAST, MODEL_REASONING
-from src.tools.trades import execute_trade, propose_trade
-from src.utils.prompt_utils import Content, Part, Prompt, PromptData
+from src.governed_financial_advisor.tools.trades import execute_trade, propose_trade
+from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
 
 logger = logging.getLogger("GovernedTrader")
 

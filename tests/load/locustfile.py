@@ -58,25 +58,36 @@ class FinancialAdvisorUser(HttpUser):
                     data = response.json()
 
                     # Check 1: Did the Guardrail block it?
-                    # Depending on API contract, blocked might be a 200 with specific content
-                    # or the 'response' field contains the block message.
-                    # In server.py: return {"response": msg}
-
                     resp_text = data.get("response", "")
 
-                    if "cannot answer" in resp_text or "policy" in resp_text.lower():
-                        # This counts as a business logic "block" but technically a successful request handling
-                        # We might want to track this as a specific event type if possible,
-                        # or just consider it success for load testing purposes (system didn't crash).
-                        # For now, let's just log it if we were tracking 'compliance rate'.
-                        # response.failure(f"Guardrail Blocked: {resp_text}")
+                    # Heuristics for Governance Blocks
+                    is_blocked = False
+                    block_reasons = ["cannot answer", "policy", "unsafe", "violation", "blocked", "refuse"]
+                    if any(r in resp_text.lower() for r in block_reasons):
+                        is_blocked = True
+
+                    if is_blocked:
+                        # Track Rejection Rate explicitly
+                        events.request.fire(
+                            request_type="Verification_Failure",
+                            name="Governance_Block",
+                            response_time=response.elapsed.total_seconds() * 1000,
+                            response_length=len(resp_text),
+                            exception=None,
+                        )
+                        # We treat it as a "success" HTTP request but track the business event
                         response.success()
                         return
 
-                    # Check 2: Did the plan actually execute?
-                    # Since the response is just text, we might look for success indicators
-                    # or if the user wanted structured output we'd check that.
-                    # For a generic load test, 200 OK + valid JSON is usually success.
+                    # Check 2: Retry/Rejection Indicator
+                    # If the system had to retry (e.g. "Plan rejected, retrying..."), we count that.
+                    # This depends on if the final response exposes the retry count.
+                    # Assuming metadata might contain it:
+                    trace_id = data.get("trace_id")
+                    if trace_id:
+                         # We could log this trace ID for correlation
+                         pass
+
                     response.success()
 
                 except json.JSONDecodeError:
