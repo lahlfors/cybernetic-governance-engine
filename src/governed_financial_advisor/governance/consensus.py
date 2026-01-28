@@ -4,7 +4,7 @@ from typing import Any
 from langchain_google_genai import ChatGoogleGenerativeAI
 from opentelemetry import trace
 
-from src.utils.telemetry import genai_span
+from src.governed_financial_advisor.utils.telemetry import genai_span
 
 logger = logging.getLogger("ConsensusEngine")
 tracer = trace.get_tracer("src.governance.consensus")

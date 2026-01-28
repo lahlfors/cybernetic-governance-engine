@@ -12,11 +12,14 @@ from langchain_core.language_models.llms import LLM
 from nemoguardrails import LLMRails, RailsConfig
 from nemoguardrails.context import streaming_handler_var
 from nemoguardrails.llm.providers import register_llm_provider
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
-from src.infrastructure.telemetry.nemo_exporter import NeMoOTelCallback
+from src.governed_financial_advisor.infrastructure.telemetry.nemo_exporter import NeMoOTelCallback
 
 # Configure Logging
 logger = logging.getLogger("NeMoManager")
+tracer = trace.get_tracer(__name__)
 
 # Global cache name to be shared with GeminiLLM instances
 CACHED_CONTENT_NAME = None
@@ -225,41 +228,59 @@ async def validate_with_nemo(user_input: str, rails: LLMRails) -> tuple[bool, st
     # 2. Set the global context variable for custom actions to capture events
     token = streaming_handler_var.set(handler)
 
-    try:
-        # Check for 'self_check_input' or similar rails
-        # We perform a generation call which triggers the input rails
-        # If blocked, the response will be a refusal message.
-        # 3. Call generate_async with the handler
-        res = await rails.generate_async(
-            messages=[{"role": "user", "content": user_input}],
-            streaming_handler=handler
-        )
+    # Start a new span for the guardrail check
+    with tracer.start_as_current_span("guardrails.validate_input") as span:
+        try:
+            span.set_attribute("guardrails.framework", "nemo")
+            span.set_attribute("guardrails.input_length", len(user_input))
 
-        # Heuristic: Check if the response indicates a block
-        # NeMo typically returns a predefined message if blocked by a rail
-        if res and isinstance(res, dict) and "content" in res:
-            content = res["content"]
-            if any(phrase in content for phrase in ["I cannot answer", "policy", "I am programmed", "I am sorry"]):
-                return False, content
-            # If it's a pass-through or a normal response, we treat it as safe
-            # Note: In a 'Governance Sandwich', we might just check input rails here
-            # but NeMo usually runs generation.
-            # A strict input check might use rails.generate(..., options={"rails": ["input"]})
-            return True, content
+            # Check for 'self_check_input' or similar rails
+            # We perform a generation call which triggers the input rails
+            # If blocked, the response will be a refusal message.
+            # 3. Call generate_async with the handler
+            res = await rails.generate_async(
+                messages=[{"role": "user", "content": user_input}],
+                streaming_handler=handler
+            )
 
-        # If response object structure varies (e.g. string)
-        if isinstance(res, str):
-             if any(phrase in res for phrase in ["I cannot answer", "policy", "I am programmed", "I am sorry"]):
-                return False, res
-             return True, res
+            is_safe = True
+            response_content = ""
 
-        return True, ""
-    except Exception as e:
-        print(f"NeMo Validation Error: {e}")
-        # Fail safe (or fail closed depending on policy)
-        # Here we allow the graph to proceed if NeMo crashes,
-        # relying on the Graph's internal safety.
-        return True, ""
-    finally:
-        # Clean up the context variable
-        streaming_handler_var.reset(token)
+            # Heuristic: Check if the response indicates a block
+            # NeMo typically returns a predefined message if blocked by a rail
+            if res and isinstance(res, dict) and "content" in res:
+                content = res["content"]
+                if any(phrase in content for phrase in ["I cannot answer", "policy", "I am programmed", "I am sorry"]):
+                    is_safe = False
+                    response_content = content
+                else:
+                    is_safe = True
+                    response_content = content
+
+            # If response object structure varies (e.g. string)
+            elif isinstance(res, str):
+                 if any(phrase in res for phrase in ["I cannot answer", "policy", "I am programmed", "I am sorry"]):
+                    is_safe = False
+                    response_content = res
+                 else:
+                    is_safe = True
+                    response_content = res
+
+            # Record outcome
+            span.set_attribute("guardrails.outcome", "ALLOWED" if is_safe else "BLOCKED")
+            span.set_attribute("guardrails.intervened", not is_safe)
+
+            return is_safe, response_content
+
+        except Exception as e:
+            logger.error(f"NeMo Validation Error: {e}")
+            span.record_exception(e)
+            span.set_status(Status(StatusCode.ERROR))
+
+            # Fail safe (or fail closed depending on policy)
+            # Here we allow the graph to proceed if NeMo crashes,
+            # relying on the Graph's internal safety.
+            return True, ""
+        finally:
+            # Clean up the context variable
+            streaming_handler_var.reset(token)

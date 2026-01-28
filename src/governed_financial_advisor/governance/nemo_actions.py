@@ -4,11 +4,11 @@ import os
 import time
 from typing import Any
 
-from src.demo.state import demo_state
+from src.governed_financial_advisor.demo.state import demo_state
 
 # Import generated actions if available
 try:
-    from src.governance.generated_actions import check_slippage_risk
+    from src.governed_financial_advisor.governance.generated_actions import check_slippage_risk
 except ImportError:
     logging.warning("Generated actions not found. Using fallback.")
     def check_slippage_risk(*args, **kwargs): return True
@@ -16,7 +16,7 @@ except ImportError:
 logger = logging.getLogger("NeMo.Actions")
 
 # --- STATIC CBF CONSTANTS ---
-SAFETY_PARAMS_FILE = "src/governance/safety_params.json"
+SAFETY_PARAMS_FILE = "src/governed_financial_advisor/governance/safety_params.json"
 DEFAULT_DRAWDOWN_LIMIT = 0.05  # 5% default fallback
 
 # --- CACHING STATE ---
