@@ -13,14 +13,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY . .
 
 # Install dependencies
-# Set PYTHONPATH to include src
-# Set PYTHONPATH to include /app so 'from src...' imports work
-ENV PYTHONPATH="${PYTHONPATH}:/app:/app/src"
-
-RUN pip install uv && \
+ENV PYTHONPATH="${PYTHONPATH}:/app"
+RUN pip install uv keyring keyrings.google-artifactregistry-auth && \
     uv export --no-emit-project --no-dev --no-hashes --format requirements-txt > requirements.txt && \
     pip install kfp && \
-    pip install --no-cache-dir -r requirements.txt uvicorn fastapi google-auth google-cloud-aiplatform google-adk opentelemetry-api opentelemetry-sdk opentelemetry-exporter-gcp-trace opentelemetry-instrumentation-fastapi opentelemetry-instrumentation-requests
+    pip install --no-cache-dir -r requirements.txt uvicorn fastapi google-auth google-cloud-aiplatform google-adk opentelemetry-api opentelemetry-sdk opentelemetry-exporter-gcp-trace opentelemetry-instrumentation-fastapi opentelemetry-instrumentation-requests && \
+    pip install -e .
 
 # Expose the port
 ENV PORT=8080
@@ -30,4 +28,4 @@ EXPOSE 8080
 RUN ls -R src
 
 # Run the server
-CMD ["python", "src/server.py"]
+CMD ["python", "-m", "src.server"]

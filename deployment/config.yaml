@@ -1,0 +1,27 @@
+project:
+  region: northamerica-northeast2
+  zone: northamerica-northeast2-a # Explicit zone for L4 availability
+
+cluster:
+  name: governance-cluster
+  network: default
+  machine_type: g2-standard-8
+  disk_size_gb: 100 # L4 models might need more space / faster I/O
+  
+  accelerator:
+    type: nvidia-l4
+    count: 1
+    drivers_version: default
+
+model:
+  name: meta-llama/Meta-Llama-3.1-8B-Instruct
+  quantization: null # Explicitly null for BF16 execution
+
+vllm:
+  image_tpu: vllm/vllm-tpu:latest
+  image_gpu: vllm/vllm-openai:latest
+  
+redis:
+  tier: BASIC
+  size_gb: 1
+  version: redis_7_0
