@@ -80,6 +80,8 @@ spec:
             - "1"
             - "--gpu-memory-utilization"
             - "0.95"
+            - "--disable-log-stats"
+            - "--enable-prefix-caching"
       nodeSelector:
         cloud.google.com/gke-accelerator: "nvidia-l4"
       tolerations:

@@ -114,12 +114,15 @@ requires = ["uv_build>=0.8.14,<0.9.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-root = ""
+module-root = "src"
 
 # This configuration file is used by goo.gle/agent-starter-pack to power remote templating.
 # It defines the template's properties and settings.
 [tool.agent-starter-pack]
 example_question = "Analyze AAPL"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.agent-starter-pack.settings]
 agent_directory = "src/agents"

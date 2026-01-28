@@ -160,3 +160,21 @@ gcloud logging read 'resource.type="cloud_run_revision"' \
   --format "value(textPayload)"
 ```
 
+
+## Observability (Langfuse)
+
+This system uses **Langfuse** for LLM tracing and observability. We recommend using **Langfuse Cloud** for ease of use.
+
+### Setup Instructions
+1.  Sign up at [cloud.langfuse.com](https://cloud.langfuse.com).
+2.  Create a project and copy your **Secret Key**, **Public Key**, and **Host URL**.
+3.  Update your `.env` file with these values:
+    ```bash
+    LANGFUSE_SECRET_KEY=sk-lf-...
+    LANGFUSE_PUBLIC_KEY=pk-lf-...
+    LANGFUSE_BASE_URL=https://cloud.langfuse.com
+    ```
+4.  Redeploy the application to update the secrets:
+    ```bash
+    python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --target hybrid --skip-k8s
+    ```
