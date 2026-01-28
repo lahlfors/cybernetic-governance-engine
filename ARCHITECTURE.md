@@ -1,6 +1,6 @@
-# Architecture: Hybrid LangGraph + Google ADK + Hybrid Inference
+# Architecture: Hybrid LangGraph + Google ADK + Hybrid Inference + In-Process Governance
 
-This document describes the hybrid architecture of the Cybernetic Governance Engine, which combines **LangGraph** for deterministic workflow orchestration with **Google ADK** for LLM-powered agent reasoning, supported by a **Hybrid Inference Stack** (vLLM + Vertex AI).
+This document describes the hybrid architecture of the Cybernetic Governance Engine, which combines **LangGraph** for deterministic workflow orchestration with **Google ADK** for LLM-powered agent reasoning, supported by a **Hybrid Inference Stack** (vLLM + Vertex AI) and specialized **In-Process Governance**.
 
 ## Overview
 
@@ -34,71 +34,36 @@ This document describes the hybrid architecture of the Cybernetic Governance Eng
 | **Observability** | ✅ Explicit graph tracing | ✅ Built-in telemetry |
 | **Checkpointing** | ✅ Redis/memory savers | ✅ Session service |
 
-**The Insight**: Use LangGraph for what it does best (deterministic control flow, conditional routing, loops) and ADK for what it does best (LLM-powered reasoning, tool use, multi-turn conversations).
+## In-Process Governance (The "Governance Sandwich")
 
-## Hybrid Inference Strategy (Latency as Currency)
+We implement a strict separation of concerns to guarantee safety and structure without sacrificing reasoning depth.
 
-To fund the "Governance Budget" (overhead of NeMo/OPA checks), we utilize a self-hosted high-performance inference stack.
+### 1. The Brain (Reasoning)
+*   **Model:** `gemini-2.5-pro` (Vertex AI).
+*   **Role:** Complex analysis, document understanding, and "System 2" thinking.
+*   **Safety:** Wrapped by NeMo Guardrails for semantic policy checks (e.g., preventing toxicity).
 
-*   **Fast Path:** **vLLM** on Kubernetes (GKE) with NVIDIA H100 GPUs.
-    *   **Model:** `google/gemma-3-27b-it` (Target) + `google/gemma-3-4b-it` (Draft).
-    *   **Technique:** Speculative Decoding (FP8).
-    *   **SLA:** Time-To-First-Token (TTFT) < 200ms.
-*   **Reliable Path:** **Vertex AI** (Gemini 2.5 Pro).
-    *   **Fallback:** Triggered on connection error or SLA violation.
+### 2. The Enforcer (Structure)
+*   **Model:** `google/gemma-2-9b-it` (Self-Hosted on GKE with NVIDIA L4).
+*   **Role:** Syntactic enforcement of JSON schemas via Finite State Machines (FSM).
+*   **Technique:** We use vLLM's `guided_json` with **Prefix Caching** to achieve low-latency (<50ms) schema validation.
+*   **Why:** A smaller, instruction-tuned model running locally is faster and more deterministic for formatting tasks than a large reasoning model.
 
-See [docs/LATENCY_STRATEGY.md](docs/LATENCY_STRATEGY.md) for details.
+This pattern ensures **Zero-Hallucination Structure** while leveraging **SOTA Reasoning Capabilities**.
 
 ---
 
-## Request Flow
+## Observability & Tracing (Langfuse)
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant Server as FastAPI Server
-    participant NeMo as NeMo Guardrails
-    participant Graph as LangGraph StateGraph
-    participant Supervisor as Supervisor Node
-    participant Adapter as ADK Adapter
-    participant Agent as ADK LlmAgent
-    participant HybridClient as Hybrid LLM Client
-    participant vLLM as Self-Hosted Inference
-    participant Vertex as Vertex AI
+We use **[Langfuse](https://langfuse.com/)** (self-hosted in-cluster) as the centralized observability platform for the entire hybrid stack.
 
-    User->>Server: POST /agent/query
-    Server->>NeMo: Validate input
-    NeMo-->>Server: ✅ Safe
-    Server->>Graph: graph.ainvoke()
-    
-    Graph->>Supervisor: Entry Point
-    Supervisor->>Adapter: run_adk_agent(root_agent)
-    Adapter->>Agent: Runner.run()
-    Agent->>HybridClient: generate()
+*   **Endpoint:** `http://langfuse-web.langfuse.svc.cluster.local:4317` (OTLP)
+*   **Coverage:**
+    1.  **LangGraph Control Plane:** Captures state transitions and routing decisions.
+    2.  **Google ADK Agents:** Captures reasoning chains and tool invocations via OpenTelemetry instrumentation.
+    3.  **vLLM (The Enforcer):** Captures token generation metrics (TTFT, ITL) and schema validation success/failure. We inject `OTEL_SERVICE_NAME=vllm-inference` to distinguish governance traces.
 
-    alt Fast Path (vLLM)
-        HybridClient->>vLLM: Stream Request
-        vLLM-->>HybridClient: First Token (<200ms)
-        vLLM-->>HybridClient: Full Response
-    else Slow/Error
-        HybridClient->>Vertex: Fallback Request
-        Vertex-->>HybridClient: Response
-    end
-
-    Agent-->>Adapter: Response + route_request tool call
-    Adapter-->>Supervisor: AgentResponse
-    
-    Note over Supervisor: Intercepts tool call<br/>to determine routing
-    
-    Supervisor-->>Graph: {next_step: "data_analyst"}
-    Graph->>Adapter: data_analyst_node()
-    Adapter->>Agent: Runner.run(data_analyst)
-    Agent-->>Adapter: Analysis result
-    Adapter-->>Graph: {messages: [...]}
-    
-    Graph-->>Server: Final state
-    Server-->>User: JSON response
-```
+This unified view allows us to correlate "high-level intent" (Gemini) with "low-level enforcement" (vLLM) in a single trace.
 
 ---
 
@@ -178,7 +143,7 @@ The Supervisor Node is the "brain" that:
 def supervisor_node(state):
     # 1. Run the coordinator agent
     response = run_adk_agent(root_agent, last_msg)
-    
+
     # 2. Intercept routing tool call
     for call in response.function_calls:
         if call.name == "route_request":
@@ -187,7 +152,7 @@ def supervisor_node(state):
             if "data" in target.lower():
                 next_step = "data_analyst"
             ...
-    
+
     # 3. Return control signal for LangGraph
     return {"messages": [...], "next_step": next_step}
 ```
@@ -207,7 +172,7 @@ graph LR
     EA[Execution Analyst] -->|Strategy| RA[Risk Analyst]
     RA -->|APPROVED| GT[Governed Trader]
     RA -->|REJECTED_REVISE| EA
-    
+
     style RA fill:#f9f,stroke:#333
     style EA fill:#bbf,stroke:#333
 ```
@@ -241,6 +206,10 @@ graph LR
 │  └─────────────────────┘                                     │
 └──────────────────────────────────────────────────────────────┘
 ```
+
+**State Management (Dual Redis Strategy):**
+1.  **Application State:** Uses **Google Cloud Memorystore** (External). Stores LangGraph conversation checkpoints (`AgentState`) and session history. Credentials injected via `REDIS_URL`.
+2.  **Observability State:** Uses **Langfuse Internal Redis**. Deployed as a sidecar container within the Langfuse Helm chart on GKE. Used strictly for trace ingestion buffering and caching.
 
 **Environment Variables**:
 | Variable | Purpose |

@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from src.infrastructure.redis_client import redis_client
+from src.utils.telemetry import get_tracer
 
 logger = logging.getLogger("SafetyLayer")
 
@@ -23,6 +24,8 @@ class ControlBarrierFunction:
         if redis_client.get(self.redis_key) is None:
             redis_client.set(self.redis_key, "100000.0")
 
+        self.tracer = get_tracer()
+
     def _get_current_cash(self) -> float:
         return redis_client.get_float(self.redis_key, 100000.0)
 
@@ -38,6 +41,17 @@ class ControlBarrierFunction:
         """
         # 1. Fetch State (Hot Path)
         current_cash = self._get_current_cash()
+
+        # Wrap logic in trace
+        if self.tracer:
+             with self.tracer.start_as_current_span("safety.cbf_check") as span:
+                 return self._do_verify_action(action_name, payload, current_cash, span)
+        else:
+             return self._do_verify_action(action_name, payload, current_cash, None)
+
+    def _do_verify_action(self, action_name: str, payload: dict[str, Any], current_cash: float, span) -> str:
+        if span:
+             span.set_attribute("safety.cash.current", current_cash)
 
         # 2. Calculate Next State
         cost = 0.0
@@ -55,10 +69,17 @@ class ControlBarrierFunction:
         logger.info(f"🛡️ CBF Check | Cash: {current_cash} -> {next_cash}")
 
         # 4. Verify Condition: h(next) >= (1-gamma) * h(current)
-        if h_next >= required_h_next and h_next >= 0:
-            return "SAFE"
+        # 4. Verify Condition: h(next) >= (1-gamma) * h(current)
+        result = "SAFE"
+        if h_next < required_h_next or h_next < 0:
+             result = f"UNSAFE: CBF violation. h(next)={h_next} < threshold={required_h_next}"
 
-        return f"UNSAFE: CBF violation. h(next)={h_next} < threshold={required_h_next}"
+        if span:
+             span.set_attribute("safety.cash.next", next_cash)
+             span.set_attribute("safety.barrier.h_next", h_next)
+             span.set_attribute("safety.result", result)
+
+        return result
 
     def update_state(self, cost: float):
         """

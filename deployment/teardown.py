@@ -26,13 +26,15 @@ def main():
     print("This will delete the GKE cluster, Cloud Run service, and Secret Manager secrets.")
     
     # 1. Delete Cloud Run Service
-    print("\n--- 🗑️ Deleting Cloud Run Service ---")
-    run_command([
-        "gcloud", "run", "services", "delete", args.service_name,
-        "--region", args.region,
-        "--project", args.project_id,
-        "--quiet"
-    ], check=False)
+    print("\n--- 🗑️ Deleting Cloud Run Services ---")
+    services = [args.service_name, "governed-financial-advisor"]
+    for svc in services:
+        run_command([
+            "gcloud", "run", "services", "delete", svc,
+            "--region", args.region,
+            "--project", args.project_id,
+            "--quiet"
+        ], check=False)
 
     # 2. Delete GKE Cluster
     print("\n--- 🗑️ Deleting GKE Cluster ---")
@@ -70,6 +72,15 @@ def main():
     
     run_command([
         "gcloud", "compute", "routers", "delete", router_name,
+        "--region", args.region,
+        "--project", args.project_id,
+        "--quiet"
+    ], check=False)
+
+    # 5. Delete Redis Instance
+    print("\n--- 🗑️ Deleting Redis Instance ---")
+    run_command([
+        "gcloud", "redis", "instances", "delete", "financial-advisor-redis",
         "--region", args.region,
         "--project", args.project_id,
         "--quiet"

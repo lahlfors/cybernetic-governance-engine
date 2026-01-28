@@ -29,6 +29,11 @@ agents_log/
 opa
 verification_*.txt
 
+# Generated Kubernetes manifests
+deployment/k8s/governed-financial-advisor.yaml
+deployment/k8s/vllm-deployment.yaml
+
+
 # Traces
 *.parquet
 trace_*.parquet

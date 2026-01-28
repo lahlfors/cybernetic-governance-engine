@@ -67,9 +67,7 @@ ${ENV_VARS}
             - "-m"
             - "vllm.entrypoints.openai.api_server"
 ${ARGS}
-            - "--gpu-memory-utilization"
-            - "0.90"
-            - "--disable-log-stats"
+            - "--enable-prefix-caching"
       nodeSelector:
 ${NODE_SELECTOR}
       tolerations:
