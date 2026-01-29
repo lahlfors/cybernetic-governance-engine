@@ -20,9 +20,9 @@ from google.adk.tools import transfer_to_agent
 from pydantic import BaseModel, Field
 
 from config.settings import MODEL_REASONING
-from src.utils.prompt_utils import Content, Part, Prompt, PromptData
-from src.governance.policy_loader import PolicyLoader
-from src.infrastructure.governance_client import GovernanceClient
+from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
+from src.governed_financial_advisor.governance.policy_loader import PolicyLoader
+from src.governed_financial_advisor.infrastructure.governance_client import GovernanceClient
 
 
 # Define schema for Constraint Logic (Structured)

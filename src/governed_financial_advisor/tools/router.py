@@ -3,7 +3,7 @@ from enum import Enum
 from google.adk.tools import transfer_to_agent
 from google.adk.tools.tool_context import ToolContext
 
-from src.utils.telemetry import get_tracer
+from src.governed_financial_advisor.utils.telemetry import get_tracer
 
 
 class RouterIntent(str, Enum):

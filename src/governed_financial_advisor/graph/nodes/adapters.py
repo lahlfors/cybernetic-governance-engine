@@ -15,10 +15,10 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
 # Import Factory Functions
-from src.agents.data_analyst.agent import create_data_analyst_agent
-from src.agents.execution_analyst.agent import create_execution_analyst_agent
-from src.agents.governed_trader.agent import create_governed_trader_agent
-from src.agents.risk_analyst.agent import create_risk_analyst_agent
+from src.governed_financial_advisor.agents.data_analyst.agent import create_data_analyst_agent
+from src.governed_financial_advisor.agents.execution_analyst.agent import create_execution_analyst_agent
+from src.governed_financial_advisor.agents.governed_trader.agent import create_governed_trader_agent
+from src.governed_financial_advisor.agents.risk_analyst.agent import create_risk_analyst_agent
 
 # Session management for ADK agents
 session_service = InMemorySessionService()
