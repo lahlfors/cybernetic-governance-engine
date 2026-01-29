@@ -26,7 +26,7 @@ Instead of real-time transpilation, policy updates are handled by an offline pip
 
 ### 3. NeMo Actions (`nemo_actions.py`)
 **Role:** Real-Time Enforcement (Phase 4).
-These functions are called by NeMo Guardrails during the "Hot Path" of execution. They implement a **Hybrid Policy** model:
+These functions are called by NeMo Guardrails (running **In-Process**) during the "Hot Path" of execution. They implement a **Hybrid Policy** model:
 
 *   **Static Mechanism (CBF):** Critical safety checks like **Drawdown Limit** are hardcoded as **Control Barrier Functions** ($h(x) = Limit - Value$). This ensures mathematical rigor and prevents AI hallucinations from altering the safety logic itself.
 *   **Dynamic Policy (Configuration):** While the *logic* is static, the *parameters* are read dynamically.
