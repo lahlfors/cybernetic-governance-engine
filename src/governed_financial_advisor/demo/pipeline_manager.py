@@ -5,8 +5,8 @@ from kfp import compiler
 from opentelemetry import trace
 
 from config.settings import Config
-from src.demo.state import demo_state
-from src.pipelines.green_stack_pipeline import governance_pipeline
+from src.governed_financial_advisor.demo.state import demo_state
+from src.governed_financial_advisor.pipelines.green_stack_pipeline import governance_pipeline
 
 logger = logging.getLogger("Demo.PipelineManager")
 tracer = trace.get_tracer("src.demo.pipeline")

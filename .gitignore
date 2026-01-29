@@ -41,3 +41,4 @@ logs/cold_tier/
 tests/temp_*/
 GEMINI.md
 .manifest
+deployment/k8s/generated/

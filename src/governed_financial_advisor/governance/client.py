@@ -23,10 +23,12 @@ class CircuitBreaker:
     """
     Implements a Fail-Fast Circuit Breaker pattern.
     States: CLOSED (Normal), OPEN (Fail Fast), HALF_OPEN (Probe not implemented, simplified to timeout)
+    Also enforces 'Bankruptcy Protocol' (Hard Latency Ceiling).
     """
-    def __init__(self, failure_threshold: int = 5, recovery_timeout: int = 30):
+    def __init__(self, failure_threshold: int = 5, recovery_timeout: int = 30, max_latency_budget: int = 3000):
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
+        self.max_latency_budget = max_latency_budget
         self.failures = 0
         self.last_failure_time = 0.0
         self.state = "CLOSED"  # CLOSED, OPEN
@@ -49,6 +51,23 @@ class CircuitBreaker:
             return True
         # If OPEN, check if recovery timeout passed
         if time.time() - self.last_failure_time > self.recovery_timeout:
+            return True
+        return False
+
+    def is_bankrupt(self, cumulative_spend_ms: float) -> bool:
+        """
+        Checks if the request has exceeded the 'Hard Latency Ceiling'.
+        Bankruptcy Protocol: If Latency > Budget, return True (Stop Everything).
+        """
+        if cumulative_spend_ms > self.max_latency_budget:
+            return True
+        return False
+
+    def check_soft_ceiling(self, cumulative_spend_ms: float, soft_ceiling_ms: float = 2000.0) -> bool:
+        """
+        Checks if the request has exceeded the 'Soft Latency Ceiling'.
+        """
+        if cumulative_spend_ms > soft_ceiling_ms:
             return True
         return False
 
@@ -78,17 +97,29 @@ class OPAClient:
             self.transport = httpx.AsyncHTTPTransport(retries=0)
             logger.info(f"🌐 OPAClient configured for HTTP: {self.target_url}")
 
-    async def evaluate_policy(self, input_data: dict[str, Any]) -> str:
+    async def evaluate_policy(self, input_data: dict[str, Any], current_latency_ms: float = 0.0) -> str:
         """
         Evaluates the policy asynchronously.
         Returns: ALLOW, DENY, or MANUAL_REVIEW.
+        Args:
+            current_latency_ms: Cumulative latency of the request so far (Reasoning Spend).
         """
-        # Circuit Breaker Check
+        # Circuit Breaker Check (System Health)
         if not self.cb.can_execute():
             logger.warning("⚠️ Circuit Breaker OPEN. Fast failing OPA check -> DENY.")
             return "DENY"
 
+        # Bankruptcy Protocol Check (Latency Budget)
+        if self.cb.is_bankrupt(current_latency_ms):
+             logger.critical(f"💀 Bankruptcy Protocol Triggered: Hard Latency Ceiling Exceeded ({current_latency_ms}ms > {self.cb.max_latency_budget}ms).")
+             return "DENY"
+
+        # Soft Ceiling Check (Degraded Performance Warning)
+        if self.cb.check_soft_ceiling(current_latency_ms):
+            logger.warning(f"📉 Latency Inflation Warning: Soft Ceiling Exceeded ({current_latency_ms}ms > 2000ms). Performance degraded.")
+
         with tracer.start_as_current_span("governance.opa_check") as span:
+            start_time = time.time()
             span.set_attribute("governance.opa_url", self.url)
             span.set_attribute("governance.action", input_data.get("action", "unknown"))
             # Estimate payload size (approximation)
@@ -108,8 +139,9 @@ class OPAClient:
                         timeout=1.0 # 1s timeout for governance
                     )
 
-                    # Record latency manually if needed, though span duration covers it
-                    # span.set_attribute("governance.latency_ms", (time.time() - start_time) * 1000)
+                    # Calculate Governance Tax
+                    governance_tax_ms = (time.time() - start_time) * 1000
+                    span.set_attribute("latency_currency_tax", governance_tax_ms)
 
                     response.raise_for_status()
 
@@ -174,7 +206,8 @@ def governed_tool(action_name: str):
                     payload['action'] = action_name
 
                     # 2. Layer 2: Policy Check (OPA) - ASYNC
-                    decision = await opa_client.evaluate_policy(payload)
+                    # We pass 0.0 as current_latency for now, as reasoning context is not yet propagated from the Agent.
+                    decision = await opa_client.evaluate_policy(payload, current_latency_ms=0.0)
 
                     if decision == "DENY":
                         msg = f"BLOCKED: Governance Policy Violation. {payload}"

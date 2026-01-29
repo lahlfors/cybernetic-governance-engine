@@ -22,10 +22,11 @@ spec:
         - name: opa-config-volume
           secret:
             secretName: opa-configuration
+
       containers:
         # Main Agent Container
         - name: ingress-agent
-          image: ${IMAGE_URI} # Replaced by deploy script
+          image: gcr.io/laah-cybernetics/financial-advisor:latest # Replaced by deploy script
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
@@ -33,19 +34,19 @@ spec:
             - name: PORT
               value: "8080"
             - name: REDIS_HOST
-              value: "${REDIS_HOST}" # Replaced by deploy script
+              value: "" # Replaced by deploy script
             - name: REDIS_PORT
               value: "6379"
             - name: GOOGLE_CLOUD_PROJECT
-              value: "${PROJECT_ID}"
+              value: "laah-cybernetics"
             - name: GOOGLE_CLOUD_LOCATION
-              value: "${REGION}"
+              value: "northamerica-northeast2"
             - name: VLLM_BASE_URL
               value: "http://vllm-service.governance-stack.svc.cluster.local:8000/v1"
             - name: OPA_URL
               value: "http://localhost:8181/v1/data/finance/allow"
             - name: DEPLOY_TIMESTAMP
-              value: "${DEPLOY_TIMESTAMP}"
+              value: "20260127214321"
           resources:
             requests:
               cpu: "500m"
@@ -65,9 +66,11 @@ spec:
             - "--addr=localhost:8181"
             - "--config-file=/config/opa_config.yaml"
             - "/policies/finance_policy.rego"
+
           volumeMounts:
             - name: policy-volume
-              mountPath: /policies
+              mountPath: /policies/finance_policy.rego
+              subPath: finance_policy.rego
               readOnly: true
             - name: opa-config-volume
               mountPath: /config

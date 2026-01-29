@@ -1,4 +1,4 @@
-import src.governance
+import src.governed_financial_advisor.governance.nemo_actions as governance
 
 flow check_authorization
   user said "execute trade"

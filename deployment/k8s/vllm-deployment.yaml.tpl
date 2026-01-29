@@ -33,8 +33,8 @@ ${RESOURCE_LIMITS}
               cpu: "16"
             requests:
 ${RESOURCE_REQUESTS}
-              memory: "32Gi"
-              cpu: "12"
+              memory: "10Gi"
+              cpu: "3"
           volumeMounts:
             - mountPath: /dev/shm
               name: dshm
@@ -60,18 +60,16 @@ ${ENV_VARS}
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 300
+            initialDelaySeconds: 600
             periodSeconds: 15
           command:
             - "python3"
             - "-m"
             - "vllm.entrypoints.openai.api_server"
+            - "--port"
+            - "8000"
 ${ARGS}
-            - "--enable-prefix-caching"
       nodeSelector:
 ${NODE_SELECTOR}
       tolerations:
-      - key: "cloud.google.com/gke-spot"
-        operator: "Equal"
-        value: "true"
-        effect: "NoSchedule"
+${TOLERATIONS}
