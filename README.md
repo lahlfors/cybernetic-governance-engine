@@ -15,7 +15,7 @@ This implementation adheres to the **Agentic DevOps** philosophy, reframing the 
 👉 **See [docs/AGENTIC_DEVOPS_FEASIBILITY.md](docs/AGENTIC_DEVOPS_FEASIBILITY.md) for the full architectural analysis.**
 
 *   **The Advisor (LLM):** The "Brain" that reasons about financial strategy.
-*   **The Policy Governor (OPA/NeMo):** The "Sentry" that enforces absolute boundaries ("The Wall").
+*   **The Policy Governor:** The "Sentry" that enforces absolute boundaries ("The Wall"). Uses an **OPA Sidecar** for policy and **In-Process NeMo Guardrails** for semantic safety.
 *   **The Currency Broker (HybridClient):** Manages the "Latency as Currency" budget, enforcing a strict Bankruptcy Protocol if reasoning takes too long.
 *   **The Foundry (Pipelines):** Offline factories that compile STAMP hazards into Rego policies.
 
@@ -91,6 +91,7 @@ The system orchestrates a team of specialized sub-agents, managed by a central *
     *   **Worker:** Proposes trading strategies based on analysis.
     *   **Verifier:** Audits the proposal against safety rules and the user's direct intent (delegating semantic checks to NeMo). Only the Verifier can execute.
 3.  **Execution Analyst Agent (Strategy):** Creates detailed execution plans (e.g., VWAP, TWAP).
+4.  **Risk Analyst Agent (Offline):** A specialized A2 Discovery agent that runs asynchronously to identify UCAs and update policies, removed from the runtime hot path to minimize latency.
 
 ## Quick Start (Sovereign Stack)
 

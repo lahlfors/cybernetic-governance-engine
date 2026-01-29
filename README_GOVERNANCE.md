@@ -15,7 +15,7 @@ The architecture enforces "Defense in Depth" through six distinct layers (0-5):
 
 ### Layer 0: Conversational Guardrails (NeMo)
 **Goal:** Input/Output Safety & Topical Control.
-We use **NeMo Guardrails** as the first line of defense to ensure the model stays on topic and avoids jailbreaks *before* it even processes a tool call.
+We use **NeMo Guardrails** (running In-Process) as the first line of defense to ensure the model stays on topic and avoids jailbreaks *before* it even processes a tool call.
 *   **Implementation:** `src/utils/nemo_manager.py` & `config/rails/`
 *   **Observability (ISO 42001):** A custom `NeMoOTelCallback` intercepts every guardrail intervention (e.g., `self_check_input`) and emits an OpenTelemetry span with `guardrail.outcome` and `iso.control_id="A.6.2.8"`.
 
@@ -60,7 +60,7 @@ We implement a **Propose-Verify-Execute** pattern:
 ### Layer 5: The Consensus Engine (Adaptive Compute)
 **Goal:** High-Stakes Validation.
 For actions exceeding a high-risk threshold ($10,000), the system triggers an **Ensemble Check**.
-*   **Mechanism:** The `ConsensusEngine` simulates a voting process (mocked for this sample) to ensure unanimous agreement before execution.
+*   **Mechanism:** The `ConsensusEngine` orchestrates a multi-agent debate (using distinct "Risk Manager" and "Compliance Officer" personas via Gemini-Pro) to ensure unanimous agreement before execution.
 *   **Integration:** Embedded in the `@governed_tool` decorator. If the consensus check fails, the trade is blocked even if OPA approves.
 *   **Implementation:** `src/governance/consensus.py`
 
@@ -78,32 +78,22 @@ We implement a **Risk-Based Tiered Strategy** for observability, solving the par
 *   **Hot Storage (Datadog/Cloud Trace):** Essential for operational health (latency, error rates) but prohibitively expensive for storing full LLM payloads (prompts/responses).
 *   **Cold Storage (S3/GCS):** Cheap but slow to query. Essential for compliance and forensics ("Why did the agent do that?").
 
-### The Solution: Smart Sampling
-We implement a custom **OpenTelemetry SpanProcessor** (`TieredSpanProcessor`) that routes data based on risk and utility:
+### The Solution: Smart Sampling (Design Pattern)
+The architecture includes a design for a **Risk-Based Tiered Strategy** to route data based on utility.
+*Note: The full `TieredSpanProcessor` implementation is currently a planned feature for the production hardening phase.*
 
 | Tier | Destination | Content | Sampling Logic | Purpose |
 |------|-------------|---------|----------------|---------|
 | **Hot** | Cloud Trace | Metadata Only (Latency, Status, TraceID) | 100% | Operational Health |
 | **Cold** | GCS/S3 (Parquet) | Full Payload (Prompts, Reasoning, RAG Chunks) | **Smart Sampled** | Forensics & Compliance |
 
-### Smart Sampling Logic
-The processor applies semantic rules to decide what gets archived to Cold Storage:
-1.  **READ (Chat):** Sample **1%**. Most chat is noise.
-2.  **WRITE (Tools):** Sample **100%**. Any state-changing action (Trade, SQL) is fully archived.
-3.  **RISKY (Guardrails):** Sample **100%**. Any interaction where `guardrail.outcome` is `BLOCKED` or `ALTERED` is preserved for security audit.
-
-### Implementation
-*   **Stripping:** The processor actively *strips* heavy attributes (`gen_ai.content.prompt`, `gen_ai.content.completion`) from the span *before* it is sent to the Hot Exporter, reducing ingestion costs by orders of magnitude.
-*   **Parquet:** Cold traces are written in Parquet format for efficient long-term storage and querying via BigQuery/Athena.
-*   **Source:** `src/infrastructure/telemetry/tiered_processor.py`
-
 ## 4. Implementation Details
 
 ### The Deterministic Router (LangGraph)
 The `financial_coordinator` (Supervisor) does **not** have direct access to sub-agents. It cannot "hallucinate" a call to `governed_trading_agent`.
 Instead, we use **LangGraph** to implement a rigid State Graph that separates control from reasoning.
-*   **Supervisor Node:** Routes user intents to specific agent nodes (Data, Risk, Execution).
-*   **Risk Refinement Loop:** If the Risk Analyst node returns a `REJECTED_REVISE` status, the graph *automatically* routes back to the Execution Analyst. The system injects the specific risk feedback into the prompt, forcing the planner to self-correct before the trade can proceed. This ensures that no unsafe plan can reach the Execution state.
+*   **Supervisor Node:** Routes user intents to specific agent nodes (Data, Execution, Governed Trader).
+*   **Risk Refinement Loop:** If the **Optimistic Execution Node** (Safety Layer) detects a violation, the graph *automatically* routes back to the Execution Analyst. The system injects the specific risk feedback into the prompt, forcing the planner to self-correct before the trade can proceed. This ensures that no unsafe plan can reach the Execution state.
 
 ### Governance Decorator
 The `@governed_tool` decorator (`src/governance/client.py`) intercepts all tool executions.

@@ -49,6 +49,7 @@ We implement a strict separation of concerns to guarantee safety and structure w
 ### 3. Semantic Safety (NeMo Guardrails)
 *   **Role:** Checks prompt/response content for semantic violations (toxicity, jailbreaks, hallucination).
 *   **Implementation:** NeMo Guardrails (`nemo_manager.py`) wrapping the "Brain".
+*   **Deployment:** In-Process (Main Container).
 
 ### 4. Structural Determinism (The Enforcer)
 *   **Role:** Syntactic enforcement of JSON schemas via Finite State Machines (FSM).
@@ -105,7 +106,7 @@ src/agents/
 │   └── callbacks.py        # OTel Interceptor (ISO 42001)
 ├── data_analyst/agent.py   # Market research agent
 ├── execution_analyst/agent.py  # Strategy planning agent
-├── risk_analyst/agent.py   # Risk evaluation agent
+├── risk_analyst/agent.py   # Risk evaluation agent (Offline / Pipeline only)
 └── governed_trader/agent.py    # Trade execution with Propose-Verify pattern
 ```
 
@@ -171,23 +172,24 @@ This pattern ensures:
 
 ## Risk Refinement Loop
 
-A key feature is the **self-correcting loop** between the Execution Analyst and Risk Analyst:
+A key feature is the **self-correcting loop** driven by the Optimistic Execution Node (Safety Layer):
 
 ```mermaid
 graph LR
-    EA[Execution Analyst] -->|Strategy| RA[Risk Analyst]
-    RA -->|APPROVED| GT[Governed Trader]
-    RA -->|REJECTED_REVISE| EA
+    EA[Execution Analyst] -->|Strategy| SAFE[Optimistic Safety Node]
+    SAFE -->|APPROVED| GT[Governed Trader]
+    SAFE -->|REJECTED_REVISE| EA
 
-    style RA fill:#f9f,stroke:#333
+    style SAFE fill:#f9f,stroke:#333
     style EA fill:#bbf,stroke:#333
 ```
 
 **How it works**:
 1. Execution Analyst proposes a strategy
-2. Risk Analyst evaluates (heuristic keyword detection: "high risk", "reject", etc.)
+2. **Optimistic Safety Node** evaluates against deterministic constraints (CBF, OPA, NeMo)
 3. If rejected, LangGraph routes back to Execution Analyst with feedback injected
 4. Loop continues until approved or escalated to human review
+*Note: The LLM-based Risk Analyst is now an offline component used for policy discovery, not runtime blocking.*
 
 ---
 
@@ -202,16 +204,24 @@ graph LR
 │  │   FastAPI Server    │◀──▶│    Policy Enforcement      │  │
 │  │   LangGraph         │    │    finance_policy.rego     │  │
 │  │   ADK Agents        │    └────────────────────────────┘  │
-│  │   NeMo Guardrails   │                                     │
-│  └──────────┬──────────┘                                     │
-│             │                                                 │
-│             ▼                                                 │
-│  ┌─────────────────────┐                                     │
-│  │   Redis (State)     │                                     │
-│  │   Cloud Memorystore │                                     │
-│  └─────────────────────┘                                     │
+│  │   NeMo (In-Process) │                                     │
+│  └──────────┬──────────┴──────────────┬──────────────────────┘
+│             │                         │
+│             ▼                         ▼
+│  ┌─────────────────────┐    ┌────────────────────────────┐
+│  │   Redis (State)     │    │   External Services        │
+│  │   Cloud Memorystore │    │   ─────────────────        │
+│  └─────────────────────┘    │   Vertex AI (Reasoning)    │
+│                             │   vLLM (Inference Service) │
+│                             └────────────────────────────┘
 └──────────────────────────────────────────────────────────────┘
 ```
+
+The deployment uses a **Hybrid Compute** strategy:
+1.  **Stateless Agent (Cloud Run):** Hosts the LangGraph control plane and ADK adapters. Scales to zero.
+2.  **In-Process Governance:** NeMo Guardrails runs directly within the agent container for minimum latency (<10ms).
+3.  **Policy Sidecar (OPA):** Runs as a `localhost` sidecar container for zero-hop policy enforcement.
+4.  **Stateful Inference (GKE/Vertex):** The agents connect to external model endpoints (Vertex AI for reasoning, Self-Hosted vLLM for strict enforcement).
 
 **State Management (Dual Redis Strategy):**
 1.  **Application State:** Uses **Google Cloud Memorystore** (External). Stores LangGraph conversation checkpoints (`AgentState`) and session history. Credentials injected via `REDIS_URL`.
