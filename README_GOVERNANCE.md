@@ -78,24 +78,14 @@ We implement a **Risk-Based Tiered Strategy** for observability, solving the par
 *   **Hot Storage (Datadog/Cloud Trace):** Essential for operational health (latency, error rates) but prohibitively expensive for storing full LLM payloads (prompts/responses).
 *   **Cold Storage (S3/GCS):** Cheap but slow to query. Essential for compliance and forensics ("Why did the agent do that?").
 
-### The Solution: Smart Sampling
-We implement a custom **OpenTelemetry SpanProcessor** (`TieredSpanProcessor`) that routes data based on risk and utility:
+### The Solution: Smart Sampling (Design Pattern)
+The architecture includes a design for a **Risk-Based Tiered Strategy** to route data based on utility.
+*Note: The full `TieredSpanProcessor` implementation is currently a planned feature for the production hardening phase.*
 
 | Tier | Destination | Content | Sampling Logic | Purpose |
 |------|-------------|---------|----------------|---------|
 | **Hot** | Cloud Trace | Metadata Only (Latency, Status, TraceID) | 100% | Operational Health |
 | **Cold** | GCS/S3 (Parquet) | Full Payload (Prompts, Reasoning, RAG Chunks) | **Smart Sampled** | Forensics & Compliance |
-
-### Smart Sampling Logic
-The processor applies semantic rules to decide what gets archived to Cold Storage:
-1.  **READ (Chat):** Sample **1%**. Most chat is noise.
-2.  **WRITE (Tools):** Sample **100%**. Any state-changing action (Trade, SQL) is fully archived.
-3.  **RISKY (Guardrails):** Sample **100%**. Any interaction where `guardrail.outcome` is `BLOCKED` or `ALTERED` is preserved for security audit.
-
-### Implementation
-*   **Stripping:** The processor actively *strips* heavy attributes (`gen_ai.content.prompt`, `gen_ai.content.completion`) from the span *before* it is sent to the Hot Exporter, reducing ingestion costs by orders of magnitude.
-*   **Parquet:** Cold traces are written in Parquet format for efficient long-term storage and querying via BigQuery/Athena.
-*   **Source:** `src/infrastructure/telemetry/tiered_processor.py`
 
 ## 4. Implementation Details
 
