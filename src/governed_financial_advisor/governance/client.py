@@ -63,6 +63,14 @@ class CircuitBreaker:
             return True
         return False
 
+    def check_soft_ceiling(self, cumulative_spend_ms: float, soft_ceiling_ms: float = 2000.0) -> bool:
+        """
+        Checks if the request has exceeded the 'Soft Latency Ceiling'.
+        """
+        if cumulative_spend_ms > soft_ceiling_ms:
+            return True
+        return False
+
 class OPAClient:
     """
     Production-ready Async OPA Client with Circuit Breaker and UDS support.
@@ -105,6 +113,10 @@ class OPAClient:
         if self.cb.is_bankrupt(current_latency_ms):
              logger.critical(f"💀 Bankruptcy Protocol Triggered: Hard Latency Ceiling Exceeded ({current_latency_ms}ms > {self.cb.max_latency_budget}ms).")
              return "DENY"
+
+        # Soft Ceiling Check (Degraded Performance Warning)
+        if self.cb.check_soft_ceiling(current_latency_ms):
+            logger.warning(f"📉 Latency Inflation Warning: Soft Ceiling Exceeded ({current_latency_ms}ms > 2000ms). Performance degraded.")
 
         with tracer.start_as_current_span("governance.opa_check") as span:
             start_time = time.time()
