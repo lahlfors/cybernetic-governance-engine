@@ -29,7 +29,8 @@ The system operates on an **Actor-Critic** cognitive architecture, orchestrated 
 ### 2.3 The Orchestrator
 
 * **Framework:** Google ADK / LangGraph.
-* **Function:** Manages the state and control flow. It routes "REJECTED" plans back to the Planner for correction or escalates to human review, ensuring the loop is closed and deterministic.
+*   **Framework:** Google ADK / LangGraph.
+*   **Function:** Manages the state and control flow. It routes "REJECTED" plans back to the Planner for correction or escalates to human review, ensuring the loop is closed and deterministic.
 
 ---
 
@@ -37,23 +38,29 @@ The system operates on an **Actor-Critic** cognitive architecture, orchestrated 
 
 The GFA implements a "Defense in Depth" strategy with three distinct control layers.
 
-### 3.1 Layer 1: Structural Determinism (vLLM FSM)
+### 3.1 Layer 1: Mathematical Safety (CBFs)
 
-* **Description:** The Verifier model is mathematically constrained to produce only valid outputs (e.g., specific JSON schemas or binary "APPROVED/REJECTED" tokens).
-* **Control Implementation:** `guided_json` / `guided_choice` parameters in vLLM.
-* **Audit Evidence:** Traces with `llm.control.fsm.enabled = True`.
+*   **Description:** Enforces hard mathematical constraints on state transitions (invariant: `cash >= min_balance`). Calculates `h(next) >= (1-gamma) * h(current)` to guarantee safety.
+*   **Control Implementation:** `ControlBarrierFunction` in `safety.py` (Redis-backed state).
+*   **Audit Evidence:** Traces containing `safety.cbf_check` and `safety.barrier.h_next`.
 
 ### 3.2 Layer 2: Business Logic Policy (OPA)
 
-* **Description:** The Open Policy Agent (OPA) evaluates the *content* of the plan against codified business rules (e.g., "No crypto assets for Low-Risk profiles").
-* **Control Implementation:** Rego policies stored in `v1/data/financial/trade_policy` (fetched from GCS).
-* **Audit Evidence:** Traces containing `governance.opa_check` spans and `governance.denial_reason`.
+*   **Description:** The `safety_check_node` checks the current proposed action against static policies (e.g., "No crypto assets for Low-Risk profiles").
+*   **Control Implementation:** Open Policy Agent (OPA) via `safety_node.py`.
+*   **Audit Evidence:** Traces containing `governance.opa_check` and `governance.denial_reason`.
 
 ### 3.3 Layer 3: Semantic Safety (NeMo Guardrails)
 
-* **Description:** Checks for hallucination, jailbreaks, and off-topic deviations using semantic vector matching.
-* **Control Implementation:** NeMo Guardrails (`nemo_manager.py`).
-* **Audit Evidence:** Traces containing `guardrails.framework = "nemo"` and `risk.verdict`.
+*   **Description:** Guardrails check the current prompt/response content for hallucination, jailbreaks, and off-topic deviations.
+*   **Control Implementation:** NeMo Guardrails (`nemo_manager.py`).
+*   **Audit Evidence:** Traces containing `guardrails.framework = "nemo"` and `risk.verdict`.
+
+### 3.4 Layer 4: Structural Determinism (vLLM FSM)
+
+*   **Description:** The Verifier model is mathematically constrained to produce only valid outputs (e.g., specific JSON schemas).
+*   **Control Implementation:** `guided_json` / `guided_choice` parameters in vLLM.
+*   **Audit Evidence:** Traces with `llm.control.fsm.enabled = True`.
 
 ---
 

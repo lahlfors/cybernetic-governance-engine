@@ -32,8 +32,9 @@ spec:
           env:
             - name: PORT
               value: "8080"
+            # Agent Session Management (K8s Redis for GKE, Memorystore for Cloud Run)
             - name: REDIS_HOST
-              value: "${REDIS_HOST}" # Replaced by deploy script
+              value: "${REDIS_HOST}" # Set by deploy script: redis-master for GKE, Memorystore IP for Cloud Run
             - name: REDIS_PORT
               value: "6379"
             - name: GOOGLE_CLOUD_PROJECT

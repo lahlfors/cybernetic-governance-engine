@@ -6,23 +6,31 @@ cluster:
   name: governance-cluster
   network: default
   machine_type: g2-standard-8
-  disk_size_gb: 100 # L4 models might need more space / faster I/O
+  disk_size_gb: 100
+  spot: false
   
   accelerator:
     type: nvidia-l4
     count: 1
     drivers_version: default
 
+services:
+  backend: governed-financial-advisor
+  ui: financial-advisor-ui
+
 model:
-  quantization: null # Explicitly null for BF16 execution
-  max_model_len: 4096 # Verified working on L4
-  gpu_memory_utilization: 0.80 # Conservative for stability
+  name: meta-llama/Meta-Llama-3.1-8B-Instruct
+  quantization: null 
+  max_model_len: 4096 
+  gpu_memory_utilization: 0.80 
 
 vllm:
-  image_tpu: vllm/vllm-tpu:latest
   image_gpu: vllm/vllm-openai:latest
   
 redis:
+  host: null # Set to IP if using existing
+  port: 6379
+  instance_name: financial-advisor-redis
   tier: BASIC
   size_gb: 1
   version: redis_7_0

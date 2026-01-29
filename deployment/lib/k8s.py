@@ -128,7 +128,11 @@ def ensure_gke_cluster(project_id, config):
             "--master-ipv4-cidr", "172.16.100.0/28", # Arbitrary non-overlapping range
             "--enable-ip-alias", # Required for private
             "--enable-master-authorized-networks",
-            "--master-authorized-networks", "0.0.0.0/0"
+            "--master-authorized-networks", "0.0.0.0/0",
+            # Addons: Base defaults + NodeLocalDNS (avoiding separate update step)
+            "--addons", "HttpLoadBalancing,HorizontalPodAutoscaling,NodeLocalDNS",
+            # Maintenance Window (Daily at 08:00 UTC)
+            "--maintenance-window", "08:00"
         ]
         
         if cluster_conf.get("spot"):
@@ -136,16 +140,6 @@ def ensure_gke_cluster(project_id, config):
              cmd.append("--spot")
 
         run_command(cmd)
-        
-        # Install GPU drivers (daemonset)
-        if "nvidia" in accelerator_type:
-            print("🔧 Installing Nvidia Drivers...")
-            run_command([
-                "gcloud", "container", "clusters", "update", cluster_name,
-                location_flag, location_value,
-                "--project", project_id,
-                "--update-addons=NodeLocalDNS=ENABLED" 
-            ], check=False)
 
     # Get Credentials
     print("🔑 Configuring kubectl credentials...")
@@ -164,44 +158,12 @@ def ensure_accelerator_node_pool(project_id, region, cluster_name, accelerator):
     """Ensures the appropriate node pool exists for the accelerator."""
 
     if accelerator == "gpu":
-        # Default GPU is managed by ensure_gke_cluster (T4).
-        # We assume the user has provisioned H100s if they want to use them, or we fallback to what's there.
-        # Automating A3 provisioning is complex due to quota.
+        # Default GPU is managed by ensure_gke_cluster.
+        # We assume the user has provisioned the correct resources.
         return
 
-    # TPU Logic
-    pool_name = "tpu-pool"
-    print(f"\n--- ⚡ Verifying TPU Node Pool: {pool_name} ---")
-
-    cmd = [
-        "gcloud", "container", "node-pools", "describe", pool_name,
-        "--cluster", cluster_name, "--region", region, "--project", project_id,
-        "--format", "value(status)"
-    ]
-    if run_command(cmd, check=False, capture_output=True).returncode == 0:
-        print(f"✅ Node pool '{pool_name}' exists.")
-        return
-
-    print(f"⚠️ Node pool '{pool_name}' not found. Creating TPU v5e-8t pool...")
-    print("⏳ This operation may take 10-15 minutes.")
-
-    # Note: TPU v5e-8t (ct5lp-hightpu-8t) is zonal. We need to pick a zone.
-    # We'll use {region}-a as a default guess, or rely on region if supported (Autopilot/Nap).
-    # Standard GKE requires specific zone for TPUs usually.
-    node_location = f"{region}-a"
-
-    create_cmd = [
-        "gcloud", "container", "node-pools", "create", pool_name,
-        "--cluster", cluster_name,
-        "--region", region,
-        "--project", project_id,
-        "--num-nodes", "1",
-        "--machine-type", "ct5lp-hightpu-8t",
-        "--node-locations", node_location,
-        "--enable-image-streaming" # Good for large images
-    ]
-
-    run_command(create_cmd)
+    # If we had other accelerators like TPU, logic would go here.
+    print(f"⚠️ Unknown or unsupported accelerator: {accelerator}")
 
 
 def deploy_k8s_infra(project_id, config, args=None):
@@ -220,8 +182,8 @@ def deploy_k8s_infra(project_id, config, args=None):
     
     # For now, let's look at config['cluster']['accelerator']['type']
     acc_type = config.get("cluster", {}).get("accelerator", {}).get("type", "nvidia-tesla-t4")
-    # Simple heuristic: if 'tpu' in name, it's tpu.
-    accelerator_kind = "tpu" if "tpu" in acc_type else "gpu"
+    # Default to gpu
+    accelerator_kind = "gpu"
     
     print(f"\n--- ☸️ Deploying K8s Infrastructure (vLLM) [Accelerator: {accelerator_kind}] ---")
 
@@ -263,4 +225,11 @@ def deploy_k8s_infra(project_id, config, args=None):
     # Apply generated manifests
     print(f"🚀 Applying manifests from {generated_dir}...")
     run_command(["kubectl", "apply", "-f", str(generated_dir)])
+    
+    # Apply Static PDB if exists (Hardening)
+    pdb_path = k8s_dir / "vllm-pdb.yaml"
+    if pdb_path.exists():
+        print("🛡️ Applying vLLM Pod Disruption Budget...")
+        run_command(["kubectl", "apply", "-f", str(pdb_path)])
+        
     print("✅ K8s manifests applied.")

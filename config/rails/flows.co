@@ -1,33 +1,34 @@
-import src.governed_financial_advisor.governance.nemo_actions as governance
+# NeMo Guardrails Flows - Colang 2.x
+# Actions are registered programmatically, so no import needed
 
 flow check_authorization
   user said "execute trade"
-  $allowed = await src.governance.check_approval_token()
+  $allowed = await check_approval_token()
   if not $allowed
     bot refuse to respond
     abort
 
 flow check_latency
   user said "execute trade"
-  $allowed = await src.governance.check_data_latency()
+  $allowed = await check_data_latency()
   if not $allowed
     bot refuse to respond
     abort
 
 flow check_financial_risk
   user said "execute trade"
-  $drawdown_ok = await src.governance.check_drawdown_limit()
+  $drawdown_ok = await check_drawdown_limit()
   if not $drawdown_ok
     bot refuse to respond
     abort
-  $slippage_ok = await src.governance.check_slippage_risk()
+  $slippage_ok = await check_slippage_risk()
   if not $slippage_ok
     bot refuse to respond
     abort
 
 flow check_atomic_execution
   user said "execute multi-leg trade"
-  $atomic_ok = await src.governance.check_atomic_execution()
+  $atomic_ok = await check_atomic_execution()
   if not $atomic_ok
     bot refuse to respond
     abort
@@ -38,9 +39,9 @@ flow parallel_governance_check
   user said r"transfer funds|modify account|access pii"
   
   # Trigger parallel execution
-  $topical = await src.governance.check_approval_token()
-  $safety = await src.governance.check_drawdown_limit()
-  $fact = await src.governance.check_data_latency()
+  $topical = await check_approval_token()
+  $safety = await check_drawdown_limit()
+  $fact = await check_data_latency()
 
   if not $topical or not $safety or not $fact
     bot refuse to respond

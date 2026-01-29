@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY . .
 
 # Install dependencies
-ENV PYTHONPATH="${PYTHONPATH}:/app"
+ENV PYTHONPATH="${PYTHONPATH}:/app:/app/src"
 RUN pip install uv keyring keyrings.google-artifactregistry-auth && \
     uv export --no-emit-project --no-dev --no-hashes --format requirements-txt > requirements.txt && \
     pip install kfp && \

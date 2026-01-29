@@ -43,7 +43,6 @@ The deployment script enforces "Golden Path" configurations to ensure reliabilit
 | :--- | :--- | :--- | :--- |
 | **Llama** | `meta-llama/Llama-3.1-8B-Instruct` | **GPU** (T4, L4, A100) | `gptq`, `float16` |
 | **Gemma** | `google/gemma-3-27b-it` | **GPU** (L4, A100) | `bfloat16` (Text Only) |
-| **Gemma** | `google/gemma-3-27b-it` | **TPU** (v5e) | `bfloat16` |
 
 > **Note:** Gemma models are **blocked** on T4 GPUs due to lack of native bfloat16 support.
 
@@ -57,13 +56,6 @@ python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID
 python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID \
     --model-family gemma \
     --accelerator-type l4  # or a100
-
-# 3. Gemma 3 27B on TPU
-# Target: TPU v5e
-python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID \
-    --model-family gemma \
-    --accelerator tpu \
-    --zone us-east1-c
 
 # 4. Custom Model ID (Must match Family Golden Path)
 # Example: Deploying a fine-tuned Llama 8B

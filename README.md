@@ -8,6 +8,17 @@ The Financial Advisor is a multi-agent system designed to assist human financial
 
 Use this authentic reference implementation to understand how to build **high-reliability agentic systems** for regulated industries.
 
+## Agentic DevOps & The Policy Governor
+
+This implementation adheres to the **Agentic DevOps** philosophy, reframing the infrastructure as a deterministic supervisor.
+
+👉 **See [docs/AGENTIC_DEVOPS_FEASIBILITY.md](docs/AGENTIC_DEVOPS_FEASIBILITY.md) for the full architectural analysis.**
+
+*   **The Advisor (LLM):** The "Brain" that reasons about financial strategy.
+*   **The Policy Governor (OPA/NeMo):** The "Sentry" that enforces absolute boundaries ("The Wall").
+*   **The Currency Broker (HybridClient):** Manages the "Latency as Currency" budget, enforcing a strict Bankruptcy Protocol if reasoning takes too long.
+*   **The Foundry (Pipelines):** Offline factories that compile STAMP hazards into Rego policies.
+
 ## Hybrid Architecture: LangGraph + Google ADK
 
 This system implements a **Hybrid Manager-Worker Architecture** that separates concerns:
@@ -35,24 +46,6 @@ This system implements a **Hybrid Manager-Worker Architecture** that separates c
 │               Google ADK LlmAgents                       │
 └─────────────────────────────────────────────────────────┘
 ```
-
-**Why Hybrid?**
-- **LangGraph** excels at deterministic control flow—no LLM decides the execution path
-- **Google ADK** excels at LLM reasoning—native agent patterns with Vertex AI integration
-- **The Adapter Pattern** bridges them: ADK agents run inside LangGraph nodes, with tool calls intercepted to drive routing
-
-👉 **For a deep dive, see [ARCHITECTURE.md](ARCHITECTURE.md)**
-
-## Sovereign Stack (Phase 1 & 2)
-
-This implementation adheres to the **Sovereign Stack** architecture, ensuring cloud independence and portability.
-
-👉 **See [docs/SOVEREIGN_STACK.md](docs/SOVEREIGN_STACK.md) for full architecture details.**
-
-*   **Cloud Agnostic:** Runs on local Docker, AWS, Azure, or On-Prem.
-*   **Local Governance:** Policy (OPA) and Semantic Guardrails (NeMo) run as **Sidecars**.
-*   **Standard Protocols:** Uses HTTP and **Unix Domain Sockets (UDS)** for ultra-low latency IPC.
-*   **Optimistic Execution:** Uses Python `asyncio` to parallelize safety checks and tool execution, reducing latency.
 
 ## Governance & Safety (Green Stack)
 
@@ -105,7 +98,7 @@ The system orchestrates a team of specialized sub-agents, managed by a central *
 
 *   [uv](https://github.com/astral-sh/uv) (for Python dependency management)
 *   [Docker](https://docs.docker.com/get-docker/) & Docker Compose
-*   [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) (for GKE/TPU deployment)
+*   [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) (for GKE deployment)
 
 ### 2. Installation
 
@@ -171,9 +164,9 @@ export BACKEND_URL="http://localhost:8080"
 streamlit run ui/app.py
 ```
 
-## Production Deployment (GKE & TPU)
+## Production Deployment (GKE)
 
-This repository supports deploying the high-performance inference stack to Google Kubernetes Engine (GKE) using either NVIDIA GPUs or Google TPUs.
+This repository supports deploying the high-performance inference stack to Google Kubernetes Engine (GKE) using NVIDIA GPUs.
 
 ### Deployment Options
 
@@ -188,18 +181,6 @@ python3 deployment/deploy_all.py \
     --region us-central1 \
     --accelerator gpu
 ```
-
-#### Option B: Google TPU v5e (Cost Optimized)
-Uses **TPU v5e** (8 chips) with XLA/Pallas backend. significantly cheaper (~80%) but currently lacks Speculative Decoding support. Recommended for offline batch workloads.
-
-```bash
-python3 deployment/deploy_all.py \
-    --project-id <YOUR_PROJECT_ID> \
-    --region us-central1 \
-    --accelerator tpu
-```
-
-👉 **See [docs/TPU_MIGRATION_ANALYSIS.md](docs/TPU_MIGRATION_ANALYSIS.md) for a detailed architectural comparison.**
 
 ## Security Verification (Red Teaming)
 
