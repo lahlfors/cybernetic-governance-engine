@@ -60,7 +60,7 @@ We implement a **Propose-Verify-Execute** pattern:
 ### Layer 5: The Consensus Engine (Adaptive Compute)
 **Goal:** High-Stakes Validation.
 For actions exceeding a high-risk threshold ($10,000), the system triggers an **Ensemble Check**.
-*   **Mechanism:** The `ConsensusEngine` simulates a voting process (mocked for this sample) to ensure unanimous agreement before execution.
+*   **Mechanism:** The `ConsensusEngine` orchestrates a multi-agent debate (using distinct "Risk Manager" and "Compliance Officer" personas via Gemini-Pro) to ensure unanimous agreement before execution.
 *   **Integration:** Embedded in the `@governed_tool` decorator. If the consensus check fails, the trade is blocked even if OPA approves.
 *   **Implementation:** `src/governance/consensus.py`
 
