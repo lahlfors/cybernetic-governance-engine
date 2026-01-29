@@ -67,15 +67,26 @@ load_dotenv()
 OTEL_ENDPOINT = "http://langfuse-web.langfuse.svc.cluster.local:4317/api/public/otel/v1/traces"
 
 # Strict Production Configuration
-# Removed Llama and TPU variants to enforce "Goldilocks" architecture.
+# Refactored to prioritize Google TPU v5e for "Native" Architecture.
 CONFIG_MATRIX = {
     "production": {
+        "model_id": "google/gemma-2-9b-it",
+        "accelerator_type": "tpu-v5-lite-podslice", # TPU v5e
+        "count": 8, # Must be 1, 4, or 8 for v5e. 8 chips = 1 host.
+        "vllm_args": [
+            "--dtype", "bfloat16",
+            "--max-model-len", "8192",
+            "--tensor-parallel-size", "8", # TP=8 matches chip count
+            "--enforce-eager" # Often required for TPU graphs
+        ]
+    },
+    "legacy_gpu": {
         "model_id": "google/gemma-2-9b-it",
         "accelerator_type": "nvidia-l4",
         "count": 1,
         "vllm_args": [
             "--dtype", "bfloat16",
-            "--enable-prefix-caching", # CRITICAL: For Governance Speed
+            "--enable-prefix-caching",
             "--max-model-len", "8192",
             "--enforce-eager",
             "--tensor-parallel-size", "1"
@@ -175,16 +186,30 @@ def generate_vllm_manifest(config, enable_tracing=None, spot_enabled=False):
 
     env_vars_list = []
 
-    # Defaults for L4 (GPU)
-    image_name = "vllm/vllm-openai:latest"
-    gpu_count = str(config.get("count", 1))
-    resource_limits = f'              nvidia.com/gpu: "{gpu_count}"'
-    resource_requests = f'              nvidia.com/gpu: "{gpu_count}"'
+    # Determine Accelerator Type (GPU vs TPU)
+    accel_type = config.get("accelerator_type", "nvidia-l4")
+    count = str(config.get("count", 1))
 
-    # Strict Node Selection for L4
-    node_selector_lines = [
-        '        cloud.google.com/gke-accelerator: "nvidia-l4"'
-    ]
+    if "tpu" in accel_type:
+        # TPU Configuration
+        # vLLM TPU image (vllm-tpu or official with TPU support)
+        # Using official vllm-openai usually works if built with TPU,
+        # but often 'vllm/vllm-tpu' or specific tags are safer.
+        image_name = "vllm/vllm-openai:latest" # Assuming latest supports TPU or we'd use a specific tag like v0.6.0-tpu
+        resource_limits = f'              google.com/tpu: "{count}"'
+        resource_requests = f'              google.com/tpu: "{count}"'
+        node_selector_lines = [
+            f'        cloud.google.com/gke-tpu-accelerator: "{accel_type}"',
+            '        cloud.google.com/gke-tpu-topology: "2x4"' # Topology for 8 chips (v5e)
+        ]
+    else:
+        # GPU Configuration (L4/A100)
+        image_name = "vllm/vllm-openai:latest"
+        resource_limits = f'              nvidia.com/gpu: "{count}"'
+        resource_requests = f'              nvidia.com/gpu: "{count}"'
+        node_selector_lines = [
+            f'        cloud.google.com/gke-accelerator: "{accel_type}"'
+        ]
     
     node_selector_str = "\n".join(node_selector_lines)
 
@@ -887,11 +912,15 @@ def deploy_hybrid(project_id, region, image_uri, redis_host, redis_port, args=No
     2. Retrieves Backend External IP.
     3. Deploys UI to Cloud Run pointed at Backend IP.
     """
-    # Force GPU path for production
-    print(f"\n--- 🌐 Starting Hybrid Deployment (GKE + Cloud Run) [Production: NVIDIA L4] ---")
+    # Use Production Config (Default: TPU v5e)
+    config = CONFIG_MATRIX["production"]
+    if args and args.accelerator == "gpu":
+         config = CONFIG_MATRIX["legacy_gpu"]
+
+    print(f"\n--- 🌐 Starting Hybrid Deployment (GKE + Cloud Run) [Target: {config['accelerator_type']}] ---")
     
     # 1. Deploy GKE Infrastructure (vLLM)
-    deploy_k8s_infra(project_id, region, config=CONFIG_MATRIX["production"], args=args)
+    deploy_k8s_infra(project_id, region, config=config, args=args)
     
     # 2. Deploy Backend to GKE
     print("\n--- ☸️ Deploying Backend to GKE ---")
