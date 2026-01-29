@@ -23,5 +23,9 @@ class AgentState(TypedDict):
     risk_attitude: str | None
     investment_period: str | None
 
+    # Execution Data
     execution_plan_output: str | dict | None # Holds the structured plan
     user_id: str # User Identity
+    
+    # Telemetry
+    latency_stats: dict[str, float] | None # For Bankruptcy Protocol (cumulative spend)

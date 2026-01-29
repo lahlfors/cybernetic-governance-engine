@@ -98,7 +98,7 @@ The system orchestrates a team of specialized sub-agents, managed by a central *
 
 *   [uv](https://github.com/astral-sh/uv) (for Python dependency management)
 *   [Docker](https://docs.docker.com/get-docker/) & Docker Compose
-*   [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) (for GKE/TPU deployment)
+*   [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) (for GKE deployment)
 
 ### 2. Installation
 
@@ -164,9 +164,9 @@ export BACKEND_URL="http://localhost:8080"
 streamlit run ui/app.py
 ```
 
-## Production Deployment (GKE & TPU)
+## Production Deployment (GKE)
 
-This repository supports deploying the high-performance inference stack to Google Kubernetes Engine (GKE) using either NVIDIA GPUs or Google TPUs.
+This repository supports deploying the high-performance inference stack to Google Kubernetes Engine (GKE) using NVIDIA GPUs.
 
 ### Deployment Options
 
@@ -181,18 +181,6 @@ python3 deployment/deploy_all.py \
     --region us-central1 \
     --accelerator gpu
 ```
-
-#### Option B: Google TPU v5e (Cost Optimized)
-Uses **TPU v5e** (8 chips) with XLA/Pallas backend. significantly cheaper (~80%) but currently lacks Speculative Decoding support. Recommended for offline batch workloads.
-
-```bash
-python3 deployment/deploy_all.py \
-    --project-id <YOUR_PROJECT_ID> \
-    --region us-central1 \
-    --accelerator tpu
-```
-
-👉 **See [docs/TPU_MIGRATION_ANALYSIS.md](docs/TPU_MIGRATION_ANALYSIS.md) for a detailed architectural comparison.**
 
 ## Security Verification (Red Teaming)
 

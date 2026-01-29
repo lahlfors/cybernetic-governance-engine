@@ -14,7 +14,7 @@ from .nodes.supervisor_node import supervisor_node
 from .state import AgentState
 
 
-def create_graph(redis_url="redis://localhost:6379"):
+def create_graph(redis_url=None):
     workflow = StateGraph(AgentState)
 
     # 1. Add Supervisor

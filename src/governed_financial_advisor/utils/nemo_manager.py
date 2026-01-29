@@ -209,6 +209,26 @@ def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
 
     config = RailsConfig.from_path(config_path)
     rails = LLMRails(config)
+    
+    # Explicitly register actions to avoid import resolution issues
+    # This is more robust than relying on NeMo's import mechanism
+    try:
+        from governed_financial_advisor.governance.nemo_actions import (
+            check_approval_token,
+            check_data_latency,
+            check_drawdown_limit,
+            check_slippage_risk,
+            check_atomic_execution,
+        )
+        rails.register_action(check_approval_token, "check_approval_token")
+        rails.register_action(check_data_latency, "check_data_latency")
+        rails.register_action(check_drawdown_limit, "check_drawdown_limit")
+        rails.register_action(check_slippage_risk, "check_slippage_risk")
+        rails.register_action(check_atomic_execution, "check_atomic_execution")
+        logger.info("✅ NeMo actions registered successfully")
+    except ImportError as e:
+        logger.warning(f"⚠️ Could not import NeMo actions: {e}")
+    
     return rails
 
 # --- New Adapter Functions for Refactor ---

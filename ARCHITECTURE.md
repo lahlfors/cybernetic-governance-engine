@@ -36,20 +36,26 @@ This document describes the hybrid architecture of the Cybernetic Governance Eng
 
 ## In-Process Governance (The "Governance Sandwich")
 
-We implement a strict separation of concerns to guarantee safety and structure without sacrificing reasoning depth.
+We implement a strict separation of concerns to guarantee safety and structure without sacrificing reasoning depth. This involves **4 distinct layers** of defense:
 
-### 1. The Brain (Reasoning)
-*   **Model:** `gemini-2.5-pro` (Vertex AI).
-*   **Role:** Complex analysis, document understanding, and "System 2" thinking.
-*   **Safety:** Wrapped by NeMo Guardrails for semantic policy checks (e.g., preventing toxicity).
+### 1. Mathematical Safety (CBFs)
+*   **Role:** Enforces hard constraints on state transitions (e.g., `cash >= min_balance`).
+*   **Implementation:** `ControlBarrierFunction` (Redis-backed). Calculates `h(next) >= (1-gamma) * h(current)`.
 
-### 2. The Enforcer (Structure)
-*   **Model:** `google/gemma-2-9b-it` (Self-Hosted on GKE with NVIDIA L4).
+### 2. Business Logic (OPA)
+*   **Role:** The `safety_check_node` intercepts proposed actions and validates them against static Rego policies.
+*   **Implementation:** Open Policy Agent (Sidecar).
+
+### 3. Semantic Safety (NeMo Guardrails)
+*   **Role:** Checks prompt/response content for semantic violations (toxicity, jailbreaks, hallucination).
+*   **Implementation:** NeMo Guardrails (`nemo_manager.py`) wrapping the "Brain".
+
+### 4. Structural Determinism (The Enforcer)
 *   **Role:** Syntactic enforcement of JSON schemas via Finite State Machines (FSM).
-*   **Technique:** We use vLLM's `guided_json` with **Prefix Caching** to achieve low-latency (<50ms) schema validation.
-*   **Why:** A smaller, instruction-tuned model running locally is faster and more deterministic for formatting tasks than a large reasoning model.
+*   **Model:** `google/gemma-2-9b-it` (Self-Hosted on GKE with NVIDIA L4).
+*   **Technique:** vLLM `guided_json`.
 
-This pattern ensures **Zero-Hallucination Structure** while leveraging **SOTA Reasoning Capabilities**.
+This pattern ensures **Zero-Hallucination Structure** while verifying **Mathematical and Semantic Safety**.
 
 ---
 

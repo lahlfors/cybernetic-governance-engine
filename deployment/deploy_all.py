@@ -39,6 +39,9 @@ from pathlib import Path
 
 import yaml
 
+# Ensure local kubectl is in PATH
+os.environ["PATH"] = os.getcwd() + os.pathsep + os.environ["PATH"]
+
 # Ensure project root is in sys.path so we can import 'deployment'
 # This allows running the script from project root or deployment/ directory
 current_dir = Path(__file__).resolve().parent
@@ -127,28 +130,49 @@ def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=
 
 # --- Hybrid Deployment Logic ---
 
-def deploy_hybrid(project_id, region, image_uri, redis_host, redis_port, config):
+def deploy_hybrid(project_id, region, image_uri, redis_host, redis_port, config, skip_ui=False):
     """
     Orchestrates Hybrid Deployment:
-    1. Deploys vLLM Infrastructure to GKE.
-    2. Mirrors Secrets to K8s.
-    3. Deploys Backend to GKE.
-    4. Retrieves Backend External IP.
-    5. Deploys UI to Cloud Run pointed at Backend IP.
+    1. Deploys Redis to K8s (for session/checkpointing).
+    2. Deploys vLLM Infrastructure to GKE.
+    3. Mirrors Secrets to K8s.
+    4. Deploys Backend to GKE.
+    5. Retrieves Backend External IP.
+    6. Deploys UI to Cloud Run pointed at Backend IP.
     """
     accelerator = config.get("args", {}).get("accelerator", "gpu")
     print(f"\n--- 🌐 Starting Hybrid Deployment (GKE + Cloud Run) [Accelerator: {accelerator}] ---")
     
-    # 1. Deploy GKE Infrastructure (vLLM)
+    # 1. Deploy GKE Infrastructure (vLLM) - this also installs kubectl and sets up cluster
     deploy_k8s_infra(project_id, config)
     
-    # 2. Create Secrets in K8s (Mirror from Secret Manager or File)
+    # 2. Deploy K8s Redis for Agent Session Management
+    # For GKE: Use K8s Redis (redis-master service)
+    # For Cloud Run: Memorystore would be passed via redis_host parameter
+    redis_manifest = Path("deployment/k8s/redis-deployment.yaml")
+    if redis_manifest.exists():
+        print("\n--- �️ Deploying K8s Redis for Agent Sessions ---")
+        run_command(["kubectl", "apply", "-f", str(redis_manifest)])
+        print("✅ Redis (redis-master) deployed.")
+    
+    # Override redis_host to use K8s service for GKE deployments
+    redis_host = "redis-master"
+    
+    # 3. Create Secrets in K8s (Mirror from Secret Manager or File)
     # Critical: Do this BEFORE Backend deployment to avoid CrashLoopBackOff for OPA.
     print("\n--- 🔑 Mirroring Secrets to K8s ---")
     
     # OPA Config
     if Path("deployment/opa_config.yaml").exists():
         subprocess.run("kubectl create secret generic opa-configuration --from-file=opa_config.yaml=deployment/opa_config.yaml -n governance-stack --dry-run=client -o yaml | kubectl apply -f -", shell=True)
+
+    # Hugging Face Token (for vLLM model download)
+    hf_token = os.environ.get("HUGGING_FACE_HUB_TOKEN") or os.environ.get("HF_TOKEN")
+    if hf_token:
+        print("🔑 Creating Hugging Face token secret...")
+        subprocess.run(f"kubectl create secret generic hf-token-secret --from-literal=token={hf_token} -n governance-stack --dry-run=client -o yaml | kubectl apply -f -", shell=True)
+    else:
+        print("⚠️ No HF_TOKEN or HUGGING_FACE_HUB_TOKEN found in environment. vLLM may fail to download models.")
 
     # Finance Policy
     policy_path = "src/governed_financial_advisor/governance/policy/finance_policy.rego"
@@ -157,7 +181,7 @@ def deploy_hybrid(project_id, region, image_uri, redis_host, redis_port, config)
          
     subprocess.run(f"kubectl create secret generic finance-policy-rego --from-file=finance_policy.rego={policy_path} -n governance-stack --dry-run=client -o yaml | kubectl apply -f -", shell=True)
 
-    # 3. Deploy Backend to GKE
+    # 4. Deploy Backend to GKE
     print("\n--- ☸️ Deploying Backend to GKE ---")
     deployment_tpl = Path("deployment/k8s/backend-deployment.yaml.tpl")
     if not deployment_tpl.exists():
@@ -212,7 +236,7 @@ def deploy_hybrid(project_id, region, image_uri, redis_host, redis_port, config)
     
     # 5. Deploy UI to Cloud Run
     if backend_url:
-        deploy_ui_service(project_id, region, "financial-advisor-ui", backend_url)
+        deploy_ui_service(project_id, region, "financial-advisor-ui", backend_url, skip_ui=skip_ui)
 
 # --- Main Execution Flow ---
 
@@ -226,29 +250,13 @@ def main():
     default_model = os.environ.get("VLLM_MODEL")
 
     parser.add_argument("--project-id", default=default_project, help="Google Cloud Project ID")
-    parser.add_argument("--region", default=default_region, help="Cloud Run Region")
-    parser.add_argument("--zone", help="GKE Cluster Zone (optional, overrides region for GKE)")
-    parser.add_argument("--service-name", default="governed-financial-advisor", help="Cloud Run Service Name")
 
+    
     # Build/Deploy Skip Flags
     parser.add_argument("--skip-build", action="store_true", help="Skip image build step")
     parser.add_argument("--skip-redis", action="store_true", help="Skip Redis provisioning")
     parser.add_argument("--skip-ui", action="store_true", help="Skip UI service deployment")
     parser.add_argument("--skip-k8s", action="store_true", help="Skip Kubernetes deployment")
-
-    # Override Arguments
-    parser.add_argument("--redis-host", help="Use existing Redis Host")
-    parser.add_argument("--redis-port", help="Redis Port")
-    parser.add_argument("--redis-instance-name", default="financial-advisor-redis", help="Name for auto-provisioned Redis")
-    parser.add_argument("--ui-service-name", default="financial-advisor-ui", help="Cloud Run UI Service Name")
-    parser.add_argument("--target", choices=["cloud_run", "hybrid", "gke"], help="Deployment target")
-
-    # New Argument for Accelerator Support
-    parser.add_argument("--accelerator", choices=["gpu", "tpu"], help="Inference accelerator type (gpu=H100/NVIDIA, tpu=v5e/Google)")
-    parser.add_argument("--accelerator-type", choices=["t4", "tpu", "a100", "l4"], help="GPU Accelerator Type")
-    parser.add_argument("--model", default=default_model, help="Hugging Face Model ID")
-    parser.add_argument("--quantization", help="Model Quantization (gptq, awq, or none)")
-    parser.add_argument("--spot", action="store_true", help="Use Spot VMs for GKE nodes")
 
     args = parser.parse_args()
 
@@ -258,27 +266,29 @@ def main():
 
     # Load Config
     config = load_config()
-    config = merge_args_into_config(config, args)
-    
-    # Store raw args for legacy access if needed
+    # Store raw args for logic that needs them (skips)
     config["args"] = vars(args)
-
-    # Inject Model into Config (Crucial for Renderer)
-    if args.model:
-        config.setdefault("model", {})["name"] = args.model
-    if args.quantization:
-         config.setdefault("model", {})["quantization"] = args.quantization
 
     project_id = args.project_id
     
-    # Resolution Priority: CLI Args -> Config -> Default
-    region = args.region or config.get("project", {}).get("region") or "us-central1"
+    # Resolution Priority: Config -> Default
+    zone = config.get("project", {}).get("zone")
+    region = config.get("project", {}).get("region", "us-central1")
     
-    # Update config with resolved region if it was missing (for consistency)
-    if not config.get("project", {}).get("region"):
-        config.setdefault("project", {})["region"] = region
-      
+    # If zone is set, ensure region matches or derive it
+    if zone:
+        derived_region = "-".join(zone.split("-")[:-1])
+        if not region: 
+             region = derived_region
+        elif not region.startswith(derived_region.rsplit("-", 1)[0]):
+            print(f"⚠️ Warning: Region {region} may not match zone {zone}")
+    
+    # Update config with resolved values for consistency
+    config.setdefault("project", {})["region"] = region
+    
     print(f"🌍 Target Region: {region}")
+    if zone:
+        print(f"📍 Target Zone: {zone}")
 
     # 0. Enable APIs
     enable_apis(project_id)
@@ -290,15 +300,17 @@ def main():
     generated_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. Infrastructure Provisioning - Redis
-    redis_host = args.redis_host
-    redis_port = args.redis_port
+    redis_conf = config.get("redis", {})
+    redis_host = redis_conf.get("host")
+    redis_port = redis_conf.get("port", "6379")
+    redis_instance_name = redis_conf.get("instance_name", "financial-advisor-redis")
 
     if args.skip_redis:
         print("\n--- ⏭️ Skipping Redis provisioning (--skip-redis flag set) ---")
         if not redis_host:
             print("⚠️ Warning: No Redis host provided. Memory will be ephemeral.")
     elif not redis_host:
-        redis_host, redis_port = get_redis_host(project_id, region, args.redis_instance_name)
+        redis_host, redis_port = get_redis_host(project_id, region, redis_instance_name)
     else:
         print(f"\n--- 🗄️ Using provided Redis: {redis_host}:{redis_port} ---")
 
@@ -330,10 +342,8 @@ def main():
     create_secret(project_id, "opa-configuration", file_path="deployment/opa_config.yaml")
 
     # 3. Kubernetes Infrastructure (vLLM)
-    if not args.skip_k8s:
-        if args.target == "cloud_run":
-             pass
-    else:
+    # Note: K8s infra is deployed via deploy_hybrid()
+    if args.skip_k8s:
         print("\n--- ⏭️ Skipping K8s deployment (--skip-k8s flag set) ---")
 
     # 4. Build Image
@@ -349,99 +359,9 @@ def main():
     else:
         print(f"\n--- ⏭️ Skipping Build (Image: {image_uri}) ---")
 
-    # 5. Prepare Service YAML
-    print("\n--- 📝 Preparing Service Configuration ---")
-
-    with open("deployment/service.yaml") as f:
-        service_config = yaml.safe_load(f)
-
-    # Update Ingress Image and Inject Environment Variables
-    containers = service_config["spec"]["template"]["spec"]["containers"]
-    for container in containers:
-        if container["name"] == "ingress-agent":
-            container["image"] = image_uri
-
-            # Environment Variables Injection
-            env = container.setdefault("env", [])
-
-            def add_env(k, v):
-                for item in env:
-                    if item["name"] == k:
-                        item["value"] = str(v)
-                        return
-                env.append({"name": k, "value": str(v)})
-
-            # Inject all deployment envs from .env (single source of truth)
-            add_env("REDIS_HOST", redis_host or "")
-            add_env("REDIS_PORT", redis_port or "6379")
-            add_env("GOOGLE_CLOUD_PROJECT", project_id)
-            add_env("GOOGLE_CLOUD_LOCATION", region)
-            add_env("GOOGLE_GENAI_USE_VERTEXAI", os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "true"))
-            add_env("OPA_URL", os.environ.get("OPA_URL", "http://localhost:8181/v1/data/finance/allow"))
-
-            # vLLM Configuration
-            # Default to K8s internal DNS (assumes connectivity via VPC or similar)
-            vllm_url = os.environ.get("VLLM_BASE_URL", "http://vllm-service.governance-stack.svc.cluster.local:8000/v1")
-            add_env("VLLM_BASE_URL", vllm_url)
-            add_env("VLLM_API_KEY", os.environ.get("VLLM_API_KEY", "EMPTY"))
-
-            # Force Cloud Run to create a new revision by injecting a timestamp
-            deploy_timestamp = str(int(time.time()))
-            add_env("DEPLOY_TIMESTAMP", deploy_timestamp)
-
-            print(f"✅ Injected Envs: REDIS_HOST={redis_host}, VLLM_BASE_URL={vllm_url}, DEPLOY_TIMESTAMP={deploy_timestamp}")
-            break
-
-    # Guarantee Secret Name Consistency
-    volumes = service_config["spec"]["template"]["spec"]["volumes"]
-    for volume in volumes:
-        if volume["name"] == "policy-volume":
-            volume["secret"]["secretName"] = "finance-policy-rego"
-            break
-
-    # Write to temp file
-    with tempfile.NamedTemporaryFile(mode='w', suffix=".yaml", delete=False) as temp:
-        yaml.dump(service_config, temp)
-        temp_path = temp.name
-
-    try:
-        if args.target == "hybrid" or args.target == "gke":
-             # Pass config instead of args
-             deploy_hybrid(project_id, region, image_uri, redis_host, redis_port, config)
-             return
-
-        # 6. Deploy Main Service
-        print("\n--- 🚀 Deploying to Cloud Run ---")
-        run_command([
-            "gcloud", "run", "services", "replace", temp_path,
-            "--region", region,
-            "--project", project_id
-        ])
-
-        # Get the backend URL for UI configuration
-        backend_url = check_service_exists(project_id, region, args.service_name)
-        if not backend_url:
-            backend_url = f"https://{args.service_name}-{project_id}.{region}.run.app"
-
-        print("\n--- ✅ Main Service Deployment Complete ---")
-        print(f"Backend URL: {backend_url}")
-
-        # 7. Deploy UI Service
-        ui_url = deploy_ui_service(
-            project_id,
-            region,
-            args.ui_service_name,
-            backend_url,
-            skip_ui=args.skip_ui
-        )
-
-        print("\n--- ✅ Full Deployment Complete ---")
-        print(f"Backend Service: {backend_url}")
-        if ui_url:
-            print(f"UI Service: {ui_url}")
-
-    finally:
-        os.remove(temp_path)
+    # 5. Execute Hybrid Deployment (Default & Only Path)
+    deploy_hybrid(project_id, region, image_uri, redis_host, redis_port or "6379", config, skip_ui=args.skip_ui)
+    print("\n--- ✅ Deployment Complete ---")
 
 if __name__ == "__main__":
     main()

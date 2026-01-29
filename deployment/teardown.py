@@ -2,6 +2,15 @@
 import argparse
 import subprocess
 import sys
+from pathlib import Path
+
+# Ensure project root is in sys.path
+current_dir = Path(__file__).resolve().parent
+project_root = current_dir.parent
+if str(project_root) not in sys.path:
+    sys.path.append(str(project_root))
+
+from deployment.lib.config import load_config
 
 def run_command(command, check=True):
     print(f"🚀 Running: {' '.join(command)}")
@@ -13,11 +22,17 @@ def run_command(command, check=True):
             sys.exit(1)
 
 def main():
+    # Load config defaults
+    config = load_config()
+    default_region = config.get("project", {}).get("region", "us-central1")
+    default_zone = config.get("project", {}).get("zone")
+    default_cluster = config.get("cluster", {}).get("name", "governance-cluster")
+
     parser = argparse.ArgumentParser(description="Teardown Cybernetic Governance Engine Resources")
     parser.add_argument("--project-id", required=True, help="Google Cloud Project ID")
-    parser.add_argument("--region", default="us-central1", help="GCP Region")
-    parser.add_argument("--zone", help="GCP Zone (optional, overrides region for GKE)")
-    parser.add_argument("--cluster-name", default="governance-cluster", help="GKE Cluster Name")
+    parser.add_argument("--region", default=default_region, help=f"GCP Region (default: {default_region})")
+    parser.add_argument("--zone", default=default_zone, help="GCP Zone (optional, overrides region for GKE)")
+    parser.add_argument("--cluster-name", default=default_cluster, help="GKE Cluster Name")
     parser.add_argument("--service-name", default="financial-advisor-ui", help="Cloud Run UI Service Name")
     
     args = parser.parse_args()
