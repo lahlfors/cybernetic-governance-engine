@@ -204,16 +204,24 @@ graph LR
 │  │   FastAPI Server    │◀──▶│    Policy Enforcement      │  │
 │  │   LangGraph         │    │    finance_policy.rego     │  │
 │  │   ADK Agents        │    └────────────────────────────┘  │
-│  │   NeMo Guardrails   │                                     │
-│  └──────────┬──────────┘                                     │
-│             │                                                 │
-│             ▼                                                 │
-│  ┌─────────────────────┐                                     │
-│  │   Redis (State)     │                                     │
-│  │   Cloud Memorystore │                                     │
-│  └─────────────────────┘                                     │
+│  │   NeMo (In-Process) │                                     │
+│  └──────────┬──────────┴──────────────┬──────────────────────┘
+│             │                         │
+│             ▼                         ▼
+│  ┌─────────────────────┐    ┌────────────────────────────┐
+│  │   Redis (State)     │    │   External Services        │
+│  │   Cloud Memorystore │    │   ─────────────────        │
+│  └─────────────────────┘    │   Vertex AI (Reasoning)    │
+│                             │   vLLM (Inference Service) │
+│                             └────────────────────────────┘
 └──────────────────────────────────────────────────────────────┘
 ```
+
+The deployment uses a **Hybrid Compute** strategy:
+1.  **Stateless Agent (Cloud Run):** Hosts the LangGraph control plane and ADK adapters. Scales to zero.
+2.  **In-Process Governance:** NeMo Guardrails runs directly within the agent container for minimum latency (<10ms).
+3.  **Policy Sidecar (OPA):** Runs as a `localhost` sidecar container for zero-hop policy enforcement.
+4.  **Stateful Inference (GKE/Vertex):** The agents connect to external model endpoints (Vertex AI for reasoning, Self-Hosted vLLM for strict enforcement).
 
 **State Management (Dual Redis Strategy):**
 1.  **Application State:** Uses **Google Cloud Memorystore** (External). Stores LangGraph conversation checkpoints (`AgentState`) and session history. Credentials injected via `REDIS_URL`.
