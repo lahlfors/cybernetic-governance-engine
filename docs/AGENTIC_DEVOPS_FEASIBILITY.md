@@ -32,10 +32,17 @@ In this framework, **Latency is Capital**. The system starts with a "Latency Bud
 
 ### 3.2 Bankruptcy Protocol (The Circuit Breaker)
 *Current State:* The `CircuitBreaker` in `client.py` handles system failures (e.g., OPA is down).
-*Recommendation:* We must introduce a **"Hard Latency Ceiling"** (e.g., 3000ms).
-*   **Mechanism:** If the cumulative spend (Governance Tax + Reasoning Spend) exceeds the ceiling, the Governor declares "Bankruptcy."
-*   **Action:** The request is killed immediately, returning a fallback error ("System Overload").
-*   **Rationale:** A slow answer is often worse than a fast failure in high-frequency trading or real-time advisory contexts. Spending more currency than the user has patience for is a net loss.
+*Recommendation:* We must introduce a **"Hard Latency Ceiling"** with two distinct thresholds:
+
+1.  **Soft Ceiling (2000ms):**
+    *   *Action:* Trigger a "Degraded Performance" flag in telemetry.
+    *   *Goal:* Warn DevOps of rising "inflation" in the Latency Currency.
+2.  **Hard Ceiling (3000ms):**
+    *   *Action:* The Governor issues an immediate **SIGTERM** (Logical Cancellation) to the reasoning thread.
+    *   *Result:* Returns a static fallback ("System Overload") immediately.
+    *   *Mechanism:* If cumulative spend (Governance Tax + Reasoning Spend) > 3000ms, the Governor declares "Bankruptcy."
+
+*Rationale:* A slow answer is often worse than a fast failure in high-frequency trading or real-time advisory contexts. Spending more currency than the user has patience for is a net loss.
 
 ## 4. Intervention Strategy: "The Wall"
 
