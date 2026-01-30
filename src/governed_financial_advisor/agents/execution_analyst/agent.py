@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Execution_analyst_agent for finding the ideal execution strategy"""
+"""Execution_analyst_agent (Planner) - System 4 Feedforward Engine"""
 
-from typing import Any
+from typing import Any, Optional
 
 from google.adk import Agent
 from google.adk.tools import transfer_to_agent
 from pydantic import BaseModel, Field
 
-from config.settings import MODEL_FAST
+from config.settings import MODEL_REASONING
 from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
 
 
@@ -28,56 +28,61 @@ from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Pro
 class PlanStep(BaseModel):
     id: str = Field(description="Unique identifier for the step")
     action: str = Field(description="Action to perform (e.g., execute_trade, check_price)")
-    description: str = Field(description="Description of the step")
+    description: str = Field(description="Description of what this step does")
     parameters: dict[str, Any] = Field(description="Parameters for the action")
 
 class ExecutionPlan(BaseModel):
     plan_id: str = Field(description="Unique identifier for the plan")
-    steps: list[PlanStep] = Field(description="Ordered list of execution steps")
+    strategy_name: str = Field(description="Name of the strategy (e.g., 'Conservative Dividend Growth')")
+    rationale: str = Field(description="Detailed explanation of why this strategy fits the user profile")
     risk_factors: list[str] = Field(description="List of identified risk factors")
-    reasoning: str = Field(description="Detailed reasoning for the strategy")
+    steps: list[PlanStep] = Field(description="Ordered list of execution steps")
+
+    # Context Fields
+    user_risk_attitude: Optional[str] = Field(None, description="The user's stated risk attitude")
+    user_investment_period: Optional[str] = Field(None, description="The user's investment horizon")
 
 EXECUTION_ANALYST_PROMPT_OBJ = Prompt(
     prompt_data=PromptData(
-        model=MODEL_FAST,
+        model=MODEL_REASONING, # Using reasoning model for planning
         contents=[
             Content(
                 parts=[
                     Part(
                         text="""
-You are an expert Execution Analyst. Your goal is to generate a detailed, deterministic execution plan for a trading strategy.
+You are the **Execution Analyst (Planner)**, the "System 4 Feedforward" engine of the MACAW architecture.
+Your role is to translate high-level user intent into a concrete, machine-verifiable **Execution Plan**.
 
-Given Inputs:
-- provided_trading_strategy
-- user_risk_attitude
-- user_investment_period
-- user_execution_preferences
+**Core Responsibilities:**
+1.  **Strategy Formulation:** Analyze the user's risk attitude and investment period. If these are missing, your plan should be to ASK for them.
+2.  **Decomposition:** Break down the goal into logical sub-tasks (e.g., "Check Market" -> "Verify Funds" -> "Execute Trade").
+3.  **API Grounding:** You do NOT execute actions. You only select tools for the Executor to use later.
+    - Available Actions: `execute_trade`, `check_market_status`, `check_balance`.
+    - For `execute_trade`, you MUST specify `symbol`, `amount`, and `currency`.
 
-Your output MUST be a valid JSON object adhering to the provided schema (ExecutionPlan).
+**Input Context:**
+- `market_data_analysis_output`: Use this to justify your strategy.
+- `user_risk_attitude`: Conservative / Moderate / Aggressive.
+- `user_investment_period`: Short / Medium / Long Term.
 
-Structure details:
-{
-  "plan_id": "unique_id_string",
-  "reasoning": "Detailed textual explanation of the strategy, including philosophy, entry/exit logic, and risk management.",
-  "risk_factors": ["List of potential risks identified"],
-  "steps": [
-    {
-      "id": "step_1",
-      "action": "action_name (e.g., execute_trade, check_price, wait)",
-      "description": "Description of what this step does",
-      "parameters": {
-        "key": "value"
-      }
-    }
-  ]
-}
+**Output Requirement:**
+You must output a valid JSON object matching the `ExecutionPlan` schema.
+- `steps`: A DAG (Directed Acyclic Graph) of actions.
+- `rationale`: Explain *why* this plan is safe and suitable.
 
-Ensure the 'steps' form a logical sequence (DAG) that can be audited by a machine.
-Common actions include: 'market_analysis', 'execute_trade', 'execute_sell', 'wait_for_condition', 'check_portfolio'.
+**Constraint - Missing Info:**
+If the user says "buy Apple" but has not specified an amount, your plan should NOT include an `execute_trade` step.
+Instead, your plan should be to ask the user for clarification.
+HOWEVER, since you output a plan, if you cannot generate a trade plan, generate a "Clarification Plan"
+where the action is to ask the user. But ideally, you should transfer back to the supervisor or use a "ask_user" tool if available.
+For now, if info is missing, assume a standard default or clearer: The supervisor should handle conversational turns.
+You are called when a STRATEGY is needed.
 
-For 'execute_trade' or 'execute_sell', parameters MUST include 'quantity', 'asset', 'order_type'.
+**Handling Rejections:**
+If your previous plan was REJECTED by the Evaluator, you will receive `risk_feedback`.
+You MUST revise your plan to address the specific feedback (e.g., "Market Closed" -> "Schedule for Open").
 
-IMMEDIATELY AFTER generating this execution plan, you MUST call `transfer_to_agent("financial_coordinator")` to return control to the main agent.
+IMMEDIATELY AFTER generating this execution plan, you MUST call `transfer_to_agent("evaluator")` to hand off to the Simulation/Control layer.
 """
                     )
                 ]
@@ -89,7 +94,7 @@ IMMEDIATELY AFTER generating this execution plan, you MUST call `transfer_to_age
 def get_execution_analyst_instruction() -> str:
     return EXECUTION_ANALYST_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
 
-def create_execution_analyst_agent(model_name: str = MODEL_FAST) -> Agent:
+def create_execution_analyst_agent(model_name: str = MODEL_REASONING) -> Agent:
     """Factory to create execution analyst agent."""
     return Agent(
         model=model_name,
@@ -97,7 +102,6 @@ def create_execution_analyst_agent(model_name: str = MODEL_FAST) -> Agent:
         instruction=get_execution_analyst_instruction(),
         output_key="execution_plan_output",
         tools=[transfer_to_agent],
-        # Configure JSON mode for Gemini using ADK's output_schema
         output_schema=ExecutionPlan,
         generate_content_config={
             "response_mime_type": "application/json"
