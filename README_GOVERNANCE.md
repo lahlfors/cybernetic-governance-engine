@@ -85,14 +85,14 @@ We implement a **Risk-Based Tiered Strategy** for observability, solving the par
 ### The Solution: Tiered Observability (Implemented)
 The architecture implements a **GenAICostOptimizerProcessor** that routes spans to different tiers:
 *   **Implementation:** `src/infrastructure/telemetry/processors/genai_cost_optimizer.py`
-*   **Cold Tier Exporter:** `ParquetSpanExporter` writes full-fidelity spans to `logs/cold_tier/` locally
+*   **Cold Tier Exporter:** `ParquetSpanExporter` writes full-fidelity spans to GCS with date partitions
 
 | Tier | Destination | Content | Sampling Logic | Purpose |
 |------|-------------|---------|----------------|---------|
 | **Hot** | Cloud Trace / Langfuse | Metadata Only (Latency, Status, TraceID) | 100% | Operational Health |
-| **Cold** | Local Parquet (`logs/cold_tier/`) | Full Payload (Prompts, Reasoning, RAG Chunks) | **Smart Sampled** | Forensics & Compliance |
+| **Cold** | GCS Parquet (`gs://bucket/cold_tier/YYYY/MM/DD/`) | Full Payload (Prompts, Reasoning, RAG Chunks) | **Smart Sampled** | Forensics & Compliance |
 
-> **Note:** Cold tier currently writes to local disk. For production, implement GCS sync or use a cloud-native Parquet writer.
+> **Configuration:** Set `COLD_TIER_GCS_BUCKET` env var to enable GCS. Falls back to local disk if not configured.
 
 ## 4. Implementation Details
 
