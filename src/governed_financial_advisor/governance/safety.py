@@ -71,13 +71,20 @@ class ControlBarrierFunction:
         # 4. Verify Condition: h(next) >= (1-gamma) * h(current)
         # 4. Verify Condition: h(next) >= (1-gamma) * h(current)
         result = "SAFE"
+        is_bankruptcy = False
         if h_next < required_h_next or h_next < 0:
              result = f"UNSAFE: CBF violation. h(next)={h_next} < threshold={required_h_next}"
+             # Bankruptcy occurs when cash would go below minimum
+             is_bankruptcy = h_next < 0
 
         if span:
              span.set_attribute("safety.cash.next", next_cash)
              span.set_attribute("safety.barrier.h_next", h_next)
              span.set_attribute("safety.result", result)
+             # Bankruptcy monitor attribute for Langfuse dashboard
+             if is_bankruptcy:
+                 span.set_attribute("event.bankruptcy", True)
+                 span.set_attribute("safety.bankruptcy_deficit", abs(h_next))
 
         return result
 
@@ -91,6 +98,16 @@ class ControlBarrierFunction:
         new_balance = current - cost
         redis_client.set(self.redis_key, str(new_balance))
         logger.info(f"✅ State Updated: Cash balance is now {new_balance}")
+
+    def rollback_state(self, cost: float):
+        """
+        Reverts state after a failed execution (e.g., broker API error).
+        Call this when a trade was approved but failed downstream.
+        """
+        current = self._get_current_cash()
+        restored_balance = current + cost
+        redis_client.set(self.redis_key, str(restored_balance))
+        logger.info(f"🔄 State Rolled Back: Cash balance restored to {restored_balance}")
 
 # Global instance
 safety_filter = ControlBarrierFunction()

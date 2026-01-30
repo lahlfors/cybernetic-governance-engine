@@ -25,7 +25,7 @@ class HybridClient:
         self,
         vllm_base_url: str = "http://vllm-service.governance-stack.svc.cluster.local:8000/v1",
         vllm_api_key: str = "EMPTY",
-        vllm_model: str = os.getenv("VLLM_MODEL", "google/gemma-3-27b-it"),
+        vllm_model: str = "meta-llama/Llama-3.1-8B-Instruct",  # Hardcoded - no configurable alternatives
         vertex_model: str = "gemini-2.5-pro",
         vertex_project: str | None = None,
         vertex_location: str = "us-central1",

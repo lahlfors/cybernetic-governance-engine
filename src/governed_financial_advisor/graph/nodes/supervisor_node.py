@@ -7,6 +7,7 @@ routing by intercepting its route_request tool call.
 
 from src.governed_financial_advisor.agents.financial_advisor.agent import root_agent
 from src.governed_financial_advisor.graph.nodes.adapters import run_adk_agent
+from src.governed_financial_advisor.graph.state import AgentState
 
 
 def supervisor_node(state):

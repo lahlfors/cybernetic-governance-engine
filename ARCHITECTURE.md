@@ -48,12 +48,12 @@ We implement a strict separation of concerns to guarantee safety and structure w
 
 ### 3. Semantic Safety (NeMo Guardrails)
 *   **Role:** Checks prompt/response content for semantic violations (toxicity, jailbreaks, hallucination).
-*   **Implementation:** NeMo Guardrails (`nemo_manager.py`) wrapping the "Brain".
-*   **Deployment:** In-Process (Main Container).
+*   **Implementation:** NeMo Guardrails (`nemo_manager.py`) running **In-Process** within the main container.
+*   **Deployment:** In-Process (Main Container) - validated in both `server.py` entry point and parallel safety checks in `optimistic_nodes.py`.
 
 ### 4. Structural Determinism (The Enforcer)
 *   **Role:** Syntactic enforcement of JSON schemas via Finite State Machines (FSM).
-*   **Model:** `google/gemma-2-9b-it` (Self-Hosted on GKE with NVIDIA L4).
+*   **Model:** `meta-llama/Llama-3.1-8B-Instruct` (Self-Hosted on GKE with NVIDIA L4).
 *   **Technique:** vLLM `guided_json`.
 
 This pattern ensures **Zero-Hallucination Structure** while verifying **Mathematical and Semantic Safety**.
@@ -84,8 +84,9 @@ This unified view allows us to correlate "high-level intent" (Gemini) with "low-
 |------|----------------|
 | `graph.py` | Defines the `StateGraph` with nodes, edges, and conditional routing |
 | `state.py` | Typed state schema (`AgentState`) with message history and control signals |
-| `router.py` | Helper functions for conditional edge logic |
 | `checkpointer.py` | Redis-backed or in-memory persistence for conversation state |
+
+> **Note:** The deterministic router is in `src/tools/router.py`, not in the graph directory.
 
 **Key Pattern: Conditional Edges**
 ```python
@@ -236,6 +237,7 @@ The deployment uses a **Hybrid Compute** strategy:
 | `REDIS_URL` | Redis connection for state persistence |
 | `MODEL_FAST` | Fast model alias (e.g., `gemini-2.5-flash-lite`) |
 | `MODEL_REASONING` | Reasoning model alias (e.g., `gemini-2.5-pro`) |
+| `MODEL_CONSENSUS` | Consensus engine model (defaults to `MODEL_REASONING`) |
 
 ---
 

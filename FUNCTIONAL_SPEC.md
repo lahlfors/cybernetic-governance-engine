@@ -78,17 +78,17 @@ graph TD
 
 ## 4. Gap Analysis (Documentation vs. Code)
 
-### 4.1. NeMo Sidecar Architecture
-*   **Documentation**: Describes a "Sidecar" architecture where NeMo runs as a separate service to ensure isolation.
-*   **Code**: `src/governed_financial_advisor/server.py` initializes NeMo **in-process** (`nemo_manager.load_rails()`). While a sidecar server exists (`nemo_server.py`), the main application does not use it, creating a coupling risk and deviating from the "Zero-Hop" sidecar promise for this specific component.
+### 4.1. NeMo Architecture ✅ RESOLVED
+*   **Previous Gap**: Documentation described a "Sidecar" architecture where NeMo runs as a separate service.
+*   **Current State**: NeMo now runs consistently **In-Process** across both `server.py` (entry point validation) and `optimistic_nodes.py` (parallel safety checks). The `check_nemo_guardrails` function uses `validate_with_nemo` from `nemo_manager.py`, aligning with the documented architecture.
 
 ### 4.2. Risk Analyst Integration
-*   **Documentation**: Often implies the Risk Analyst is part of the runtime loop (though `GAP_ANALYSIS_REPORT.md` correctly notes it was moved).
-*   **Code**: Confirms `Risk Analyst` is commented out in `graph.py` and runs offline. The runtime safety is handled by the `Optimistic Execution Node` and deterministic rules, not the LLM-based Risk Analyst.
+*   **Documentation**: Often implies the Risk Analyst is part of the runtime loop.
+*   **Code**: Confirms `Risk Analyst` is commented out in `graph.py` and runs offline. The runtime safety is handled by the `Optimistic Execution Node` (OPA + NeMo in parallel) and deterministic rules, not the LLM-based Risk Analyst. This is now correctly documented.
 
-### 4.3. "ADK Native" vs. Hybrid
-*   **Memory/Context**: Suggested an "ADK Native" model might be expected.
-*   **Code**: Fully implements the **Hybrid Model**. LangGraph is the authoritative orchestrator, wrapping ADK agents as tools/nodes. This is a robust implementation but differs from a pure "Multi-Agent Framework" approach.
+### 4.3. Model Configuration ✅ RESOLVED
+*   **Previous Gap**: Consensus Engine used hardcoded model name (`gemini-2.5-pro`).
+*   **Current State**: Model is now configurable via `MODEL_CONSENSUS` environment variable (defaults to `MODEL_REASONING`). This enables using different providers for actor/critic patterns.
 
 ### 4.4. Semantic Checks
 *   **Documentation**: Mentions extensive semantic verification (PII, Jailbreaks).

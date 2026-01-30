@@ -9,9 +9,12 @@ load_dotenv()
 # Defaulting to Gemini 2.5 Flash-Lite (Jan 2026 Stable)
 MODEL_FAST = os.getenv("MODEL_FAST", "gemini-2.5-flash-lite")
 
-# Reasoning path: Risk Analyst, Verifier, Consensus (safety-critical)
+# Reasoning path: Risk Analyst, Verifier (safety-critical)
 # Defaulting to Gemini 2.5 Pro (Jan 2026 Stable)
 MODEL_REASONING = os.getenv("MODEL_REASONING", "gemini-2.5-pro")
+
+# Consensus Engine: Separate model for multi-agent debate (can use different provider)
+MODEL_CONSENSUS = os.getenv("MODEL_CONSENSUS", MODEL_REASONING)
 
 # Legacy alias for backward compatibility
 MODEL_NAME = MODEL_FAST

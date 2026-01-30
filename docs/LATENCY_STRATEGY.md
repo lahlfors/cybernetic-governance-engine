@@ -17,7 +17,7 @@ We utilize a dedicated, self-hosted inference node for structure enforcement, op
 
 ### Hardware: NVIDIA L4 (24GB VRAM)
 *   **Why:** The L4 is the most cost-effective GPU for models < 20B parameters.
-*   **Capacity:** A single L4 can comfortably host `google/gemma-2-9b-it` (Require ~18GB VRAM in bfloat16) with room for KV cache.
+*   **Capacity:** A single L4 can comfortably host `meta-llama/Llama-3.1-8B-Instruct` (~16GB VRAM in float16) with room for KV cache.
 *   **Throughput:** Capable of high token-per-second generation for JSON structures.
 
 ### Software: vLLM + Prefix Caching
@@ -34,7 +34,7 @@ We use **vLLM** with **Prefix Caching** enabled (`--enable-prefix-caching`).
 | Component | Model | Hosted On | Optimization |
 |---|---|---|---|
 | **Reasoning** | `gemini-2.5-pro` | Vertex AI (SaaS) | Deep semantic understanding. |
-| **Governance** | `gemma-2-9b-it` | GKE (NVIDIA L4) | Prefix Caching + Guided JSON. |
+| **Governance** | `Llama-3.1-8B-Instruct` | GKE (NVIDIA L4) | Prefix Caching + Guided JSON. |
 
 ## Latency Budget Example
 
