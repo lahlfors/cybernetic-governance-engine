@@ -1,6 +1,6 @@
 project:
-  region: northamerica-northeast2
-  zone: northamerica-northeast2-a # Explicit zone for L4 availability
+  region: null
+  zone: null # Set to null to allow .env/args override
 
 cluster:
   name: governance-cluster

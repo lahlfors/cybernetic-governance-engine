@@ -94,6 +94,13 @@ def ensure_gke_cluster(project_id, config):
         if status != "RUNNING":
             print(f"⚠️ Cluster status is {status}. Waiting might be required.")
     else:
+        # Check if Terraform managed - if so, we expect it to exist or fail
+        tf_managed = config.get("args", {}).get("tf_managed", False)
+        if tf_managed:
+            print(f"❌ Error: GKE cluster '{cluster_name}' not found, but deployment is Terraform managed.")
+            print("   Ensure Terraform has successfully provisioned the cluster.")
+            raise RuntimeError("Cluster not found in TF-managed mode")
+
         print(f"⚠️ GKE cluster '{cluster_name}' not found. Creating new Private Cluster...")
         print("⏳ This operation may take 15-20 minutes.")
         
@@ -125,7 +132,7 @@ def ensure_gke_cluster(project_id, config):
             "--shielded-secure-boot",
             "--shielded-integrity-monitoring",
             "--enable-private-nodes", 
-            "--master-ipv4-cidr", "172.16.100.0/28", # Arbitrary non-overlapping range
+            "--master-ipv4-cidr", "172.16.101.0/28", # Updated to avoid conflict with legacy subnet
             "--enable-ip-alias", # Required for private
             "--enable-master-authorized-networks",
             "--master-authorized-networks", "0.0.0.0/0",
