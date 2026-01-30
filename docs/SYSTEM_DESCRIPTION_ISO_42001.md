@@ -36,12 +36,13 @@ The system operates on an **Actor-Critic** cognitive architecture, orchestrated 
 
 ## 3. Governance & Control Mechanisms
 
-The GFA implements a "Defense in Depth" strategy with three distinct control layers.
+The GFA implements a "Defense in Depth" strategy with multiple control layers.
 
 ### 3.1 Layer 1: Mathematical Safety (CBFs)
 
 *   **Description:** Enforces hard mathematical constraints on state transitions (invariant: `cash >= min_balance`). Calculates `h(next) >= (1-gamma) * h(current)` to guarantee safety.
 *   **Control Implementation:** `ControlBarrierFunction` in `safety.py` (Redis-backed state).
+*   **Transactional Support:** `update_state(cost)` commits state changes; `rollback_state(cost)` reverts state on downstream execution failures.
 *   **Audit Evidence:** Traces containing `safety.cbf_check` and `safety.barrier.h_next`.
 
 ### 3.2 Layer 2: Business Logic Policy (OPA)

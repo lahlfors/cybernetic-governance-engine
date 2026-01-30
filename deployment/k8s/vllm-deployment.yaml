@@ -67,11 +67,11 @@ spec:
             - "-m"
             - "vllm.entrypoints.openai.api_server"
             - "--model"
-            - "google/gemma-2-9b-it"
+            - "meta-llama/Llama-3.1-8B-Instruct"
             - "--served-model-name"
-            - "google/gemma-2-9b-it"
+            - "meta-llama/Llama-3.1-8B-Instruct"
             - "--dtype"
-            - "bfloat16"
+            - "float16"
             - "--enable-prefix-caching"
             - "--max-model-len"
             - "8192"
@@ -81,7 +81,6 @@ spec:
             - "--gpu-memory-utilization"
             - "0.95"
             - "--disable-log-stats"
-            - "--enable-prefix-caching"
       nodeSelector:
         cloud.google.com/gke-accelerator: "nvidia-l4"
       tolerations:

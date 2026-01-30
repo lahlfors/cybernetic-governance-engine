@@ -92,5 +92,15 @@ class ControlBarrierFunction:
         redis_client.set(self.redis_key, str(new_balance))
         logger.info(f"✅ State Updated: Cash balance is now {new_balance}")
 
+    def rollback_state(self, cost: float):
+        """
+        Reverts state after a failed execution (e.g., broker API error).
+        Call this when a trade was approved but failed downstream.
+        """
+        current = self._get_current_cash()
+        restored_balance = current + cost
+        redis_client.set(self.redis_key, str(restored_balance))
+        logger.info(f"🔄 State Rolled Back: Cash balance restored to {restored_balance}")
+
 # Global instance
 safety_filter = ControlBarrierFunction()

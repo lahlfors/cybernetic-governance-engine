@@ -15,7 +15,7 @@ The architecture enforces "Defense in Depth" through six distinct layers (0-5):
 
 ### Layer 0: Conversational Guardrails (NeMo)
 **Goal:** Input/Output Safety & Topical Control.
-We use **NeMo Guardrails** (running In-Process) as the first line of defense to ensure the model stays on topic and avoids jailbreaks *before* it even processes a tool call.
+We use **NeMo Guardrails** running **In-Process** as the first line of defense to ensure the model stays on topic and avoids jailbreaks *before* it even processes a tool call. The in-process architecture is validated in both the main `server.py` entry point and the parallel safety checks in `optimistic_nodes.py`.
 *   **Implementation:** `src/utils/nemo_manager.py` & `config/rails/`
 *   **Observability (ISO 42001):** A custom `NeMoOTelCallback` intercepts every guardrail intervention (e.g., `self_check_input`) and emits an OpenTelemetry span with `guardrail.outcome` and `iso.control_id="A.6.2.8"`.
 
@@ -48,6 +48,9 @@ We use **Open Policy Agent (OPA)** and **Rego** to decouple policy from code. Th
 *   **Architecture (Sidecar):** OPA runs as a sidecar container on `localhost`. This eliminates network latency, enabling **real-time** compliance checks critical for high-frequency trading decisions.
 *   **Implementation:** `src/governance/policy/finance_policy.rego`
 
+**State Management (CBF):**
+The `ControlBarrierFunction` in `safety.py` now supports transactional state updates with `rollback_state(cost)` to handle failed downstream executions.
+
 ### Layer 4: The Semantic Verifier (Intent)
 **Goal:** Semantic Safety & Anti-Hallucination.
 We implement a **Propose-Verify-Execute** pattern:
@@ -60,7 +63,8 @@ We implement a **Propose-Verify-Execute** pattern:
 ### Layer 5: The Consensus Engine (Adaptive Compute)
 **Goal:** High-Stakes Validation.
 For actions exceeding a high-risk threshold ($10,000), the system triggers an **Ensemble Check**.
-*   **Mechanism:** The `ConsensusEngine` orchestrates a multi-agent debate (using distinct "Risk Manager" and "Compliance Officer" personas via Gemini-Pro) to ensure unanimous agreement before execution.
+*   **Mechanism:** The `ConsensusEngine` orchestrates a multi-agent debate (using distinct "Risk Manager" and "Compliance Officer" personas) to ensure unanimous agreement before execution.
+*   **Model Configuration:** Uses `MODEL_CONSENSUS` environment variable (defaults to `MODEL_REASONING`).
 *   **Integration:** Embedded in the `@governed_tool` decorator. If the consensus check fails, the trade is blocked even if OPA approves.
 *   **Implementation:** `src/governance/consensus.py`
 
@@ -78,14 +82,17 @@ We implement a **Risk-Based Tiered Strategy** for observability, solving the par
 *   **Hot Storage (Datadog/Cloud Trace):** Essential for operational health (latency, error rates) but prohibitively expensive for storing full LLM payloads (prompts/responses).
 *   **Cold Storage (S3/GCS):** Cheap but slow to query. Essential for compliance and forensics ("Why did the agent do that?").
 
-### The Solution: Smart Sampling (Design Pattern)
-The architecture includes a design for a **Risk-Based Tiered Strategy** to route data based on utility.
-*Note: The full `TieredSpanProcessor` implementation is currently a planned feature for the production hardening phase.*
+### The Solution: Tiered Observability (Implemented)
+The architecture implements a **GenAICostOptimizerProcessor** that routes spans to different tiers:
+*   **Implementation:** `src/infrastructure/telemetry/processors/genai_cost_optimizer.py`
+*   **Cold Tier Exporter:** `ParquetSpanExporter` writes full-fidelity spans to `logs/cold_tier/` locally
 
 | Tier | Destination | Content | Sampling Logic | Purpose |
 |------|-------------|---------|----------------|---------|
-| **Hot** | Cloud Trace | Metadata Only (Latency, Status, TraceID) | 100% | Operational Health |
-| **Cold** | GCS/S3 (Parquet) | Full Payload (Prompts, Reasoning, RAG Chunks) | **Smart Sampled** | Forensics & Compliance |
+| **Hot** | Cloud Trace / Langfuse | Metadata Only (Latency, Status, TraceID) | 100% | Operational Health |
+| **Cold** | Local Parquet (`logs/cold_tier/`) | Full Payload (Prompts, Reasoning, RAG Chunks) | **Smart Sampled** | Forensics & Compliance |
+
+> **Note:** Cold tier currently writes to local disk. For production, implement GCS sync or use a cloud-native Parquet writer.
 
 ## 4. Implementation Details
 

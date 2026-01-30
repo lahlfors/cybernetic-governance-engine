@@ -4,6 +4,7 @@ from typing import Any
 from langchain_google_genai import ChatGoogleGenerativeAI
 from opentelemetry import trace
 
+from config.settings import MODEL_CONSENSUS
 from src.governed_financial_advisor.utils.telemetry import genai_span
 
 logger = logging.getLogger("ConsensusEngine")
@@ -15,7 +16,7 @@ class ConsensusEngine:
     Implements a 'Critic' check for high-stakes decisions using a separate LLM call.
     """
 
-    def __init__(self, threshold: float = 10000.0, model_name: str = "gemini-2.5-pro"):
+    def __init__(self, threshold: float = 10000.0, model_name: str = MODEL_CONSENSUS):
         self.threshold = threshold
         self.model_name = model_name
 
@@ -92,8 +93,14 @@ class ConsensusEngine:
                 decision = "ESCALATE"
                 reason = f"Consensus unclear. Votes: {votes}"
 
-            span.set_attribute("consensus.decision", decision)
-            span.set_attribute("consensus.votes", str(votes))
+            span.set_attribute(\"consensus.decision\", decision)
+            span.set_attribute(\"consensus.votes\", str(votes))
+            # ISO 42001 Compliance Attributes
+            span.set_attribute(\"iso.control_id\", \"A.8.4\")
+            span.set_attribute(\"iso.requirement\", \"AI System Impact Assessment\")
+            if decision == \"ESCALATE\":
+                span.set_attribute(\"iso.control_id_secondary\", \"A.4.2\")
+                span.set_attribute(\"iso.requirement_secondary\", \"Risk Management\")
 
             return {"status": decision, "reason": reason, "votes": votes}
 

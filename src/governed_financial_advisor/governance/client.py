@@ -120,6 +120,9 @@ class OPAClient:
 
         with tracer.start_as_current_span("governance.opa_check") as span:
             start_time = time.time()
+            # ISO 42001 Compliance Attributes
+            span.set_attribute("iso.control_id", "A.10.1")
+            span.set_attribute("iso.requirement", "Transparency & Explainability")
             span.set_attribute("governance.opa_url", self.url)
             span.set_attribute("governance.action", input_data.get("action", "unknown"))
             # Estimate payload size (approximation)

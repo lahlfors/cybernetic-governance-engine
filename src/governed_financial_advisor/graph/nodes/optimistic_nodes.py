@@ -3,7 +3,6 @@ import logging
 import time
 from typing import Any, Literal
 
-import httpx
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
@@ -13,38 +12,37 @@ from src.governed_financial_advisor.graph.state import AgentState
 logger = logging.getLogger("OptimisticExecution")
 tracer = trace.get_tracer("src.governed_financial_advisor.graph.nodes.optimistic_nodes")
 
-async def check_nemo_guardrails(state: AgentState) -> dict[str, Any]:
+async def check_nemo_guardrails(state: AgentState, rails=None) -> dict[str, Any]:
     """
     Rail B: NeMo Guardrails Check (Parallel).
+    Uses In-Process nemo_manager (aligned with server.py architecture).
     """
-    logger.info("🛡️ NeMo Rail: Starting Semantic Check")
+    logger.info("🛡️ NeMo Rail: Starting Semantic Check (In-Process)")
     user_input = "Unknown"
     if state.get("messages"):
          user_input = state["messages"][-1].content
 
-    NEMO_URL = "http://nemo:8000/v1/guardrails/check"
-    # Local fallback
     try:
-         import os
-         if not os.getenv("DOCKER_ENV"):
-              NEMO_URL = "http://localhost:8000/v1/guardrails/check"
+        # Import in-process NeMo manager
+        from src.governed_financial_advisor.utils.nemo_manager import load_rails, validate_with_nemo
 
-         async with httpx.AsyncClient() as client:
-              response = await client.post(NEMO_URL, json={"input": user_input}, timeout=2.0)
-              response.raise_for_status()
-              result = response.json().get("response", "")
+        # Use provided rails or load fresh instance
+        if rails is None:
+            rails = load_rails()
 
-              if "refuse" in result.lower() or "cannot" in result.lower():
-                   logger.warning(f"⛔ NeMo Rail BLOCKED: {result}")
-                   return {"nemo_status": "BLOCKED", "nemo_reason": result}
+        is_safe, response = await validate_with_nemo(user_input, rails)
 
-              logger.info("✅ NeMo Rail PASSED")
-              return {"nemo_status": "APPROVED"}
+        if not is_safe:
+            logger.warning(f"⛔ NeMo Rail BLOCKED: {response}")
+            return {"nemo_status": "BLOCKED", "nemo_reason": response}
+
+        logger.info("✅ NeMo Rail PASSED (In-Process)")
+        return {"nemo_status": "APPROVED"}
 
     except Exception as e:
-         logger.warning(f"⚠️ NeMo Rail Failed (Sidecar Unreachable?): {e}")
-         # Fail Open for demo/dev, Closed for Prod
-         return {"nemo_status": "SKIPPED", "error": str(e)}
+        logger.warning(f"⚠️ NeMo Rail Failed: {e}")
+        # Fail Open for demo/dev, Closed for Prod
+        return {"nemo_status": "SKIPPED", "error": str(e)}
 
 async def trader_prep_node(state: AgentState) -> dict[str, Any]:
     """

@@ -37,31 +37,18 @@ The `deploy_all.py` script is the central entry point for deploying the entire C
 
 The deployment script enforces "Golden Path" configurations to ensure reliability and performance. Ad-hoc model configuration (e.g., custom quantization) is disabled.
 
-**Supported Configurations:**
+**Supported Configuration:**
 
-| Family | Default Model | Accelerator | Optimization |
-| :--- | :--- | :--- | :--- |
-| **Llama** | `meta-llama/Llama-3.1-8B-Instruct` | **GPU** (T4, L4, A100) | `gptq`, `float16` |
-| **Gemma** | `google/gemma-3-27b-it` | **GPU** (L4, A100) | `bfloat16` (Text Only) |
+| Model | Accelerator | Optimization |
+| :--- | :--- | :--- |
+| `meta-llama/Llama-3.1-8B-Instruct` | **GPU** (T4, L4) | `float16` |
 
-> **Note:** Gemma models are **blocked** on T4 GPUs due to lack of native bfloat16 support.
+> **Note:** The vLLM model is hardcoded to Llama 3.1 8B. Alternative models are not configurable.
 
 ```bash
-# 1. Llama 3.1 8B (Default Golden Path)
-# Target: NVIDIA T4 (Low Cost)
+# Deploy with Llama 3.1 8B (Hardcoded Model)
+# Target: NVIDIA T4 or L4
 python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID
-
-# 2. Gemma 3 27B on GPU
-# Target: NVIDIA L4 or A100 (Required for bfloat16)
-python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID \
-    --model-family gemma \
-    --accelerator-type l4  # or a100
-
-# 4. Custom Model ID (Must match Family Golden Path)
-# Example: Deploying a fine-tuned Llama 8B
-python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID \
-    --model-family llama \
-    --model-id "my-org/my-finetuned-llama-8b"
 
 # Skip specific services
 python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --skip-build  # Skip container build
