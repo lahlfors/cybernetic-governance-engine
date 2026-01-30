@@ -27,7 +27,18 @@ We map the components of our Refactored Graph to the **Viable System Model (VSM)
 | **System 4** | **Intelligence** | **Planner (Execution Analyst)** | Clause 6.1 (Risk Planning) |
 | **System 3** | **Control** | **Evaluator Agent** | Clause 9.1 (Monitoring) |
 | **System 2** | **Coordination** | **Graph State / Schema** | Clause 8 (Operation) |
+| **System 2** | **Coordination** | **Graph State / Schema** | Clause 8 (Operation) |
 | **System 1** | **Implementation** | **Executor (Governed Trader)** | Clause 8 (Operation) |
+
+### 3.1. Technical Control Mappings (Telemetry)
+The system emits specific ISO Control IDs in its OpenTelemetry spans to prove compliance during audits:
+
+| Control ID | Requirement | Implementation Component | Telemetry Attribute |
+| :--- | :--- | :--- | :--- |
+| **A.10.1** | Transparency & Explainability | **Governance Client** (`client.py`) | `iso.control_id` |
+| **A.8.4** | AI System Impact Assessment | **Consensus Engine** (`consensus.py`) | `iso.control_id` |
+| **A.4.2** | Risk Management | **Consensus Engine** (Escalation) | `iso.control_id_secondary` |
+
 
 ## 4. Governance Mechanisms
 
