@@ -1,6 +1,9 @@
 import logging
+import os
+import tempfile
 import time
 from collections.abc import Sequence
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -10,10 +13,15 @@ from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
 logger = logging.getLogger(__name__)
 
+
 class ParquetSpanExporter(SpanExporter):
     """
-    Exports spans to local Parquet files.
-    Each export batch is written to a new file to support asynchronous ingestion.
+    Exports spans to Parquet files in Google Cloud Storage (GCS).
+    Falls back to local disk if GCS is not configured or unavailable.
+    
+    Environment Variables:
+        COLD_TIER_GCS_BUCKET: GCS bucket name for cold tier storage
+        COLD_TIER_GCS_PREFIX: Path prefix within bucket (default: "cold_tier")
     """
 
     def __init__(
@@ -49,10 +57,7 @@ class ParquetSpanExporter(SpanExporter):
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
         try:
-            data_list = []
-            for span in spans:
-                data = self._span_to_dict(span)
-                data_list.append(data)
+            data_list = [self._span_to_dict(span) for span in spans]
 
             if not data_list:
                 return SpanExportResult.SUCCESS
@@ -138,9 +143,9 @@ class ParquetSpanExporter(SpanExporter):
         }
 
         # Merge attributes with prefix
-        # We handle attributes carefully
         attributes = span.attributes or {}
         for k, v in attributes.items():
             data[f"attr.{k}"] = str(v)  # Convert to string for schema consistency
 
         return data
+

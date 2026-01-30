@@ -82,17 +82,13 @@ We implement a **Risk-Based Tiered Strategy** for observability, solving the par
 *   **Hot Storage (Datadog/Cloud Trace):** Essential for operational health (latency, error rates) but prohibitively expensive for storing full LLM payloads (prompts/responses).
 *   **Cold Storage (S3/GCS):** Cheap but slow to query. Essential for compliance and forensics ("Why did the agent do that?").
 
-### The Solution: Tiered Observability (Implemented)
-The architecture implements a **GenAICostOptimizerProcessor** that routes spans to different tiers:
-*   **Implementation:** `src/infrastructure/telemetry/processors/genai_cost_optimizer.py`
-*   **Cold Tier Exporter:** `ParquetSpanExporter` writes full-fidelity spans to `logs/cold_tier/` locally
+### The Solution: Smart Sampling (Implemented)
+The architecture implements a **Risk-Based Tiered Strategy** using the `GenAICostOptimizerProcessor` to route data based on utility.
 
 | Tier | Destination | Content | Sampling Logic | Purpose |
 |------|-------------|---------|----------------|---------|
-| **Hot** | Cloud Trace / Langfuse | Metadata Only (Latency, Status, TraceID) | 100% | Operational Health |
-| **Cold** | Local Parquet (`logs/cold_tier/`) | Full Payload (Prompts, Reasoning, RAG Chunks) | **Smart Sampled** | Forensics & Compliance |
-
-> **Note:** Cold tier currently writes to local disk. For production, implement GCS sync or use a cloud-native Parquet writer.
+| **Hot** | Cloud Trace | Metadata Only (Latency, Status, TraceID) | 100% | Operational Health |
+| **Cold** | Local Parquet (Sync needed for GCS) | Full Payload (Prompts, Reasoning, RAG Chunks) | **Smart Sampled** | Forensics & Compliance |
 
 ## 4. Implementation Details
 
