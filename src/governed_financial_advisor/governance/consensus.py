@@ -93,14 +93,14 @@ class ConsensusEngine:
                 decision = "ESCALATE"
                 reason = f"Consensus unclear. Votes: {votes}"
 
-            span.set_attribute(\"consensus.decision\", decision)
-            span.set_attribute(\"consensus.votes\", str(votes))
+            span.set_attribute("consensus.decision", decision)
+            span.set_attribute("consensus.votes", str(votes))
             # ISO 42001 Compliance Attributes
-            span.set_attribute(\"iso.control_id\", \"A.8.4\")
-            span.set_attribute(\"iso.requirement\", \"AI System Impact Assessment\")
-            if decision == \"ESCALATE\":
-                span.set_attribute(\"iso.control_id_secondary\", \"A.4.2\")
-                span.set_attribute(\"iso.requirement_secondary\", \"Risk Management\")
+            span.set_attribute("iso.control_id", "A.8.4")
+            span.set_attribute("iso.requirement", "AI System Impact Assessment")
+            if decision == "ESCALATE":
+                span.set_attribute("iso.control_id_secondary", "A.4.2")
+                span.set_attribute("iso.requirement_secondary", "Risk Management")
 
             return {"status": decision, "reason": reason, "votes": votes}
 
