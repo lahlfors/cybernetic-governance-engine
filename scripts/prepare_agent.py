@@ -6,8 +6,11 @@ from pathlib import Path
 import sys
 import importlib
 
-# Ensure current directory is in path
-sys.path.append(os.getcwd())
+# Ensure project root is in path
+# Assumes script is in scripts/ directory
+project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(project_root))
+os.chdir(project_root)
 
 def main():
     parser = argparse.ArgumentParser(description="Prepare Agent for Deployment")

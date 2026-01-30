@@ -4,7 +4,7 @@ resource "google_project_service" "apis" {
     "run.googleapis.com",
     "storage.googleapis.com",
     "secretmanager.googleapis.com",
-    "redis.googleapis.com",
+    "firestore.googleapis.com",
     "cloudbuild.googleapis.com",
     "logging.googleapis.com"
   ])

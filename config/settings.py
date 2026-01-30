@@ -26,7 +26,7 @@ class Config:
     PORT = int(os.getenv("PORT", 8080))
 
     # Data Stores
-    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+    FIRESTORE_DATABASE = os.getenv("FIRESTORE_DATABASE", "(default)")
 
     # Governance
     OPA_URL = os.getenv("OPA_URL", "http://localhost:8181/v1/data/finance/decision")
