@@ -9,7 +9,16 @@ class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
 
     # Routing Control
-    next_step: Literal["data_analyst", "risk_analyst", "execution_analyst", "governed_trader", "human_review", "FINISH"]
+    next_step: Literal[
+        "data_analyst",
+        "risk_analyst",
+        "execution_analyst",
+        "evaluator",
+        "governed_trader",
+        "explainer",
+        "human_review",
+        "FINISH"
+    ]
 
     # Risk Loop Control
     risk_status: Literal["UNKNOWN", "APPROVED", "REJECTED_REVISE"]
@@ -17,14 +26,18 @@ class AgentState(TypedDict):
 
     # Safety & Optimization Control
     safety_status: Literal["APPROVED", "BLOCKED", "ESCALATED", "SKIPPED"]
-    trader_prep_output: dict[str, Any] | None
 
     # User Profile
     risk_attitude: str | None
     investment_period: str | None
 
     # Execution Data
-    execution_plan_output: str | dict | None # Holds the structured plan
+    execution_plan_output: str | dict | None # Holds the structured plan (System 4 Output)
+
+    # MACAW / System 3 Control Signals
+    evaluation_result: dict[str, Any] | None # The Evaluator's Verdict & Simulation Results
+    execution_result: dict[str, Any] | None # The Executor's Technical Output (System 1)
+
     user_id: str # User Identity
     
     # Telemetry

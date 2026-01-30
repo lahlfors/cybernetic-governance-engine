@@ -2,97 +2,52 @@
 
 ## 1. System Overview
 
-The **Governed Financial Advisor** is a high-reliability agentic system designed for regulated financial environments. It implements a **Hybrid Architecture** that combines deterministic workflow orchestration (LangGraph) with probabilistic reasoning agents (Google ADK).
-
-The system follows the **"Green Stack"** governance pattern, separating the **Control Plane** (Routing/Safety) from the **Reasoning Plane** (LLM Logic).
+The **Governed Financial Advisor** is a high-reliability agentic system designed for regulated financial environments. It implements the **MACAW Architecture** (Multi-Agent Conversational AI Workflow), ensuring strict separation of concerns between Planning, Evaluation, and Execution.
 
 ## 2. Technical Architecture
 
-### 2.1. Hybrid Control Plane (LangGraph)
+### 2.1. Cybernetic Control Plane (LangGraph)
 *   **Entry Point**: `src/governed_financial_advisor/server.py` hosts a FastAPI application.
-*   **Orchestration**: `src/governed_financial_advisor/graph/graph.py` defines a deterministic State Graph using `langgraph`.
-*   **Supervisor Node**: The root node (`supervisor_node`) calls the ADK Supervisor Agent and intercepts `route_request` tool calls to determine the `next_step` state transition.
-*   **Adapters**: `src/governed_financial_advisor/graph/nodes/adapters.py` provides the bridge between the synchronous/async LangGraph nodes and the streaming/event-driven Google ADK agents (`run_adk_agent`).
+*   **Orchestration**: `src/governed_financial_advisor/graph/graph.py` defines the MACAW sequential flow.
+*   **Roles**:
+    *   **Planner (System 4):** `Execution Analyst`. Anticipates future states.
+    *   **Evaluator (System 3):** `Evaluator Agent`. Simulates and controls risk.
+    *   **Executor (System 1):** `Governed Trader`. Executes authorized actions.
+    *   **Monitor (System 3):** `Explainer Agent`. Reports faithfully.
 
 ### 2.2. Reasoning Plane (Google ADK)
 *   **Agents**: Located in `src/governed_financial_advisor/agents/`.
-*   **Governed Trader**: Implements a `SequentialAgent` pattern:
-    1.  **Worker**: Proposes trading strategies.
-    2.  **Verifier**: Validates strategies using `verify_with_nemo_guardrails` before execution.
-*   **Risk Analyst**: A stateless, specialized agent (`src/governed_financial_advisor/agents/risk_analyst/agent.py`) that identifies Unsafe Control Actions (UCAs).
-    *   **Governance Sandwich**: Uses `GovernanceClient` to enforce strict JSON output schema (`RiskAssessment`) via a self-hosted vLLM instance.
-    *   **Offline Status**: Removed from the runtime hot path; used primarily for offline policy discovery or asynchronous checks.
-*   **Execution Analyst**: Generates detailed, deterministic JSON execution plans.
+*   **Evaluator**: A new specialized agent that orchestrates parallel simulation checks (Market, OPA, NeMo).
+*   **Explainer**: A dedicated agent for translating technical outputs to user-friendly, faithful text.
 
 ### 2.3. Governance Layer ("The Green Stack")
-*   **NeMo Guardrails**:
-    *   **In-Process**: The main application (`server.py`) loads rails *in-process* via `src/governed_financial_advisor/utils/nemo_manager.py` for input validation (`validate_with_nemo`).
-    *   **Sidecar (Standalone)**: A separate server (`src/governed_financial_advisor/governance/nemo_server.py`) exists to serve rails via HTTP, but is **not** currently used by the main application.
-*   **Open Policy Agent (OPA)**:
-    *   **Sidecar**: The system relies on an external OPA server (simulated or deployed as a sidecar).
-    *   **Client**: `src/governed_financial_advisor/governance/client.py` connects to OPA via HTTP/TCP (`httpx`) to enforce RBAC and trade policies.
-*   **Policy Transpiler**: Converts high-level STAMP hazards into executable Rego and Python policies.
+*   **Evaluator-Driven**: Governance is no longer a sidecar "middleware" but an active **Agentic Step**.
+*   **Tools**:
+    *   `verify_policy_opa`: Wraps OPA for regulatory checks.
+    *   `verify_semantic_nemo`: Wraps NeMo for semantic checks.
+    *   `check_market_status`: Mock simulation tool.
 
-### 2.4. Infrastructure & Telemetry
-*   **Hybrid Client**: `src/governed_financial_advisor/infrastructure/llm_client.py` routes traffic between a "Fast Path" (Self-hosted vLLM) and a "Reliable Path" (Vertex AI) based on TTFT (Time To First Token) SLAs and connection health.
-*   **Redis**: `src/governed_financial_advisor/infrastructure/redis_client.py` provides persistence for graph checkpoints and safety state (Control Barrier Functions), falling back to in-memory storage if connection fails.
-*   **Telemetry**: Extensive OpenTelemetry instrumentation tags traces with ISO 42001 attributes (e.g., `enduser.id`, `risk.verdict`, `governance.decision`).
-
-## 3. Component Wiring Diagram
+## 3. Component Wiring Diagram (MACAW)
 
 ```mermaid
-graph TD
-    User[User / Client] -->|HTTP POST /agent/query| Server[server.py]
-
-    subgraph "Control Plane (In-Process)"
-        Server -->|Validates| NeMo_Local[NeMo Manager (Local)]
-        Server -->|Invokes| Graph[LangGraph Workflow]
-
-        Graph --> Supervisor[Supervisor Node]
-        Graph --> Safety[Optimistic Safety Node]
-
-        Supervisor -->|Routes| Adapter[ADK Adapter Layer]
-    end
-
-    subgraph "Reasoning Plane (Google ADK)"
-        Adapter --> Trader[Governed Trader Agent]
-        Adapter --> Planner[Execution Analyst Agent]
-
-        Trader -->|Worker| Gemini[Vertex AI Gemini]
-        Trader -->|Verifier| Gemini
-        Planner -->|JSON| Gemini
-    end
-
-    subgraph "Governance Services"
-        Trader -.->|Checks| OPA[OPA Sidecar (HTTP)]
-        NeMo_Local -.->|Custom Actions| Actions[Python Actions]
-
-        RiskAnalyst[Risk Analyst Agent] -.->|Strict JSON| vLLM[vLLM Service]
-    end
-
-    subgraph "Infrastructure"
-        Graph -->|Checkpoints| Redis[Redis / Memorystore]
-        Safety -->|CBF State| Redis
-    end
+graph LR
+    Supervisor --> Planner
+    Planner --> Evaluator
+    Evaluator -->|Approved| Executor
+    Evaluator -->|Rejected| Planner
+    Executor --> Explainer
+    Explainer --> Supervisor
 ```
 
 ## 4. Gap Analysis (Documentation vs. Code)
 
-### 4.1. NeMo Architecture ✅ RESOLVED
-*   **Previous Gap**: Documentation described a "Sidecar" architecture where NeMo runs as a separate service.
-*   **Current State**: NeMo now runs consistently **In-Process** across both `server.py` (entry point validation) and `optimistic_nodes.py` (parallel safety checks). The `check_nemo_guardrails` function uses `validate_with_nemo` from `nemo_manager.py`, aligning with the documented architecture.
+### 4.1. MACAW Implementation ✅ RESOLVED
+*   **Previous Gap**: System used a parallel "Optimistic" flow that mixed Planning and Execution checks.
+*   **Current State**: Refactored to strict **Planner -> Evaluator -> Executor** sequence.
 
-### 4.2. Risk Analyst Integration
-*   **Documentation**: Often implies the Risk Analyst is part of the runtime loop.
-*   **Code**: Confirms `Risk Analyst` is commented out in `graph.py` and runs offline. The runtime safety is handled by the `Optimistic Execution Node` (OPA + NeMo in parallel) and deterministic rules, not the LLM-based Risk Analyst. This is now correctly documented.
+### 4.2. Governance Redundancy ✅ RESOLVED
+*   **Previous Gap**: Redundant "Worker/Verifier" inside `Governed Trader` and parallel `OptimisticNode`.
+*   **Current State**: Removed redundant nodes. Consolidated all verification logic into the **Evaluator Agent**, leveraging parallel tool execution for performance.
 
-### 4.3. Model Configuration ✅ RESOLVED
-*   **Previous Gap**: Consensus Engine used hardcoded model name (`gemini-2.5-pro`).
-*   **Current State**: Model is now configurable via `MODEL_CONSENSUS` environment variable (defaults to `MODEL_REASONING`). This enables using different providers for actor/critic patterns.
-
-### 4.4. Semantic Checks
-*   **Documentation**: Mentions extensive semantic verification (PII, Jailbreaks).
-*   **Code**: NeMo rails are configured primarily for **Financial Risk** (Drawdown, Latency). Semantic checks rely on standard/default NeMo flows, with no explicit custom flows for advanced PII or toxicity found in the application logic itself (implicit in NeMo defaults).
-
-## 5. Summary
-The software is a mature implementation of the **Hybrid Agentic Governance** pattern. It successfully integrates deterministic control (LangGraph/OPA) with probabilistic reasoning (Gemini/ADK). The primary architectural discrepancy is the **In-Process loading of NeMo Guardrails** versus the documented Sidecar approach.
+### 4.3. Faithfulness
+*   **Current State**: Introduced **Explainer Agent** with explicit "Self-Reflection" prompts to ensure response faithfulness to execution logs.

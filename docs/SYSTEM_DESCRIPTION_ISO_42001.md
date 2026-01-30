@@ -1,109 +1,48 @@
-# System Description Document: Governed Financial Advisor (GFA)
+# The Cybernetic Governance of Agentic AI: A Systems-Theoretic Analysis of ISO/IEC 42001 and Capital One’s MACAW Architecture
 
-**Version:** 1.0
-**Date:** January 27, 2026
-**Classification:** Internal / Audit Use Only
+## 1. Introduction: The Epistemological Crisis of Autonomous Agents
 
-## 1. Executive Summary
+The transition to Agentic AI represents a shift from deterministic software to probabilistic, goal-oriented autonomy. Systems like **MACAW** (Multi-Agent Conversational AI Workflow) act within open-ended environments, precipitating a crisis for traditional "First-Order" governance.
 
-The **Governed Financial Advisor (GFA)** is an autonomous agentic system designed to research, plan, and execute financial trading strategies. Unlike standard generative AI applications, the GFA utilizes a "Hybrid Actor-Critic" architecture that strictly separates the **Generative Plane** (Reasoning/Planning) from the **Governance Plane** (Verification/Control). This separation ensures that no action is taken based solely on probabilistic generation without passing through a deterministic verification gate.
+**ISO/IEC 42001:2023** provides the framework for this new era. By mapping it to **Cybernetics** (specifically Stafford Beer’s Viable System Model), we construct a governance architecture capable of containing the "wildness" of agents via "Requisite Variety".
 
-## 2. Architectural Design
+## 2. The Cybernetic Ontology
 
-The system operates on an **Actor-Critic** cognitive architecture, orchestrated via a state machine graph.
+### 2.1. First-Order vs. Second-Order
+*   **First-Order:** Standard compliance (Checklists). Assumes a static subject.
+*   **Second-Order:** "Observing Systems" (Reflexivity). The **Evaluator Agent** in our system implements this by observing and critiquing the Planner's output before it acts.
 
-### 2.1 The Planner ("The Actor")
+### 2.2. The Law of Requisite Variety
+*   "Only variety can destroy variety."
+*   A manual audit team (Low Variety) cannot regulate an autonomous agent (High Variety).
+*   **Solution:** We use **Computational Governance** (The Evaluator Agent) to match the variety of the system.
 
-* **Role:** Responsible for complex reasoning, market research, and formulating trading plans.
-* **Model:** Google Gemini 2.5 Flash-Lite (Fast Path) and Gemini 2.5 Pro (Reasoning Path) via Vertex AI.
-* **Operation Mode:** Stochastic (Non-deterministic).
-* **Key Telemetry:** Measured via `TTFT` (Time To First Token) and `TPOT` (Time Per Output Token) to track reasoning latency.
+## 3. MACAW Architecture & VSM Mapping
 
-### 2.2 The Verifier ("The Critic")
+We map the components of our Refactored Graph to the **Viable System Model (VSM)**:
 
-* **Role:** Responsible for validating the safety, compliance, and structural integrity of the generated plan.
-* **Model:** Hosted vLLM (e.g., Gemma 3-27B-Instruct) with specialized finetuning.
-* **Operation Mode:** **Deterministic.** Enforces strict constraints using Finite State Machines (FSM).
-* **Key Telemetry:** Measured via `risk.verification.overhead_ratio` (The "Safety Tax").
+| VSM System | Function | Our Component | ISO 42001 Clause |
+| :--- | :--- | :--- | :--- |
+| **System 5** | **Policy** | **System Prompts / Constitution** | Clause 5.2 (Policy) |
+| **System 4** | **Intelligence** | **Planner (Execution Analyst)** | Clause 6.1 (Risk Planning) |
+| **System 3** | **Control** | **Evaluator Agent** | Clause 9.1 (Monitoring) |
+| **System 2** | **Coordination** | **Graph State / Schema** | Clause 8 (Operation) |
+| **System 1** | **Implementation** | **Executor (Governed Trader)** | Clause 8 (Operation) |
 
-### 2.3 The Orchestrator
+## 4. Governance Mechanisms
 
-* **Framework:** Google ADK / LangGraph.
-*   **Framework:** Google ADK / LangGraph.
-*   **Function:** Manages the state and control flow. It routes "REJECTED" plans back to the Planner for correction or escalates to human review, ensuring the loop is closed and deterministic.
+### 4.1. Feedforward Planning (System 4)
+The **Planner** does not just act; it simulates. This is **Feedforward Control**. It anticipates errors (e.g., "Market Closed") before they occur.
 
----
+### 4.2. The Simulation Loop (System 3)
+The **Evaluator** performs a "Dry Run":
+1.  **Feasibility:** Checks environment state.
+2.  **Legality:** Checks OPA Policy.
+3.  **Safety:** Checks NeMo Rails.
 
-## 3. Governance & Control Mechanisms
+### 4.3. Faithfulness (System 3 Monitoring)
+The **Explainer** ensures the output is grounded in reality, addressing the "Black Box" problem and "Post-Hoc Rationalization".
 
-The GFA implements a "Defense in Depth" strategy with multiple control layers.
+## 5. Conclusion
 
-### 3.1 Layer 1: Mathematical Safety (CBFs)
-
-*   **Description:** Enforces hard mathematical constraints on state transitions (invariant: `cash >= min_balance`). Calculates `h(next) >= (1-gamma) * h(current)` to guarantee safety.
-*   **Control Implementation:** `ControlBarrierFunction` in `safety.py` (Redis-backed state).
-*   **Transactional Support:** `update_state(cost)` commits state changes; `rollback_state(cost)` reverts state on downstream execution failures.
-*   **Audit Evidence:** Traces containing `safety.cbf_check` and `safety.barrier.h_next`.
-
-### 3.2 Layer 2: Business Logic Policy (OPA)
-
-*   **Description:** The `safety_check_node` checks the current proposed action against static policies (e.g., "No crypto assets for Low-Risk profiles").
-*   **Control Implementation:** Open Policy Agent (OPA) via `safety_node.py`.
-*   **Audit Evidence:** Traces containing `governance.opa_check` and `governance.denial_reason`.
-
-### 3.3 Layer 3: Semantic Safety (NeMo Guardrails)
-
-*   **Description:** Guardrails check the current prompt/response content for hallucination, jailbreaks, and off-topic deviations.
-*   **Control Implementation:** NeMo Guardrails (`nemo_manager.py`).
-*   **Audit Evidence:** Traces containing `guardrails.framework = "nemo"` and `risk.verdict`.
-
-### 3.4 Layer 4: Structural Determinism (vLLM FSM)
-
-*   **Description:** The Verifier model is mathematically constrained to produce only valid outputs (e.g., specific JSON schemas).
-*   **Control Implementation:** `guided_json` / `guided_choice` parameters in vLLM.
-*   **Audit Evidence:** Traces with `llm.control.fsm.enabled = True`.
-
----
-
-## 4. Observability & Monitoring
-
-The system is fully instrumented using **OpenTelemetry (OTLP)**, exporting traces to **Langfuse Cloud**.
-
-### 4.1 Key Performance Indicators (KPIs)
-
-| Metric | Definition | Purpose |
-| --- | --- | --- |
-| **Governance Rejection Rate** | % of Plans rejected by the Verifier. | Measures the alignment between the Planner and safety rules. |
-| **Verification Overhead** | Latency of the Verifier / Total Workflow Latency. | Tracks the performance cost of compliance (Target: < 15%). |
-| **Fallback Rate** | Frequency of switching from primary infrastructure to backup. | Indicators of infrastructure stability (ISO A.5.9). |
-
-### 4.2 Telemetry Schema
-
-Every system interaction generates a standardized trace with the following attributes for auditability:
-
-* `risk.verdict`: The final decision ("APPROVED" / "REJECTED").
-* `risk.rejection_source`: The specific layer that triggered the block (OPA vs. NeMo).
-* `llm.control.*`: The exact parameters (Temperature, FSM constraints) used at the moment of generation.
-
----
-
-## 5. ISO 42001 Compliance Matrix
-
-This system is designed to meet the following controls of the ISO/IEC 42001:2023 standard.
-
-| ISO Clause | Requirement | GFA Implementation Evidence |
-| --- | --- | --- |
-| **A.6.1.2** | **Segregation of Duties** | Separation of **Planner** (Gemini) and **Verifier** (vLLM/OPA) into distinct compute nodes and trace spans. |
-| **A.8.4** | **Controllability** | Use of **vLLM FSM Modes** to enforce deterministic outputs from the Verifier, eliminating probabilistic failure modes in the safety layer. |
-| **9.1** | **Monitoring & Evaluation** | Continuous monitoring of **Verification Overhead** and **Rejection Rates** via the Langfuse Dashboard. |
-| **A.5.9** | **System Verification** | Every plan undergoes automated verification (`optimistic_execution_node`) before execution is attempted. |
-| **7.2** | **Documented Info** | Full audit trail of every decision (Inputs, Policy Version, Verdict) stored in Langfuse with persistent Trace IDs. |
-
----
-
-## 6. Infrastructure Specifications
-
-* **Cloud Provider:** Google Cloud Platform (Vertex AI).
-* **Self-Hosted Components:** vLLM Inference Server (Kubernetes/GKE), Open Policy Agent (Cloud Run).
-* **Data Residency:** US-Central1 (Iowa).
-* **Telemetry Storage:** Langfuse Cloud (Encrypted at rest).
+By implementing MACAW, we move from "Rule-Based Guardrails" to **"Agentic Governance"**. The Evaluator Agent acts as a cybernetic regulator, ensuring that the system remains viable and compliant within the high-stakes environment of Corporate Finance.

@@ -2,43 +2,61 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Environments
-.env
+# Virtual Environments
+venv/
 .venv/
 env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+.env/
+.agent/
 .deploy_venv/
 .new_venv/
 source/
 
-# IDEs
-.vscode/
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# IDE
 .idea/
+.vscode/
 *.swp
+*.swo
 .DS_Store
 
 # Logs
+logs/
 *.log
-agents_log/
 
-# Project Specific
-opa
-verification_*.txt
+# GCP / Terraform
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
 
-# Generated Kubernetes manifests
-deployment/k8s/governed-financial-advisor.yaml
-deployment/k8s/vllm-deployment.yaml
-
-
-# Traces
-*.parquet
-trace_*.parquet
-logs/cold_tier/
-tests/temp_*/
+# Project specific
+deployment/k8s/generated/
+tests/temp_cold_tier/
+verification_backend.txt
+verification_ui.txt
 GEMINI.md
 .manifest
-deployment/k8s/generated/
