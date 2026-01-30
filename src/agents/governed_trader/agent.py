@@ -24,7 +24,7 @@ from google.adk.agents import LlmAgent, SequentialAgent
 from google.adk.tools import FunctionTool, transfer_to_agent
 from pydantic import BaseModel, Field
 
-from config.settings import MODEL_FAST, MODEL_REASONING
+from config.settings import MODEL_FAST, MODEL_REASONING, Config
 from src.tools.trades import execute_trade, propose_trade
 from src.utils.prompt_utils import Content, Part, Prompt, PromptData
 
@@ -221,13 +221,8 @@ def verify_with_nemo_guardrails(input_text: str) -> str:
     """
     Calls the NeMo Guardrails Sidecar to verify the input/intent.
     """
-    NEMO_URL = "http://nemo:8000/v1/guardrails/check"
+    NEMO_URL = Config.NEMO_URL
     try:
-        # For local testing if nemo service name not resolvable
-        import os
-        if not os.getenv("DOCKER_ENV"):
-             NEMO_URL = "http://localhost:8000/v1/guardrails/check"
-
         response = httpx.post(NEMO_URL, json={"input": input_text}, timeout=5.0)
         response.raise_for_status()
         result = response.json().get("response", "")

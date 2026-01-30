@@ -31,6 +31,18 @@ class Config:
     # Governance
     OPA_URL = os.getenv("OPA_URL", "http://localhost:8181/v1/data/finance/decision")
     OPA_AUTH_TOKEN = os.getenv("OPA_AUTH_TOKEN")
+    NEMO_URL = os.getenv("NEMO_URL", "http://nemo:8000/v1/guardrails/check")
+
+    # Runtime Configuration Override (for Agent Engine)
+    try:
+        from config import runtime_config
+        OPA_URL = getattr(runtime_config, "OPA_URL", OPA_URL)
+        NEMO_URL = getattr(runtime_config, "NEMO_URL", NEMO_URL)
+        OPA_AUTH_TOKEN = getattr(runtime_config, "OPA_AUTH_TOKEN", OPA_AUTH_TOKEN)
+        GOOGLE_CLOUD_PROJECT = getattr(runtime_config, "GOOGLE_CLOUD_PROJECT", GOOGLE_CLOUD_PROJECT)
+        GOOGLE_CLOUD_LOCATION = getattr(runtime_config, "GOOGLE_CLOUD_LOCATION", GOOGLE_CLOUD_LOCATION)
+    except ImportError:
+        pass
 
     @staticmethod
     def get_llm_config(profile="default"):

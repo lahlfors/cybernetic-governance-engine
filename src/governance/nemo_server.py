@@ -6,23 +6,18 @@ from fastapi import FastAPI, HTTPException
 from nemoguardrails import LLMRails, RailsConfig
 from pydantic import BaseModel
 
+from src.utils.nemo_manager import load_rails
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("NeMoSidecar")
 
 app = FastAPI()
 
-# Load Rails Config
-RAILS_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "rails")
-
 rails = None
 try:
-    if os.path.exists(RAILS_CONFIG_PATH):
-        config = RailsConfig.from_path(RAILS_CONFIG_PATH)
-        rails = LLMRails(config)
-        logger.info(f"✅ NeMo Guardrails loaded from {RAILS_CONFIG_PATH}")
-    else:
-        logger.warning(f"⚠️ Rails config not found at {RAILS_CONFIG_PATH}")
+    rails = load_rails()
+    logger.info("✅ NeMo Guardrails loaded via NemoManager")
 except Exception as e:
     logger.error(f"❌ Failed to load NeMo Guardrails: {e}")
     rails = None
