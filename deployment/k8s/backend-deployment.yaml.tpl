@@ -41,6 +41,8 @@ spec:
               value: "${PROJECT_ID}"
             - name: GOOGLE_CLOUD_LOCATION
               value: "${REGION}"
+            - name: GOOGLE_GENAI_USE_VERTEXAI
+              value: "${GOOGLE_GENAI_USE_VERTEXAI}"
             - name: VLLM_BASE_URL
               value: "http://vllm-service.governance-stack.svc.cluster.local:8000/v1"
             - name: OPA_URL

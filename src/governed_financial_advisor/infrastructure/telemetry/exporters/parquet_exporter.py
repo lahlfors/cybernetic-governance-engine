@@ -30,6 +30,7 @@ class ParquetSpanExporter(SpanExporter):
         gcs_prefix: str = "cold_tier",
         local_fallback_path: str = "logs/cold_tier",
     ):
+        import os
         self.gcs_bucket = gcs_bucket or os.getenv("COLD_TIER_GCS_BUCKET")
         self.gcs_prefix = os.getenv("COLD_TIER_GCS_PREFIX", gcs_prefix)
         self.local_fallback_path = Path(local_fallback_path)
@@ -41,8 +42,8 @@ class ParquetSpanExporter(SpanExporter):
             try:
                 from google.cloud import storage
                 self._gcs_client = storage.Client()
-                # Verify bucket exists
-                self._gcs_client.get_bucket(self.gcs_bucket)
+                # Verify bucket exists (optional, but good for fail-fast)
+                # self._gcs_client.get_bucket(self.gcs_bucket) 
                 self._gcs_available = True
                 logger.info(f"GCS cold tier storage initialized: gs://{self.gcs_bucket}/{self.gcs_prefix}/")
             except Exception as e:
@@ -62,8 +63,10 @@ class ParquetSpanExporter(SpanExporter):
                 return SpanExportResult.SUCCESS
 
             df = pd.DataFrame(data_list)
-
+            
             # Generate date-partitioned path and filename
+            # Structure: YYYY/MM/DD/batch_<timestamp>_<count>.parquet
+            from datetime import datetime, timezone
             now = datetime.now(timezone.utc)
             date_partition = now.strftime("%Y/%m/%d")
             timestamp = int(time.time() * 1000)
@@ -81,6 +84,8 @@ class ParquetSpanExporter(SpanExporter):
     def _export_to_gcs(self, df: pd.DataFrame, date_partition: str, filename: str) -> SpanExportResult:
         """Write Parquet to GCS with date-partitioned path."""
         try:
+            import tempfile
+            import os
             # Write to temp file first
             with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as tmp:
                 df.to_parquet(tmp.name, engine="pyarrow")

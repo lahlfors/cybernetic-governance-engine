@@ -171,13 +171,13 @@ This repository supports deploying the high-performance inference stack to Googl
 
 ### Deployment Options
 
-The `deploy_all.py` script automates the entire process, including provisioning infrastructure, building containers, and deploying manifests.
+The `deploy_sw.py` script automates the entire process, including building containers and deploying manifests.
 
 #### Option A: NVIDIA H100 (Default)
 Optimized for ultra-low latency using **Speculative Decoding**. Best for user-facing applications requiring strict SLAs (<200ms TTFT).
 
 ```bash
-python3 deployment/deploy_all.py \
+python3 deployment/deploy_sw.py \
     --project-id <YOUR_PROJECT_ID> \
     --region us-central1 \
     --accelerator gpu
