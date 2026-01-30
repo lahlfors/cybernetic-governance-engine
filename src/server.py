@@ -8,12 +8,11 @@ import vertexai
 from fastapi import FastAPI, HTTPException
 from opentelemetry import trace
 from pydantic import BaseModel
-from google.adk.runners import Runner
-from google.adk.sessions import Session, InMemorySessionService
+import os
+from vertexai.preview import reasoning_engines
 from google.genai import types
 
 from config.settings import Config
-from src.agents.financial_advisor.agent import root_agent
 from src.utils.context import user_context
 from src.utils.nemo_manager import load_rails, validate_with_nemo
 from src.utils.telemetry import configure_telemetry
@@ -30,13 +29,20 @@ logger.info(f"✅ Vertex AI initialized: project={Config.GOOGLE_CLOUD_PROJECT}, 
 configure_telemetry()
 
 # Initialize App
-app = FastAPI(title="Governed Financial Advisor (ADK Native)")
+app = FastAPI(title="Governed Financial Advisor (Gateway)")
 
 # --- GLOBAL SINGLETONS ---
 rails = load_rails()
 
-# Initialize Session Service (InMemory for Local/Container, Native VertexAi in Prod)
-session_service = InMemorySessionService()
+# Reasoning Engine Client
+agent_engine_id = os.environ.get("AGENT_ENGINE_ID")
+agent_engine = None
+if agent_engine_id:
+    try:
+        agent_engine = reasoning_engines.ReasoningEngine(agent_engine_id)
+        logger.info(f"✅ Connected to Agent Engine: {agent_engine_id}")
+    except Exception as e:
+        logger.error(f"❌ Failed to connect to Agent Engine: {e}")
 
 class QueryRequest(BaseModel):
     prompt: str
@@ -47,8 +53,9 @@ class QueryRequest(BaseModel):
 def health_check():
     return {
         "status": "ok",
-        "service": "financial-advisor-adk-native",
-        "project_id": Config.GOOGLE_CLOUD_PROJECT
+        "service": "financial-advisor-gateway",
+        "project_id": Config.GOOGLE_CLOUD_PROJECT,
+        "agent_engine_connected": agent_engine is not None
     }
 
 @app.post("/agent/query")
@@ -63,63 +70,28 @@ async def query_agent(req: QueryRequest):
             current_span.set_attribute("thread.id", req.thread_id)
             trace_id = f"{current_span.get_span_context().trace_id:032x}"
 
-        # 1. NeMo Security
+        # 1. NeMo Security (Gateway Level)
         is_safe, msg = await validate_with_nemo(req.prompt, rails)
         if not is_safe:
             return {"response": msg}
 
-        # 2. ADK Native Execution
-        # Ensure session exists
-        session = await session_service.get_session(
-            app_name="financial_advisor",
-            user_id=req.user_id,
-            session_id=req.thread_id
-        )
-        if not session:
-            new_session = Session(
-                app_name="financial_advisor",
-                user_id=req.user_id,
-                session_id=req.thread_id
-            )
-            # Correct API usage: create_session(session)
-            await session_service.create_session(new_session)
-            session = new_session
+        # 2. Call Reasoning Engine
+        if not agent_engine:
+             raise HTTPException(status_code=503, detail="Agent Engine not connected")
 
-        # Create ADK Runner
-        runner = Runner(
-            agent=root_agent,
-            session_service=session_service,
-            app_name="financial_advisor"
-        )
-
-        # Prepare input
-        new_message = types.Content(
-            role="user",
-            parts=[types.Part(text=req.prompt)]
-        )
-
-        # Execute Runner Loop
-        # The runner handles routing via tools (transfer_to_agent) automatically
-        answer_parts = []
-        # Run asynchronously
+        # Note: Reasoning Engine query format depends on implementation.
+        # ADK agents usually take input via kwargs or specific method if exposed.
+        # Assuming standard .query() which ADK maps to.
+        # For simplicity, we pass prompt as 'input' or similar if needed.
+        # But ReasoningEngine client usually exposes .query()
         try:
-             # Runner.run is a generator. We iterate to process events.
-             # Note: Runner operations might block if not fully async,
-             # but ADK 0.14+ supports async via event loop.
-             for event in runner.run(
-                 user_id=req.user_id,
-                 session_id=req.thread_id,
-                 new_message=new_message
-             ):
-                if hasattr(event, 'content') and event.content:
-                    for part in event.content.parts:
-                        if hasattr(part, 'text') and part.text:
-                            answer_parts.append(part.text)
+            response = agent_engine.query(input=req.prompt)
+            # Response structure depends on agent return type.
+            # Assuming string or object with 'output'
+            full_response = str(response)
         except Exception as run_exc:
-             logger.error(f"ADK Execution Failed: {run_exc}")
-             raise HTTPException(status_code=500, detail=f"Agent Execution Error: {run_exc}")
-
-        full_response = "".join(answer_parts)
+             logger.error(f"Agent Engine Execution Failed: {run_exc}")
+             raise HTTPException(status_code=500, detail=f"Agent Engine Error: {run_exc}")
 
         return {
             "response": full_response,
