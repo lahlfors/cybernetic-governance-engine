@@ -78,14 +78,13 @@ We implement a **Risk-Based Tiered Strategy** for observability, solving the par
 *   **Hot Storage (Datadog/Cloud Trace):** Essential for operational health (latency, error rates) but prohibitively expensive for storing full LLM payloads (prompts/responses).
 *   **Cold Storage (S3/GCS):** Cheap but slow to query. Essential for compliance and forensics ("Why did the agent do that?").
 
-### The Solution: Smart Sampling (Design Pattern)
-The architecture includes a design for a **Risk-Based Tiered Strategy** to route data based on utility.
-*Note: The full `TieredSpanProcessor` implementation is currently a planned feature for the production hardening phase.*
+### The Solution: Smart Sampling (Implemented)
+The architecture implements a **Risk-Based Tiered Strategy** using the `GenAICostOptimizerProcessor` to route data based on utility.
 
 | Tier | Destination | Content | Sampling Logic | Purpose |
 |------|-------------|---------|----------------|---------|
 | **Hot** | Cloud Trace | Metadata Only (Latency, Status, TraceID) | 100% | Operational Health |
-| **Cold** | GCS/S3 (Parquet) | Full Payload (Prompts, Reasoning, RAG Chunks) | **Smart Sampled** | Forensics & Compliance |
+| **Cold** | Local Parquet (Sync needed for GCS) | Full Payload (Prompts, Reasoning, RAG Chunks) | **Smart Sampled** | Forensics & Compliance |
 
 ## 4. Implementation Details
 

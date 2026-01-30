@@ -205,6 +205,9 @@ def governed_tool(action_name: str, policy_id: str = "finance_policy"):
             # OPA Policy Check
             with tracer.start_as_current_span(name="governance.opa_check") as span:
                 span.set_attribute("governance.policy_id", policy_id)
+                # ISO 42001 A.10.1 (Transparency) & A.5.1 (Policy)
+                span.set_attribute("iso.control_id", "A.10.1")
+                span.set_attribute("iso.requirement", "Algorithmic Transparency")
                 
                 # Check Policy
                 decision = await opa_client.evaluate_policy(payload, current_latency_ms=0.0)

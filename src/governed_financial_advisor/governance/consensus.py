@@ -69,6 +69,8 @@ class ConsensusEngine:
         logger.info(f"⚖️ Consensus Engine Triggered for {action} {amount} {symbol}")
 
         with genai_span("consensus.check", prompt=f"Review trade: {action} {amount} {symbol}") as span:
+            # ISO 42001 A.8.4 (Controllability - Human Oversight / Consensus)
+            span.set_attribute("iso.control_id", "A.8.4")
 
             # 1. Risk Manager Vote
             vote1 = self._get_critic_vote("Risk Manager", action, amount, symbol)
