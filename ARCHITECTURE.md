@@ -2,6 +2,8 @@
 
 This document describes the **Cybernetic Governance Architecture** of the Financial Advisor system, aligned with **ISO/IEC 42001** and Capital One's **MACAW** framework.
 
+For a detailed guide on the architectural refactoring, see [MACAW_REFACTOR_GUIDE.md](docs/MACAW_REFACTOR_GUIDE.md).
+
 ## 1. The Cybernetic Model (Viable System Model)
 
 The system is designed not just as a software pipeline, but as a **Cybernetic Control System** that ensures safety through Feedback, Feedforward, and Requisite Variety.
@@ -24,11 +26,11 @@ We implement a strict **Sequential Blocking Architecture** for high-risk operati
 graph TD
     User --> Supervisor
     Supervisor -->|Intent: Trade| Planner[Execution Analyst]
-    
+
     subgraph "System 4: Feedforward"
         Planner -->|Proposed Plan| Evaluator
     end
-    
+
     subgraph "System 3: Control & Simulation"
         Evaluator -->|Parallel Check| M[Market Sim]
         Evaluator -->|Parallel Check| O[OPA Policy]
@@ -60,13 +62,35 @@ To balance User Experience (Latency) with Corporate Safety, we use a hybrid stra
 
 ---
 
-## 3. Governance Components
+## 3. Infrastructure & vLLM Integration
 
-### 3.1. The Planner (Execution Analyst)
+The system employs a **Hybrid Inference Stack** to balance reasoning capability with latency and data sovereignty.
+
+### 3.1. The Hybrid Client
+The `HybridClient` (`src/governed_financial_advisor/infrastructure/llm_client.py`) routes traffic between two paths:
+
+1.  **Reliable Path (Vertex AI Gemini):**
+    *   **Use Case:** High-order reasoning, Planning (System 4), and Evaluation (System 3).
+    *   **Model:** `gemini-2.5-pro` (Reasoning).
+    *   **Why:** Requires maximum context window and reasoning depth.
+
+2.  **Fast Path (Self-Hosted vLLM):**
+    *   **Use Case:** Strict Schema Enforcement (JSON), Executor actions (System 1), and Latency-Critical Checks.
+    *   **Model:** `meta-llama/Llama-3.1-8B-Instruct` (Hosted on GKE with NVIDIA L4).
+    *   **Role in MACAW:**
+        *   Used by the **Executor** and **Evaluator** for deterministic tasks.
+        *   Enforces JSON schemas via `guided_json` (FSM), ensuring the "Dumb Executor" never hallucinates malformed tool calls.
+        *   **Data Sovereignty:** Keeps sensitive execution details within the VPC/Cluster perimeter.
+
+---
+
+## 4. Governance Components
+
+### 4.1. The Planner (Execution Analyst)
 *   **Role:** Decomposes user intent into a DAG (Directed Acyclic Graph) of steps.
 *   **Governance:** Fine-tuned on OpenAPI schemas to prevent "Tool Hallucination".
 
-### 3.2. The Evaluator (The Critic)
+### 4.2. The Evaluator (The Critic)
 *   **Role:** Simulates the plan against reality.
 *   **Checks:**
     *   **Feasibility:** Is the market open? Do funds exist?
@@ -74,17 +98,17 @@ To balance User Experience (Latency) with Corporate Safety, we use a hybrid stra
     *   **Semantic:** Is this a jailbreak attempt (NeMo)?
 *   **Cybernetics:** Provides the **Negative Feedback** loop to correct the Planner.
 
-### 3.3. The Executor (Governed Trader)
+### 4.3. The Executor (Governed Trader)
 *   **Role:** Pure implementation.
 *   **Constraint:** "Dumb" agent. Cannot plan, cannot strategize. Only executes approved steps.
 
-### 3.4. The Explainer
+### 4.4. The Explainer
 *   **Role:** Translates technical JSON into natural language.
 *   **Governance:** Performs a **Faithfulness Check** (Self-Reflection) to ensure the explanation matches the execution logs, preventing "Post-Hoc Rationalization".
 
 ---
 
-## 4. ISO 42001 Alignment
+## 5. ISO 42001 Alignment
 
 *   **Clause 6.1 (Actions to address risks):** The **Planner/Evaluator** loop functions as a dynamic Risk Assessment for every transaction.
 *   **Clause 8.1 (Operational Planning):** The **Graph State** and **Evaluator Logic** constitute the operational controls.
