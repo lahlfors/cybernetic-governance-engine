@@ -15,6 +15,7 @@ spec:
       labels:
         app: governed-financial-advisor
     spec:
+      serviceAccountName: financial-advisor-sa
       volumes:
         - name: policy-volume
           secret:
@@ -43,12 +44,21 @@ spec:
               value: "${REGION}"
             - name: GOOGLE_GENAI_USE_VERTEXAI
               value: "${GOOGLE_GENAI_USE_VERTEXAI}"
+            - name: MODEL_FAST
+              value: "${MODEL_FAST}"
+            - name: MODEL_REASONING
+              value: "${MODEL_REASONING}"
             - name: VLLM_BASE_URL
               value: "http://vllm-service.governance-stack.svc.cluster.local:8000/v1"
             - name: OPA_URL
               value: "http://localhost:8181/v1/data/finance/allow"
             - name: DEPLOY_TIMESTAMP
               value: "${DEPLOY_TIMESTAMP}"
+            # OpenTelemetry (OTLP)
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "${OTEL_EXPORTER_OTLP_ENDPOINT}"
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              value: "${OTEL_EXPORTER_OTLP_HEADERS}"
           resources:
             requests:
               cpu: "500m"

@@ -65,11 +65,11 @@ def supervisor_node(state):
         for call in response.function_calls:
             if call.name == "route_request":
                 # Extract the target argument
-                target = call.args.get("target") or call.args.get("request_type") or ""
+                target = call.args.get("target") or call.args.get("request_type") or call.args.get("intent") or ""
                 print(f"--- [Graph] Intercepted Route Signal: {target} ---")
 
                 target_lower = target.lower()
-                if "data" in target_lower:
+                if "data" in target_lower or "market" in target_lower:
                     next_step = "data_analyst"
                 elif "execution" in target_lower:
                     next_step = "execution_analyst"

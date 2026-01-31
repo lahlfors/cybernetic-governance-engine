@@ -25,6 +25,19 @@ session_service = InMemorySessionService()
 
 logger = logging.getLogger("Graph.Adapters")
 
+def get_valid_last_message(state) -> str:
+    """Retrieves the last non-empty message content from the state."""
+    messages = state.get("messages", [])
+    for msg in reversed(messages):
+        content = getattr(msg, "content", "")
+        # Handle simple string content
+        if isinstance(content, str) and content.strip():
+            return content
+        # Handle list content (multi-modal or parts)
+        if isinstance(content, list) and content:
+             return content # Pass complex content through
+    return "No content available."
+
 # --- Dependency Injection Infrastructure ---
 
 _agent_registry = {}
@@ -130,7 +143,7 @@ def data_analyst_node(state):
     """Wraps the Data Analyst agent for LangGraph."""
     print("--- [Graph] Calling Data Analyst ---")
     agent = get_agent("data_analyst", create_data_analyst_agent)
-    last_msg = state["messages"][-1].content
+    last_msg = get_valid_last_message(state)
     res = run_adk_agent(agent, last_msg)
     return {"messages": [("ai", f"Data Analysis: {res.answer}")]}
 
@@ -142,7 +155,7 @@ def risk_analyst_node(state):
     """
     print("--- [Graph] Calling Risk Analyst ---")
     agent = get_agent("risk_analyst", create_risk_analyst_agent)
-    last_plan = state["messages"][-1].content
+    last_plan = get_valid_last_message(state)
     res = run_adk_agent(agent, f"Evaluate this plan: {last_plan}")
 
     # Heuristic: Parse the Risk Agent's text output to drive the Loop
@@ -166,7 +179,7 @@ def execution_analyst_node(state):
     """
     print("--- [Graph] Calling Execution Analyst (Planner) ---")
     agent = get_agent("execution_analyst", create_execution_analyst_agent)
-    user_msg = state["messages"][-1].content
+    user_msg = get_valid_last_message(state)
 
     # INJECT FEEDBACK if the loop pushed us back here
     if state.get("risk_status") == "REJECTED_REVISE":
@@ -216,6 +229,6 @@ def governed_trader_node(state):
     """Wraps the Governed Trader agent for LangGraph."""
     print("--- [Graph] Calling Governed Trader ---")
     agent = get_agent("governed_trader", create_governed_trader_agent)
-    last_msg = state["messages"][-1].content
+    last_msg = get_valid_last_message(state)
     res = run_adk_agent(agent, last_msg)
     return {"messages": [("ai", res.answer)]}

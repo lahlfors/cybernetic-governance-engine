@@ -1,6 +1,11 @@
 project:
+<<<<<<< HEAD
   region: null
   zone: null # Set to null to allow .env/args override
+=======
+  region: us-central1
+  zone: us-central1-a # Updated to match .env
+>>>>>>> 2e7b22d (Fix dialogue stops, refactor agent transitions, and update deployment scripts)
 
 cluster:
   name: governance-cluster

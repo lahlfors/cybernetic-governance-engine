@@ -18,7 +18,7 @@ import logging
 from typing import Any
 
 from google.adk import Agent
-from google.adk.tools import FunctionTool, transfer_to_agent
+from google.adk.tools import FunctionTool
 
 from config.settings import MODEL_FAST
 from src.governed_financial_advisor.tools.trades import execute_trade
@@ -48,12 +48,12 @@ Your role is to **EXECUTE** the plan provided to you. You are a "Dumb Executor" 
 3.  For each step with action `execute_trade`, CALL the `execute_trade` tool with the EXACT parameters specified in the plan.
     - Do NOT change the amount.
     - Do NOT change the symbol.
-4.  After execution, call `transfer_to_agent("explainer")`.
+4.  After execution, return the result.
 
 **Strict Constraint:**
 - You do NOT "propose" trades. You EXECUTE them.
 - You do NOT ask the user for clarification. (The Planner should have done that).
-- If the plan is empty or unclear, do nothing and transfer to Explainer.
+- If the plan is empty or unclear, do nothing.
 """
                     )
                 ]
@@ -72,5 +72,5 @@ def create_governed_trader_agent(model_name: str = MODEL_FAST) -> Agent:
         name="governed_trader_agent",
         instruction=get_executor_instruction(),
         output_key="execution_result",
-        tools=[FunctionTool(execute_trade), transfer_to_agent],
+        tools=[FunctionTool(execute_trade)],
     )

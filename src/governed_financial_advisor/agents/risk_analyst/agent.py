@@ -16,7 +16,6 @@
 
 import json
 from google.adk import Agent
-from google.adk.tools import transfer_to_agent
 from pydantic import BaseModel, Field
 
 from config.settings import MODEL_REASONING
@@ -98,7 +97,7 @@ The tool will invoke the Governance Engine to enforce strict schema compliance a
 Output:
 Return the structured JSON object (RiskAssessment) provided by the tool.
 
-IMMEDIATELY AFTER generating this report, you MUST call `transfer_to_agent("financial_coordinator")` to return control to the main agent.
+
 """
 
 
@@ -109,7 +108,7 @@ def create_risk_analyst_agent(model_name: str = MODEL_REASONING) -> Agent:
         name="risk_analyst_agent",
         instruction=get_risk_analyst_instruction(),
         output_key="risk_assessment_output",
-        tools=[transfer_to_agent, perform_governed_risk_assessment],
+        tools=[perform_governed_risk_assessment],
         output_schema=RiskAssessment,
         generate_content_config={
             "response_mime_type": "application/json"

@@ -221,6 +221,14 @@ def deploy_k8s_infra(project_id, config, args=None):
         print("❌ Failed to generate vLLM manifest.")
         return
 
+    # Deploy Redis (In-Cluster Stack)
+    redis_manifest = k8s_dir / "redis-deployment.yaml"
+    if redis_manifest.exists():
+        print(f"🚀 Applying Redis manifest: {redis_manifest}...")
+        run_command(["kubectl", "apply", "-f", str(redis_manifest)])
+    else:
+        print(f"⚠️ Redis manifest not found at {redis_manifest}")
+
     generated_dir = Path("deployment/k8s/generated")
     generated_dir.mkdir(parents=True, exist_ok=True)
 

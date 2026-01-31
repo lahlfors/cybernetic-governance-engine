@@ -180,7 +180,23 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
     if os.path.exists(policy_path):
         subprocess.run(f"kubectl create secret generic finance-policy-rego --from-file=finance_policy.rego={policy_path} -n governance-stack --dry-run=client -o yaml | kubectl apply -f -", shell=True)
 
-    # 4. Deploy Backend
+    # 4. Apply Service Account for Workload Identity
+    sa_manifest = Path("deployment/k8s/service-account.yaml")
+    if sa_manifest.exists():
+        print("\n--- 🔑 Applying Kubernetes Service Account ---")
+        with open(sa_manifest) as f:
+            sa_content = f.read()
+        sa_content = sa_content.replace("${PROJECT_ID}", project_id)
+        
+        # Write resolved manifest
+        generated_dir = Path("deployment/k8s/generated")
+        generated_dir.mkdir(parents=True, exist_ok=True)
+        sa_generated = generated_dir / "service-account.yaml"
+        with open(sa_generated, 'w') as f:
+            f.write(sa_content)
+        run_command(["kubectl", "apply", "-f", str(sa_generated)])
+    
+    # 5. Deploy Backend
     print("\n--- ☸️ Deploying Backend to GKE ---")
     deployment_tpl = Path("deployment/k8s/backend-deployment.yaml.tpl")
     if not deployment_tpl.exists():
@@ -198,7 +214,11 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
     manifest_content = manifest_content.replace("${REGION}", region)
     vertex_ai_flag = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "1")
     manifest_content = manifest_content.replace("${GOOGLE_GENAI_USE_VERTEXAI}", vertex_ai_flag)
+    manifest_content = manifest_content.replace("${MODEL_FAST}", os.environ.get("MODEL_FAST", "gemini-2.5-flash-lite"))
+    manifest_content = manifest_content.replace("${MODEL_REASONING}", os.environ.get("MODEL_REASONING", "gemini-2.5-pro"))
     manifest_content = manifest_content.replace("${DEPLOY_TIMESTAMP}", timestamp)
+    manifest_content = manifest_content.replace("${OTEL_EXPORTER_OTLP_ENDPOINT}", os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", ""))
+    manifest_content = manifest_content.replace("${OTEL_EXPORTER_OTLP_HEADERS}", os.environ.get("OTEL_EXPORTER_OTLP_HEADERS", ""))
     
     # Write Generated Manifest
     generated_dir = Path("deployment/k8s/generated")

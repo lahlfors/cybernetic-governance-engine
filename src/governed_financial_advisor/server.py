@@ -4,8 +4,11 @@ import uvicorn
 
 # Initialize Vertex AI before importing agents
 import vertexai
-from fastapi import FastAPI, HTTPException
+import vertexai
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, Request
 from opentelemetry import trace
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.langchain import LangchainInstrumentor
 from pydantic import BaseModel
 
@@ -24,13 +27,24 @@ from src.governed_financial_advisor.utils.telemetry import configure_telemetry
 configure_telemetry()
 LangchainInstrumentor().instrument() # Traces Graph nodes (including Agent calls)
 
-app = FastAPI(title="Governed Financial Advisor (Graph Orchestrated)")
+# --- LIFESPAN (Startup/Shutdown) ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Initialize Graph (and Redis)
+    print("🔄 Initializing Agent Graph...")
+    app.state.graph = create_graph(redis_url=Config.REDIS_URL)
+    print("✅ Agent Graph Initialized")
+    yield
+    # Shutdown
+    print("🛑 Shutting down...")
+
+app = FastAPI(title="Governed Financial Advisor (Graph Orchestrated)", lifespan=lifespan)
+FastAPIInstrumentor.instrument_app(app) # Enable automatic request tracing
 app.include_router(demo_router)
 
 # --- GLOBAL SINGLETONS ---
 rails = load_rails()
-# Use localhost as default Redis URL if not set
-graph = create_graph(redis_url=Config.REDIS_URL)
+# Graph is now in app.state.graph
 
 class QueryRequest(BaseModel):
     prompt: str
@@ -46,7 +60,7 @@ def health_check():
     }
 
 @app.post("/agent/query")
-async def query_agent(req: QueryRequest):
+async def query_agent(req: QueryRequest, request: Request):
     token = user_context.set(req.user_id)
     try:
         # ISO 42001: A.7.2 Accountability - Tag trace with User Identity
@@ -65,7 +79,9 @@ async def query_agent(req: QueryRequest):
 
         # 2. Graph Execution (Calls Existing Agents)
         # Using ainvoke to run the graph asynchronously
-        res = await graph.ainvoke(
+        # 2. Graph Execution (Calls Existing Agents)
+        # Using ainvoke to run the graph asynchronously
+        res = await request.app.state.graph.ainvoke(
             {"messages": [("user", req.prompt)]},
             config={"recursion_limit": 20, "configurable": {"thread_id": req.thread_id}}
         )

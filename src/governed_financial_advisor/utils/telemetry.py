@@ -103,76 +103,75 @@ def configure_telemetry():
 
         # Try to configure Google Cloud Trace
         try:
-            from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
-
-            from src.infrastructure.telemetry.exporters.parquet_exporter import (
-                ParquetSpanExporter,
-            )
-            from src.infrastructure.telemetry.processors.genai_cost_optimizer import (
-                GenAICostOptimizerProcessor,
-            )
-
             # Set up tracer provider
             provider = TracerProvider()
             trace.set_tracer_provider(provider)
 
             # 1. Define Exporters
             # Hot Tier: Cloud Trace
-            cloud_exporter = CloudTraceSpanExporter()
-            hot_processor = BatchSpanProcessor(cloud_exporter)
+            try:
+                from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
+                cloud_exporter = CloudTraceSpanExporter()
+                hot_processor = BatchSpanProcessor(cloud_exporter)
+                
+                # Optimizer Processor (Correct Import)
+                try:
+                    from src.governed_financial_advisor.infrastructure.telemetry.processors.genai_cost_optimizer import (
+                        GenAICostOptimizerProcessor,
+                    )
+                except ImportError as e:
+                    logger.warning(f"⚠️ Optimizer Processor import failed: {e}")
+                    raise
 
-            # Cold Tier: Local Parquet
-            parquet_exporter = ParquetSpanExporter()
-            cold_processor = BatchSpanProcessor(parquet_exporter)
+                # Cold Tier: OTLP (Standard/Arrow-compatible)
+                # Only enable if explicitly configured to avoid localhost connection errors in GKE
+                otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+                cold_processor = None
+                
+                if otel_endpoint:
+                    otel_headers = {}
+                    if os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
+                         pairs = os.getenv("OTEL_EXPORTER_OTLP_HEADERS").split(",")
+                         for pair in pairs:
+                              k, v = pair.split("=", 1)
+                              otel_headers[k] = v
 
-            # Langfuse Tier: OTLP
-            # Support both manual (Basic Auth) and standard OTEL env vars
-            langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
-            langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
-
-            # Prefer standard OTLP env vars if set by deployment script, otherwise construct
-            otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:3000/api/public/otlp")
-            otel_headers = {}
-
-            # If explicit keys provided, override headers
-            if langfuse_public_key and langfuse_secret_key:
-                auth_str = f"{langfuse_public_key}:{langfuse_secret_key}"
-                auth_header = f"Basic {base64.b64encode(auth_str.encode()).decode()}"
-                otel_headers["Authorization"] = auth_header
-            elif os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
-                 # Simple parser for "key=value,key2=value2"
-                 pairs = os.getenv("OTEL_EXPORTER_OTLP_HEADERS").split(",")
-                 for pair in pairs:
-                      k, v = pair.split("=", 1)
-                      otel_headers[k] = v
-
-            # Configure OTLP HTTP Exporter
-            # Note: We use the HTTP exporter as per Langfuse Cloud recommendation
-            # Endpoint must be full URL for http exporter e.g. /v1/traces
-            if not otel_endpoint.endswith("/v1/traces"):
-                 otel_endpoint = f"{otel_endpoint}/v1/traces"
-
-            otlp_exporter = OTLPSpanExporter(
-                endpoint=otel_endpoint,
-                headers=otel_headers
-            )
-            otlp_processor = BatchSpanProcessor(otlp_exporter)
-            provider.add_span_processor(otlp_processor)
-            logger.info(f"✅ OpenTelemetry: Langfuse OTLP Exporter configured at {otel_endpoint}")
+                    otlp_exporter = OTLPSpanExporter(endpoint=otel_endpoint, headers=otel_headers)
+                    cold_processor = BatchSpanProcessor(otlp_exporter)
+                    logger.info(f"✅ OpenTelemetry: OTLP Exporter configured at {otel_endpoint}")
+                else:
+                    logger.info("ℹ️ OpenTelemetry: OTEL_EXPORTER_OTLP_ENDPOINT not set. Using NoOp Cold Tier.")
+                    # Define lightweight NoOp processor to satisfy optimizer contract
+                    class NoOpSpanProcessor:
+                        def on_start(self, span, parent_context=None): pass
+                        def on_end(self, span): pass
+                        def shutdown(self): pass
+                        def force_flush(self, timeout_millis=30000): return True
+                    cold_processor = NoOpSpanProcessor()
 
 
-            # 2. Configure Optimizer Processor
-            optimizer = GenAICostOptimizerProcessor(
-                hot_processor=hot_processor,
-                cold_processor=cold_processor,
-                pricing_rule=smart_sampling
-            )
 
-            # 3. Add to Provider
-            provider.add_span_processor(optimizer)
+                # 2. Configure Optimizer Processor
+                # Routes Sampled/Audit (Cold) -> OTLP (Full Fidelity)
+                # Routes All (Hot) -> Cloud Trace (Stripped)
+                optimizer = GenAICostOptimizerProcessor(
+                    hot_processor=hot_processor,
+                    cold_processor=cold_processor,
+                    pricing_rule=smart_sampling
+                )
+                provider.add_span_processor(optimizer)
+                logger.info("✅ OpenTelemetry: Tiered Observability (Cost Optimizer) configured with OTLP Cold Tier.")
 
-            logger.info("✅ OpenTelemetry: Tiered Observability (Cost Optimizer) configured.")
-            logger.info("✅ OpenTelemetry: Google Cloud Trace Exporter configured.")
+            except Exception as e:
+                logger.warning(f"⚠️ Telemetry Pipeline Logic failed: {e}")
+                # Fallback: Just add Cloud Trace if optimizer failed
+                try:
+                     from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
+                     cloud_exporter = CloudTraceSpanExporter()
+                     provider.add_span_processor(BatchSpanProcessor(cloud_exporter))
+                     logger.info("✅ OpenTelemetry: Fallback to simple Cloud Trace.")
+                except Exception:
+                     pass
 
             # Instrument the requests and httpx libraries for HTTP tracing
             try:

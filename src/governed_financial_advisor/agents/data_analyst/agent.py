@@ -15,11 +15,7 @@
 """data_analyst_agent for finding information using google search"""
 
 from google.adk import Agent
-from google.adk.tools import transfer_to_agent
-from google.adk.tools.google_search_agent_tool import (
-    GoogleSearchAgentTool,
-    create_google_search_agent,
-)
+from google.genai.types import Tool, GoogleSearchRetrieval
 
 from config.settings import MODEL_NAME
 from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
@@ -103,7 +99,7 @@ The data_analyst must return a single, comprehensive report object or string wit
      * **Date Published:** [Publication Date of Article]
      * **Brief Relevance:** (1-2 sentences on why this source was key to the analysis)
 
-IMMEDIATELY AFTER generating this report, you MUST call `transfer_to_agent("financial_coordinator")` to return control to the main agent.
+
 """
                     )
                 ]
@@ -115,16 +111,33 @@ IMMEDIATELY AFTER generating this report, you MUST call `transfer_to_agent("fina
 def get_data_analyst_instruction() -> str:
     return DATA_ANALYST_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
 
+from google.genai import Client, types
+from config.settings import Config
+
+def perform_google_search(query: str) -> str:
+    """Search Google for the given query."""
+    try:
+        client = Client(vertexai=True, project=Config.GOOGLE_CLOUD_PROJECT, location=Config.GOOGLE_CLOUD_LOCATION)
+        response = client.models.generate_content(
+            model=Config.DEFAULT_MODEL,
+            contents=f"Search for this and provide a detailed summary: {query}",
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search_retrieval=types.GoogleSearchRetrieval())]
+            )
+        )
+        return response.text
+    except Exception as e:
+        return f"Error performing search: {e}"
+
 def create_data_analyst_agent(model_name: str = MODEL_NAME) -> Agent:
     """Factory to create data analyst agent."""
-    # Create a dedicated search agent and wrap it as a tool
-    search_agent = create_google_search_agent(model=model_name)
-    google_search_tool = GoogleSearchAgentTool(agent=search_agent)
-
+    # Wrapped Google Search tool to satisfy LlmAgent's Callable/BaseTool requirement
+    # while leveraging native grounding via a delegate request.
+    
     return Agent(
         model=model_name,
         name="data_analyst_agent",
         instruction=get_data_analyst_instruction(),
         output_key="market_data_analysis_output",
-        tools=[google_search_tool, transfer_to_agent],
+        tools=[perform_google_search],
     )
