@@ -35,8 +35,9 @@ The refactor prioritizes **Safety and Correctness** over raw latency for high-ri
 *   **Component:** `src/governed_financial_advisor/agents/evaluator/agent.py` (**NEW**)
 *   **Change:**
     *   Created a dedicated **Evaluator Agent**.
-    *   **Simulation Loop:** Runs `check_market_status`, `verify_policy_opa`, and `verify_semantic_nemo`.
+    *   **Simulation Loop:** Runs `check_market_status`, `verify_policy_opa`, `verify_consensus`, and `verify_semantic_nemo`.
     *   **Optimization:** The `Evaluator Node` runs these tools in **Parallel** (`asyncio.gather`) internally to minimize latency, but **Blocks** the graph flow until all pass.
+    *   **Real-World Wiring:** Mocks have been replaced with real integrations. `verify_policy_opa` calls the `OPAClient` (Gateway Stub), and `verify_consensus` invokes the Multi-Agent Debate engine.
     *   **Output:** `EvaluationResult` (Verdict + Reasoning).
 
 ### 3.3. The Executor (System 1 Implementation)

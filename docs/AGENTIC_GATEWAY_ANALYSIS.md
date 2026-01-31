@@ -80,7 +80,8 @@ Given the "Latency as Currency" philosophy and the need to proxy **LLM Streams**
 
 **The "Dividend" of Separation:**
 *   **Connection Pooling:** The Gateway can maintain persistent, warm connections to VertexAI/vLLM and OPA, avoiding the "cold start" of HTTP clients in transient Agent processes.
-*   **Parallelism:** The Gateway can offload "Safety Checks" (Consensus, OPA) asynchronously while the Agent is doing other work (if the protocol supports async ack).
+*   **Parallelism:** The Gateway can offload "Safety Checks" (Consensus, OPA) asynchronously.
+*   **Bankruptcy Protocol:** The Gateway Server explicitly calculates request latency and passes it to the `OPAClient`. If the "Governance Tax" + "Network Latency" exceeds the budget (3000ms), the OPA client fast-fails (returns DENY), enforcing the "Latency as Currency" strategy.
 
 **Net Impact:**
 *   For **LLM Calls:** Neutral. The overhead of the network hop is invisible compared to the 20ms+ TTFT of the LLM.
