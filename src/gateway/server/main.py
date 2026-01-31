@@ -1,12 +1,14 @@
 import asyncio
 import json
 import logging
+import os
 import sys
 import time
 from concurrent import futures
 
 import grpc
 from opentelemetry import trace
+from pythonjsonlogger import jsonlogger
 
 # Adjust path so we can import from src
 sys.path.append(".")
@@ -23,7 +25,13 @@ from src.governed_financial_advisor.governance.consensus import consensus_engine
 from src.governed_financial_advisor.governance.safety import safety_filter
 
 logger = logging.getLogger("Gateway.Server")
-logging.basicConfig(level=logging.INFO)
+
+# Configure JSON Logging for Cloud Run (Stackdriver)
+logHandler = logging.StreamHandler()
+formatter = jsonlogger.JsonFormatter('%(timestamp)s %(severity)s %(name)s %(message)s')
+logHandler.setFormatter(formatter)
+logging.basicConfig(level=logging.INFO, handlers=[logHandler])
+
 tracer = trace.get_tracer("gateway.server")
 
 class GatewayService(gateway_pb2_grpc.GatewayServicer):
@@ -169,10 +177,14 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
             return gateway_pb2.ToolResponse(status="ERROR", error=f"Unknown tool: {tool_name}")
 
 async def serve():
+    port = os.getenv("PORT", "50051")
     server = grpc.aio.server(futures.ThreadPoolExecutor(max_workers=10))
     gateway_pb2_grpc.add_GatewayServicer_to_server(GatewayService(), server)
-    server.add_insecure_port('[::]:50051')
-    logger.info("🚀 Gateway Server starting on port 50051...")
+
+    # Cloud Run expects us to listen on $PORT
+    server.add_insecure_port(f'[::]:{port}')
+    logger.info(f"🚀 Gateway Server starting on port {port}...")
+
     await server.start()
     await server.wait_for_termination()
 
