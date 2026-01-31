@@ -43,7 +43,8 @@ class ConsensusEngine:
             Example: APPROVE - Standard equity purchase.
             """
 
-            response = llm.invoke(prompt)
+            # Use ainvoke to prevent blocking the event loop
+            response = await llm.ainvoke(prompt)
             content = response.content.strip()
 
             if "APPROVE" in content:
@@ -59,7 +60,7 @@ class ConsensusEngine:
             logger.error(f"Critic {role} failed: {e}")
             return "ERROR"
 
-    def check_consensus(self, action: str, amount: float, symbol: str) -> dict[str, Any]:
+    async def check_consensus(self, action: str, amount: float, symbol: str) -> dict[str, Any]:
         """
         If the amount > threshold, trigger a consensus check.
         Uses a Multi-Agent Debate pattern (simulated via multiple calls).
@@ -74,12 +75,13 @@ class ConsensusEngine:
             span.set_attribute("iso.control_id", "A.8.4")
 
             # 1. Risk Manager Vote
-            vote1 = self._get_critic_vote("Risk Manager", action, amount, symbol)
-
             # 2. Compliance Officer Vote
-            vote2 = self._get_critic_vote("Compliance Officer", action, amount, symbol)
+            # Run concurrently
+            vote1_task = self._get_critic_vote("Risk Manager", action, amount, symbol)
+            vote2_task = self._get_critic_vote("Compliance Officer", action, amount, symbol)
 
-            votes = [vote1, vote2]
+            import asyncio
+            votes = await asyncio.gather(vote1_task, vote2_task)
 
             # Consensus Rule: REJECT > ESCALATE > APPROVE
             if any(v == "REJECT" for v in votes):

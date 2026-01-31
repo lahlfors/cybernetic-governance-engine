@@ -11,6 +11,7 @@ from src.governed_financial_advisor.agents.evaluator.agent import (
     create_evaluator_agent,
     verify_policy_opa,
     verify_semantic_nemo,
+    verify_consensus
 )
 from src.governed_financial_advisor.graph.nodes.adapters import run_adk_agent
 from src.governed_financial_advisor.graph.state import AgentState
@@ -24,11 +25,7 @@ async def evaluator_node(state: AgentState) -> dict[str, Any]:
     Runs the Evaluator Agent which orchestrates the simulation.
 
     Optimization: "Parallel-Internal Evaluator".
-    While the Agent itself is sequential, we can perform the tool checks in parallel
-    if we implemented custom tool running logic.
-    For this implementation, we rely on the Agent's reasoning to call tools.
-    However, to strictly enforce the "Optimistic Speed" requirement from the user,
-    we can pre-emptively run the checks here in parallel and feed them to the agent context.
+    We pre-emptively run the checks here in parallel (real async) and feed them to the agent context.
     """
 
     plan = state.get("execution_plan_output")
@@ -47,6 +44,10 @@ async def evaluator_node(state: AgentState) -> dict[str, Any]:
                 action = step.get("action")
                 break
 
+    # If action is empty, default to "plan_review"
+    if action == "UNKNOWN":
+        action = "plan_review"
+
     # --- PARALLEL SIMULATION (The Optimization) ---
     # We run the heavy "tools" here in the node wrapper to guarantee parallelism
     # and then pass the results to the Agent to "judge".
@@ -55,15 +56,29 @@ async def evaluator_node(state: AgentState) -> dict[str, Any]:
         start_time = time.time()
 
         # 1. Define Tasks
+        # check_market_status is Sync (Thread)
         market_task = asyncio.to_thread(check_market_status, symbol)
-        opa_task = asyncio.to_thread(verify_policy_opa, action, str(plan))
-        nemo_task = asyncio.to_thread(verify_semantic_nemo, str(plan)) # Check entire plan text
+
+        # verify_policy_opa is Async (Task)
+        opa_task = verify_policy_opa(action, str(plan))
+
+        # verify_semantic_nemo is Async (Task)
+        nemo_task = verify_semantic_nemo(str(plan))
+
+        # verify_consensus is Async (Task)
+        consensus_task = verify_consensus(action, str(plan))
 
         # 2. Run in Parallel
         logger.info(f"⚡ Evaluator: Running Parallel Simulation for {symbol}")
-        results = await asyncio.gather(market_task, opa_task, nemo_task, return_exceptions=True)
+        # Use return_exceptions=True to prevent one failure from crashing the whole node
+        results = await asyncio.gather(market_task, opa_task, nemo_task, consensus_task, return_exceptions=True)
 
-        market_res, opa_res, nemo_res = results
+        market_res, opa_res, nemo_res, consensus_res = results
+
+        # Log errors if any task failed
+        for i, res in enumerate(results):
+            if isinstance(res, Exception):
+                logger.error(f"Simulation Task {i} failed: {res}")
 
         latency = (time.time() - start_time) * 1000
         span.set_attribute("simulation.latency_ms", latency)
@@ -73,6 +88,7 @@ async def evaluator_node(state: AgentState) -> dict[str, Any]:
             f"Pre-Computed Simulation Results:\n"
             f"- Market Status: {market_res}\n"
             f"- Regulatory Policy: {opa_res}\n"
+            f"- Consensus Check: {consensus_res}\n"
             f"- Semantic Safety: {nemo_res}\n"
         )
 

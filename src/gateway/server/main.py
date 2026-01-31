@@ -113,6 +113,7 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
         """
         Executes a tool with strict governance.
         """
+        start_time = time.time()
         tool_name = request.tool_name
         logger.info(f"Received Tool Request: {tool_name}")
 
@@ -124,11 +125,16 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
             return gateway_pb2.ToolResponse(status="ERROR", error="Invalid JSON")
 
         # 1. Governance Tax (OPA)
-        # We need to adapt the OPA check.
+        # Calculate current latency (simulating "Latency as Currency")
+        # In a real distributed trace, we would extract this from context.
+        # Here we approximate it as time since request received.
+        current_latency_ms = (time.time() - start_time) * 1000
+
         payload = params.copy()
         payload['action'] = tool_name
 
-        decision = await self.opa_client.evaluate_policy(payload)
+        # Pass latency to OPA check for Bankruptcy Protocol
+        decision = await self.opa_client.evaluate_policy(payload, current_latency_ms=current_latency_ms)
 
         if decision == "DENY":
             return gateway_pb2.ToolResponse(status="BLOCKED", error="OPA Policy Violation")
@@ -154,7 +160,8 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
                 # Consensus Check
                 amount = params.get("amount", 0)
                 symbol = params.get("symbol", "UNKNOWN")
-                consensus = consensus_engine.check_consensus(tool_name, amount, symbol)
+                # Await the async consensus check
+                consensus = await consensus_engine.check_consensus(tool_name, amount, symbol)
 
                 if consensus["status"] == "REJECT":
                      return gateway_pb2.ToolResponse(status="BLOCKED", error=f"Consensus Rejected: {consensus['reason']}")
