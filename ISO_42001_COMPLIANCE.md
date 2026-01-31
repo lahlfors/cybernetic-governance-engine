@@ -19,6 +19,11 @@ The following table maps ISO 42001 controls to specific trace attributes capture
 | **A.9.2** | **System Reliability** | `exception` | `status.code`=`ERROR` | ✅ **Compliant**. Exceptions in governance logic are recorded with full stack traces. |
 | **A.7.2** | **Accountability** | `http.server.request` | `enduser.id` | ✅ **Compliant**. User Identity is explicitly tagged on all agent request traces. |
 
+<<<<<<< HEAD
+=======
+> **Note (Jan 2026):** All governance spans now include explicit `iso.control_id` and `iso.requirement` attributes for direct compliance traceability.
+
+>>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
 ## Detailed Trace Analysis
 
 ### 1. Policy Enforcement (`src/governance/client.py`)

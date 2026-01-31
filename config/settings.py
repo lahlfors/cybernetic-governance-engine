@@ -13,6 +13,9 @@ MODEL_FAST = os.getenv("MODEL_FAST", "gemini-2.5-flash-lite")
 # Defaulting to Gemini 2.5 Pro (Jan 2026 Stable)
 MODEL_REASONING = os.getenv("MODEL_REASONING", "gemini-2.5-pro")
 
+# Consensus Engine: Separate model for multi-agent debate (can use different provider)
+MODEL_CONSENSUS = os.getenv("MODEL_CONSENSUS", MODEL_REASONING)
+
 # Legacy alias for backward compatibility
 MODEL_NAME = MODEL_FAST
 
@@ -27,6 +30,10 @@ class Config:
 
     # Data Stores
     FIRESTORE_DATABASE = os.getenv("FIRESTORE_DATABASE", "(default)")
+    # Build REDIS_URL from host/port for compatibility with K8s deployment
+    REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT = os.getenv("REDIS_PORT", "6379")
+    REDIS_URL = os.getenv("REDIS_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}")
 
     # Governance
     OPA_URL = os.getenv("OPA_URL", "http://localhost:8181/v1/data/finance/decision")

@@ -67,11 +67,19 @@ spec:
             - "-m"
             - "vllm.entrypoints.openai.api_server"
             - "--model"
+<<<<<<< HEAD
             - "google/gemma-2-9b-it"
             - "--served-model-name"
             - "google/gemma-2-9b-it"
             - "--dtype"
             - "bfloat16"
+=======
+            - "meta-llama/Llama-3.1-8B-Instruct"
+            - "--served-model-name"
+            - "meta-llama/Llama-3.1-8B-Instruct"
+            - "--dtype"
+            - "float16"
+>>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
             - "--enable-prefix-caching"
             - "--max-model-len"
             - "8192"
@@ -80,6 +88,10 @@ spec:
             - "1"
             - "--gpu-memory-utilization"
             - "0.95"
+<<<<<<< HEAD
+=======
+            - "--disable-log-stats"
+>>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
       nodeSelector:
         cloud.google.com/gke-accelerator: "nvidia-l4"
       tolerations:

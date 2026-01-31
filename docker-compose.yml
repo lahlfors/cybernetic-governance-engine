@@ -1,17 +1,33 @@
 version: '3.8'
 
 services:
+<<<<<<< HEAD
   # OPA: Standalone Service (Simulating Remote Deployment)
   opa:
     image: openpolicyagent/opa:latest-static
+=======
+  opa:
+    image: openpolicyagent/opa:latest-static
+    # Run OPA listening on both UDS (for sidecar simulation) and TCP (for debugging/fallback)
+>>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
     command:
       - "run"
       - "--server"
       - "--log-level=info"
+<<<<<<< HEAD
       - "--addr=:8181" # TCP Only (Remote simulation)
       - "/policies"
     volumes:
       - ./policies:/policies
+=======
+      - "--addr=unix:///tmp/opa.sock"
+      - "--addr=:8181"
+      - "/policies"
+    volumes:
+      - ./policies:/policies
+      # Shared volume for Unix Domain Socket
+      - opa_socket_vol:/tmp
+>>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
     ports:
       - "8181:8181"
     healthcheck:
@@ -20,7 +36,23 @@ services:
       timeout: 3s
       retries: 5
 
+<<<<<<< HEAD
   # NeMo Guardrails: Retained
+=======
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+>>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
   nemo:
     build:
       context: .
@@ -33,6 +65,7 @@ services:
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
     volumes:
       - ./src:/app/src
+<<<<<<< HEAD
     # Removed Redis dependency
 
   # Main Agent Service (ADK Native)
@@ -56,3 +89,20 @@ services:
 
 volumes:
   # Removed redis_data and opa_socket_vol
+=======
+    depends_on:
+      - redis
+
+  # Optional: Application service placeholder (if running fully in docker)
+  # app:
+  #   build: .
+  #   volumes:
+  #     - opa_socket_vol:/tmp
+  #   environment:
+  #     - OPA_URL=http+unix://%2Ftmp%2Fopa.sock/v1/data/finance/decision
+  #     - REDIS_URL=redis://redis:6379
+
+volumes:
+  redis_data:
+  opa_socket_vol:
+>>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359

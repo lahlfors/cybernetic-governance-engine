@@ -204,9 +204,15 @@ if prompt := st.chat_input("Ask about market analysis, strategies, or trading...
         st.markdown(response)
 
         # Show Trace Link
+<<<<<<< HEAD
         if trace_id and st.session_state.project_id != "unknown":
             url = f"https://console.cloud.google.com/traces/list?project={st.session_state.project_id}&tid={trace_id}"
             st.caption(f"🔍 [View Trace]({url})")
+=======
+        # if trace_id and st.session_state.project_id != "unknown":
+        #    url = f"https://console.cloud.google.com/traces/list?project={st.session_state.project_id}&tid={trace_id}"
+        #    st.caption(f"🔍 [View Trace]({url})")
+>>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
 
     # Add assistant response to history
     st.session_state.messages.append({"role": "assistant", "content": response, "trace_id": trace_id})

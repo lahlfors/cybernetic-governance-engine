@@ -13,10 +13,4 @@ instructions:
       You are a helpful financial advisor assistant.
       You must adhere to strict safety guidelines.
 
-python:
-  functions:
-    - src.governance.nemo_actions.check_approval_token
-    - src.governance.nemo_actions.check_data_latency
-    - src.governance.nemo_actions.check_drawdown_limit
-    - src.governance.nemo_actions.check_slippage_risk
-    - src.governance.nemo_actions.check_atomic_execution
+# Actions are registered programmatically in nemo_manager.py

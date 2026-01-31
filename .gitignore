@@ -29,6 +29,14 @@ agents_log/
 opa
 verification_*.txt
 
+<<<<<<< HEAD
+=======
+# Generated Kubernetes manifests
+deployment/k8s/governed-financial-advisor.yaml
+deployment/k8s/vllm-deployment.yaml
+
+
+>>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
 # Traces
 *.parquet
 trace_*.parquet
@@ -36,3 +44,23 @@ logs/cold_tier/
 tests/temp_*/
 GEMINI.md
 .manifest
+<<<<<<< HEAD
+=======
+deployment/k8s/generated/
+
+# Terraform
+deployment/terraform/.terraform/
+deployment/terraform/.terraform.lock.hcl
+deployment/terraform/terraform.tfstate
+deployment/terraform/terraform.tfstate.backup
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+>>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359

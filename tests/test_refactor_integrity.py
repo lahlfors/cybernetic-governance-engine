@@ -29,16 +29,16 @@ sys.modules["langchain_google_genai"] = MagicMock()
 # Now we can import our code
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from src.agents.risk_analyst.agent import get_risk_analyst_instruction, ProposedUCA, ConstraintLogic
-from src.governance.transpiler import PolicyTranspiler
-from src.governance.policy_loader import PolicyLoader
+from src.governed_financial_advisor.agents.risk_analyst.agent import get_risk_analyst_instruction, ProposedUCA, ConstraintLogic
+from src.governed_financial_advisor.governance.transpiler import PolicyTranspiler
+from src.governed_financial_advisor.governance.policy_loader import PolicyLoader
 
 # --- Mocks ---
 
 @pytest.fixture
 def mock_gcs_loader():
     # We patch the import location within policy_loader
-    with patch("src.governance.policy_loader.storage.Client") as mock_client:
+    with patch("src.governed_financial_advisor.governance.policy_loader.storage.Client") as mock_client:
         mock_bucket = MagicMock()
         mock_blob = MagicMock()
 
@@ -60,7 +60,7 @@ hazards:
 
 @pytest.fixture
 def mock_judge_agent():
-    with patch("src.governance.transpiler.JudgeAgent") as mock_class:
+    with patch("src.governed_financial_advisor.governance.transpiler.JudgeAgent") as mock_class:
         mock_instance = mock_class.return_value
         yield mock_instance
 
