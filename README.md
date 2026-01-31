@@ -145,7 +145,17 @@ Start the governance infrastructure (OPA, Redis, NeMo):
 docker-compose up -d
 ```
 
-### 5. Run the Agent
+### 5. Run the Agentic Gateway (Required)
+
+Start the gRPC Gateway service (Sidecar):
+
+```bash
+# Start in background or separate terminal
+uv run python src/gateway/server/main.py
+```
+*Runs on port 50051.*
+
+### 6. Run the Agent
 
 ```bash
 # Run the FastAPI server locally
@@ -154,7 +164,7 @@ uv run python src/server.py
 
 The server will start on `http://localhost:8080`.
 
-### 6. Run the UI (Optional)
+### 7. Run the UI (Optional)
 
 ```bash
 # Install Streamlit
