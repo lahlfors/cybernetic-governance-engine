@@ -14,6 +14,7 @@ The **Gateway** (`src/gateway/`) is a dedicated gRPC service that acts as the ph
     1.  **LLM Proxy:** Routes all generation requests to the appropriate provider (vLLM vs Vertex). Handles Token Counting, Cost Tracking, and Data Loss Prevention (DLP).
     2.  **Execution Proxy:** The *only* component authorized to execute "Effectful Tools" (e.g., `execute_trade`).
     3.  **Policy Enforcement:** Centralizes OPA, Circuit Breaker, and Safety Filter logic.
+    4.  **Consensus Engine:** Orchestrates multi-agent debate (Risk/Compliance) for high-stakes actions using Async I/O to avoid blocking the request loop.
 
 ### 1.2. The Stateless Agent (Reasoning Engine)
 The **Agent** (`src/governed_financial_advisor/`) is now a "Pure Reasoner".
@@ -48,12 +49,17 @@ sequenceDiagram
         Note over Agent, Exchange: 2. Execution Phase (System 1)
         Agent->>Gateway: ExecuteTool("execute_trade", {100, GOOG})
 
-        Note right of Gateway: GOVERNANCE CHECK
-        Gateway->>OPA: EvaluatePolicy(Action, Params)
-        OPA-->>Gateway: ALLOW / DENY
+        Note right of Gateway: GOVERNANCE CHECK (Async)
+        par OPA Check
+            Gateway->>OPA: EvaluatePolicy(Action, Params)
+            OPA-->>Gateway: ALLOW / DENY
+        and Consensus Check
+            Gateway->>LLM: Consensus Debate
+            LLM-->>Gateway: APPROVE / REJECT
+        end
 
         alt DENIED
-            Gateway-->>Agent: Error: Policy Violation
+            Gateway-->>Agent: Error: Policy Violation / Consensus Rejected
         else ALLOWED
             Gateway->>Exchange: POST /orders
             Exchange-->>Gateway: Success

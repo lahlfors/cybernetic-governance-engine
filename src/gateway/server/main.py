@@ -119,13 +119,13 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
         # Pass latency to OPA check for Bankruptcy Protocol
         decision = await self.opa_client.evaluate_policy(payload, current_latency_ms=current_latency_ms)
 
-            if decision == "DENY":
-                return gateway_pb2.ToolResponse(status="BLOCKED", error="OPA Policy Violation")
+        if decision == "DENY":
+            return gateway_pb2.ToolResponse(status="BLOCKED", error="OPA Policy Violation")
 
-            if decision == "MANUAL_REVIEW":
-                 # Production readiness: Log alert instead of just error string
-                 logger.critical(f"MANUAL REVIEW REQUIRED for {tool_name} | Params: {params}")
-                 return gateway_pb2.ToolResponse(status="BLOCKED", error="Manual Review Triggered - Admin Notified.")
+        if decision == "MANUAL_REVIEW":
+             # Production readiness: Log alert instead of just error string
+             logger.critical(f"MANUAL REVIEW REQUIRED for {tool_name} | Params: {params}")
+             return gateway_pb2.ToolResponse(status="BLOCKED", error="Manual Review Triggered - Admin Notified.")
 
         # 2. Safety & Consensus
 

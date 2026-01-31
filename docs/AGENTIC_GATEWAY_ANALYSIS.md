@@ -53,9 +53,14 @@ The system uses gRPC for high-performance, strongly-typed communication between 
 *   **Network Hop:** ~0.2ms - 0.5ms per call (localhost/UDS).
 
 **The "Dividend" of Separation:**
-*   **Non-Blocking IO:** The Gateway handles heavy governance checks asynchronously.
-*   **Connection Pooling:** Persistent connections to VertexAI and OPA.
+*   **Non-Blocking IO & Parallelism:** The Gateway handles heavy governance checks (Consensus, OPA) asynchronously, offloading them from the Agent's event loop.
+*   **Connection Pooling:** The Gateway maintains persistent, warm connections to VertexAI/vLLM and OPA, avoiding the "cold start" of HTTP clients.
 *   **Dry Run Simulation:** Allows "Optimistic Planning" (Agent) with "Pessimistic Verification" (Evaluator) without risk of accidental execution.
+*   **Bankruptcy Protocol:** The Gateway Server explicitly calculates request latency and passes it to the `OPAClient`. If the "Governance Tax" + "Network Latency" exceeds the budget (3000ms), the OPA client fast-fails (returns DENY), enforcing the "Latency as Currency" strategy.
+
+**Net Impact:**
+*   For **LLM Calls:** Neutral. The overhead of the network hop is invisible compared to the 20ms+ TTFT of the LLM.
+*   For **Tool Calls:** Slight Increase (~1ms). This is acceptable given the **Security** and **Governance** gains. The "Governance Tax" (OPA check) is already ~10ms; adding 1ms for the network is a 10% increase on the tax, but a 0.01% increase on the total transaction time.
 
 ---
 
