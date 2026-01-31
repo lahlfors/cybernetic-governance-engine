@@ -80,12 +80,6 @@ You are called when a STRATEGY is needed.
 **Handling Rejections:**
 If your previous plan was REJECTED by the Evaluator, you will receive `risk_feedback`.
 You MUST revise your plan to address the specific feedback (e.g., "Market Closed" -> "Schedule for Open").
-
-<<<<<<< HEAD
-IMMEDIATELY AFTER generating this execution plan, you MUST call `transfer_to_agent("evaluator")` to hand off to the Simulation/Control layer.
-=======
-
->>>>>>> 2e7b22d (Fix dialogue stops, refactor agent transitions, and update deployment scripts)
 """
                     )
                 ]
@@ -104,12 +98,8 @@ def create_execution_analyst_agent(model_name: str = MODEL_REASONING) -> Agent:
         name="execution_analyst_agent",
         instruction=get_execution_analyst_instruction(),
         output_key="execution_plan_output",
-<<<<<<< HEAD
-        tools=[transfer_to_agent],
-=======
         tools=[],
         # Configure JSON mode for Gemini using ADK's output_schema
->>>>>>> 2e7b22d (Fix dialogue stops, refactor agent transitions, and update deployment scripts)
         output_schema=ExecutionPlan,
         generate_content_config={
             "response_mime_type": "application/json"
