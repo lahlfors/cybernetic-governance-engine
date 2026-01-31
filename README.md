@@ -8,8 +8,6 @@ The Financial Advisor is a multi-agent system designed to assist human financial
 
 Use this authentic reference implementation to understand how to build **high-reliability agentic systems** for regulated industries.
 
-<<<<<<< HEAD
-=======
 ## Agentic DevOps & The Policy Governor
 
 This implementation adheres to the **Agentic DevOps** philosophy, reframing the infrastructure as a deterministic supervisor.
@@ -21,7 +19,6 @@ This implementation adheres to the **Agentic DevOps** philosophy, reframing the 
 *   **The Currency Broker (HybridClient):** Manages the "Latency as Currency" budget, enforcing a strict Bankruptcy Protocol if reasoning takes too long.
 *   **The Foundry (Pipelines):** Offline factories that compile STAMP hazards into Rego policies.
 
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
 ## Hybrid Architecture: LangGraph + Google ADK
 
 This system implements a **Hybrid Manager-Worker Architecture** that separates concerns:
@@ -50,7 +47,6 @@ This system implements a **Hybrid Manager-Worker Architecture** that separates c
 └─────────────────────────────────────────────────────────┘
 ```
 
-<<<<<<< HEAD
 **Why Hybrid?**
 - **LangGraph** excels at deterministic control flow—no LLM decides the execution path
 - **Google ADK** excels at LLM reasoning—native agent patterns with Vertex AI integration
@@ -69,8 +65,6 @@ This implementation adheres to the **Sovereign Stack** architecture, ensuring cl
 *   **Standard Protocols:** Uses HTTP and **Unix Domain Sockets (UDS)** for ultra-low latency IPC.
 *   **Optimistic Execution:** Uses Python `asyncio` to parallelize safety checks and tool execution, reducing latency.
 
-=======
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
 ## Governance & Safety (Green Stack)
 
 This repository implements the advanced **Green Stack Governance Architecture**, separating cognition from control to satisfy ISO 42001 and STPA requirements.
@@ -94,13 +88,14 @@ This system demonstrates a **Hybrid Cognitive Architecture** designed for regula
 *   **Stateless Compute (Cloud Run):** The core agent logic runs on Google Cloud Run. This ensures **infinite scalability** (scale-to-zero) and **deterministic restarts** (no drift).
 *   **Redis State Store:** Session state is persisted to Redis (Cloud Memorystore) for reliable recovery across stateless compute instances.
 *   **Zero-Hop Policy (OPA Sidecar):** Regulatory checks happen over `localhost` or UDS. There is **no network latency** penalty for compliance, enabling high-frequency decision auditing.
+*   **Agentic Gateway (Sidecar):** A gRPC-based gateway handles all external IO and tool execution, isolating the Reasoning Plane from the Execution Plane.
 
 The architecture enforces "Defense in Depth" through six distinct layers (0-5), combining symbolic AI (Hard Logic) with Generative AI (Soft Logic):
 
 1.  **Conversational Guardrails (Layer 0):** **NeMo Guardrails** ensures the model stays on topic and prevents jailbreaks before any tool execution.
 2.  **Structural Validation (Layer 1):** Strict **Pydantic** schemas validate all inputs/outputs.
 3.  **Policy Engine (Layer 2):** **Open Policy Agent (OPA)** enforces Role-Based Access Control (RBAC) and business logic (e.g., trading limits) external to the Python code.
-4.  **Semantic Verification (Layer 3):** A specialized **Verifier Agent** audits the proposed actions of a "Worker" agent to prevent hallucinations (Propose-Verify-Execute pattern).
+4.  **Semantic Verification (Layer 3):** A specialized **Evaluator Agent** audits the proposed actions of a "Worker" agent to prevent hallucinations (Propose-Verify-Execute pattern) using Dry Run capabilities.
 5.  **Consensus Engine (Layer 4):** Simulates an ensemble vote for high-stakes actions.
 6.  **Deterministic Routing (LangGraph):** The system uses **LangGraph** to implement a strict State Graph, replacing probabilistic tool use with deterministic workflow control. This enforces the Strategy → Risk → Execution workflow and enables self-correcting loops.
 
@@ -111,14 +106,12 @@ For a deep dive into the theory and implementation, read **[README_GOVERNANCE.md
 The system orchestrates a team of specialized sub-agents, managed by a central **Supervisor Node**:
 
 1.  **Data Analyst Agent:** Performs market research using Google Search.
-2.  **Governed Trader Agent (Layer 3):**
+2.  **Governed Trader Agent (Executor):**
     *   **Worker:** Proposes trading strategies based on analysis.
-    *   **Verifier:** Audits the proposal against safety rules and the user's direct intent (delegating semantic checks to NeMo). Only the Verifier can execute.
-3.  **Execution Analyst Agent (Strategy):** Creates detailed execution plans (e.g., VWAP, TWAP).
-<<<<<<< HEAD
-=======
-4.  **Risk Analyst Agent (Offline):** A specialized A2 Discovery agent that runs asynchronously to identify UCAs and update policies, removed from the runtime hot path to minimize latency.
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
+    *   **Executor:** A "Dumb Executor" that only runs approved trades.
+3.  **Execution Analyst Agent (Planner):** Creates detailed execution plans (e.g., VWAP, TWAP).
+4.  **Evaluator Agent (Verifier):** A dedicated system 3 control unit that verifies plans against OPA policies and safety constraints via the Gateway.
+5.  **Risk Analyst Agent (Offline):** A specialized A2 Discovery agent that runs asynchronously to identify UCAs and update policies, removed from the runtime hot path to minimize latency.
 
 ## Quick Start (Sovereign Stack)
 
@@ -126,11 +119,7 @@ The system orchestrates a team of specialized sub-agents, managed by a central *
 
 *   [uv](https://github.com/astral-sh/uv) (for Python dependency management)
 *   [Docker](https://docs.docker.com/get-docker/) & Docker Compose
-<<<<<<< HEAD
 *   [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) (for GKE/TPU deployment)
-=======
-*   [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) (for GKE deployment)
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
 
 ### 2. Installation
 
@@ -176,9 +165,6 @@ Start the governance infrastructure (OPA, Redis, NeMo):
 docker-compose up -d
 ```
 
-<<<<<<< HEAD
-### 5. Run the Agent
-=======
 ### 5. Run the Agentic Gateway (Required)
 
 Start the gRPC Gateway service (Sidecar):
@@ -190,7 +176,6 @@ uv run python src/gateway/server/main.py
 *Runs on port 50051.*
 
 ### 6. Run the Agent
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
 
 ```bash
 # Run the FastAPI server locally
@@ -199,11 +184,7 @@ uv run python src/server.py
 
 The server will start on `http://localhost:8080`.
 
-<<<<<<< HEAD
-### 6. Run the UI (Optional)
-=======
 ### 7. Run the UI (Optional)
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
 
 ```bash
 # Install Streamlit
@@ -214,7 +195,6 @@ export BACKEND_URL="http://localhost:8080"
 streamlit run ui/app.py
 ```
 
-<<<<<<< HEAD
 ## Production Deployment (GKE & TPU)
 
 This repository supports deploying the high-performance inference stack to Google Kubernetes Engine (GKE) using either NVIDIA GPUs or Google TPUs.
@@ -222,31 +202,17 @@ This repository supports deploying the high-performance inference stack to Googl
 ### Deployment Options
 
 The `deploy_all.py` script automates the entire process, including provisioning infrastructure, building containers, and deploying manifests.
-=======
-## Production Deployment (GKE)
-
-This repository supports deploying the high-performance inference stack to Google Kubernetes Engine (GKE) using NVIDIA GPUs.
-
-### Deployment Options
-
-The `deploy_sw.py` script automates the entire process, including building containers and deploying manifests.
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
 
 #### Option A: NVIDIA H100 (Default)
 Optimized for ultra-low latency using **Speculative Decoding**. Best for user-facing applications requiring strict SLAs (<200ms TTFT).
 
 ```bash
-<<<<<<< HEAD
 python3 deployment/deploy_all.py \
-=======
-python3 deployment/deploy_sw.py \
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
     --project-id <YOUR_PROJECT_ID> \
     --region us-central1 \
     --accelerator gpu
 ```
 
-<<<<<<< HEAD
 #### Option B: Google TPU v5e (Cost Optimized)
 Uses **TPU v5e** (8 chips) with XLA/Pallas backend. significantly cheaper (~80%) but currently lacks Speculative Decoding support. Recommended for offline batch workloads.
 
@@ -259,8 +225,6 @@ python3 deployment/deploy_all.py \
 
 👉 **See [docs/TPU_MIGRATION_ANALYSIS.md](docs/TPU_MIGRATION_ANALYSIS.md) for a detailed architectural comparison.**
 
-=======
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
 ## Security Verification (Red Teaming)
 
 This project includes a comprehensive **Red Team Test Suite** to verify the robustness of guardrails against adversarial attacks.

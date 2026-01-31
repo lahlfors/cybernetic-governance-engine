@@ -32,11 +32,12 @@ The refactor prioritizes **Safety and Correctness** over raw latency for high-ri
     *   **Goal:** Anticipate future states (Feedforward).
 
 ### 3.2. The Evaluator (System 3 Control)
-*   **Component:** `src/governed_financial_advisor/agents/evaluator/agent.py` (**NEW**)
+*   **Component:** `src/governed_financial_advisor/agents/evaluator/agent.py` (**Refactored**)
 *   **Change:**
     *   Created a dedicated **Evaluator Agent**.
-    *   **Simulation Loop:** Runs `check_market_status`, `verify_policy_opa`, and `verify_semantic_nemo`.
-    *   **Optimization:** The `Evaluator Node` runs these tools in **Parallel** (`asyncio.gather`) internally to minimize latency, but **Blocks** the graph flow until all pass.
+    *   **De-Mocking:** The Evaluator now calls the **Agentic Gateway** for all verifications (`check_market_status`, `verify_policy_opa`, `verify_semantic_nemo`).
+    *   **Dry Run:** Uses the `dry_run=True` flag to verify policies without executing trades.
+    *   **Optimization:** The `Evaluator Node` runs these gateway calls in **Parallel** (`asyncio.gather`) to minimize latency overhead.
     *   **Output:** `EvaluationResult` (Verdict + Reasoning).
 
 ### 3.3. The Executor (System 1 Implementation)
@@ -44,7 +45,7 @@ The refactor prioritizes **Safety and Correctness** over raw latency for high-ri
 *   **Change:**
     *   Stripped of all "Reasoning" and "Strategy" logic.
     *   Refactored into a "Dumb Executor" (System 1).
-    *   **Strict Constraint:** Can ONLY execute the `execute_trade` tool as specified in the approved `ExecutionPlan`.
+    *   **Strict Constraint:** Can ONLY execute the `execute_trade` tool via the Gateway as specified in the approved `ExecutionPlan`.
 
 ### 3.4. The Explainer (System 3 Monitoring)
 *   **Component:** `src/governed_financial_advisor/agents/explainer/agent.py` (**NEW**)
