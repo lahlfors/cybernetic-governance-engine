@@ -97,6 +97,14 @@ class OPAClient:
             self.transport = httpx.AsyncHTTPTransport(retries=0)
             logger.info(f"🌐 OPAClient configured for HTTP: {self.target_url}")
 
+        self.client = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Lazily creates or returns the existing AsyncClient."""
+        if self.client is None or self.client.is_closed:
+            self.client = httpx.AsyncClient(transport=self.transport)
+        return self.client
+
     async def evaluate_policy(self, input_data: dict[str, Any], current_latency_ms: float = 0.0) -> str:
         """
         Evaluates the policy asynchronously.
@@ -134,35 +142,35 @@ class OPAClient:
                 headers["Authorization"] = f"Bearer {self.auth_token}"
 
             try:
-                async with httpx.AsyncClient(transport=self.transport) as client:
-                    response = await client.post(
-                        self.target_url,
-                        json={"input": input_data},
-                        headers=headers,
-                        timeout=1.0 # 1s timeout for governance
-                    )
+                client = await self._get_client()
+                response = await client.post(
+                    self.target_url,
+                    json={"input": input_data},
+                    headers=headers,
+                    timeout=1.0 # 1s timeout for governance
+                )
 
-                    # Calculate Governance Tax
-                    governance_tax_ms = (time.time() - start_time) * 1000
-                    span.set_attribute("latency_currency_tax", governance_tax_ms)
+                # Calculate Governance Tax
+                governance_tax_ms = (time.time() - start_time) * 1000
+                span.set_attribute("latency_currency_tax", governance_tax_ms)
 
-                    response.raise_for_status()
+                response.raise_for_status()
 
-                    self.cb.record_success()
+                self.cb.record_success()
 
-                    result = response.json().get("result", "DENY")
-                    span.set_attribute("governance.decision", result)
+                result = response.json().get("result", "DENY")
+                span.set_attribute("governance.decision", result)
 
-                    if result == "ALLOW":
-                        logger.info(f"✅ OPA ALLOWED | Action: {input_data.get('action')}")
-                    elif result == "MANUAL_REVIEW":
-                         logger.warning(f"⚠️ OPA MANUAL REVIEW | Action: {input_data.get('action')}")
-                    else:
-                        logger.warning(f"⛔ OPA DENIED | Action: {input_data.get('action')} | Input: {input_data}")
-                        # Differentiate logic denial from system error
-                        span.set_attribute("governance.denial_reason", "POLICY_VIOLATION")
+                if result == "ALLOW":
+                    logger.info(f"✅ OPA ALLOWED | Action: {input_data.get('action')}")
+                elif result == "MANUAL_REVIEW":
+                        logger.warning(f"⚠️ OPA MANUAL REVIEW | Action: {input_data.get('action')}")
+                else:
+                    logger.warning(f"⛔ OPA DENIED | Action: {input_data.get('action')} | Input: {input_data}")
+                    # Differentiate logic denial from system error
+                    span.set_attribute("governance.denial_reason", "POLICY_VIOLATION")
 
-                    return result
+                return result
 
             except Exception as e:
                 self.cb.record_failure()
@@ -180,13 +188,13 @@ def governed_tool(action_name: str, policy_id: str = "finance_policy"):
     def decorator(func):
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
-            
+
             # Extract latency budget from args (if passed in state) - simplified for now
             # In a full graph implementation, we'd extract 'latency_stats' from the first arg if it's a state dict.
-            
+
             # 1. Measure Governance Tax (The Cost of Safety)
             start_tax = time.perf_counter()
-            
+
             # Prepare payload
             payload = {}
             # Basic argument extraction for validation (simplified)
@@ -196,7 +204,7 @@ def governed_tool(action_name: str, policy_id: str = "finance_policy"):
                      break
             if not payload and kwargs:
                 payload = kwargs.copy() # fallback
-            
+
             payload['action'] = action_name
 
             # Bankruptcy Check (Global)
@@ -211,18 +219,18 @@ def governed_tool(action_name: str, policy_id: str = "finance_policy"):
                 # ISO 42001 A.10.1 (Transparency) & A.5.1 (Policy)
                 span.set_attribute("iso.control_id", "A.10.1")
                 span.set_attribute("iso.requirement", "Algorithmic Transparency")
-                
+
                 # Check Policy
                 decision = await opa_client.evaluate_policy(payload, current_latency_ms=0.0)
-                
+
                 tax_ms = (time.perf_counter() - start_tax) * 1000
                 span.set_attribute("governance.tax_ms", tax_ms)
                 span.set_attribute("governance.verdict", decision)
-                
+
                 if decision == "DENY":
                     span.set_attribute("tool.outcome", "BLOCKED_OPA")
                     return f"POLICY VIOLATION: The Governor blocked this action (Rule: {policy_id})."
-                
+
                 if decision == "MANUAL_REVIEW":
                     span.set_attribute("tool.outcome", "MANUAL_REVIEW")
                     return "PENDING_HUMAN_REVIEW: Policy triggered Manual Intervention."
@@ -236,13 +244,13 @@ def governed_tool(action_name: str, policy_id: str = "finance_policy"):
                      # We could add an attribute to the parent span if we had one, or start a new one.
                      # For now, just return.
                      return msg
-                     
+
                 # Consensus: High Stakes (Sync)
                 if action_name == "execute_trade":
                     amount = payload.get("amount", 0)
                     symbol = payload.get("symbol", "UNKNOWN")
                     consensus = consensus_engine.check_consensus(action_name, amount, symbol)
-                    
+
                     if consensus["status"] == "REJECT":
                          return f"BLOCKED: Consensus Engine Rejected. {consensus['reason']}"
 
@@ -256,21 +264,21 @@ def governed_tool(action_name: str, policy_id: str = "finance_policy"):
                 logger.error(f"Safety/Consensus check failed: {e}")
                 # Fail closed
                 return f"BLOCKED: Safety Check Error: {e}"
-            
+
             # 3. Measure Reasoning Spend (The Investment)
             start_reasoning = time.perf_counter()
-            
+
             with tracer.start_as_current_span(name="reasoning.execution") as span:
                 try:
                     if asyncio.iscoroutinefunction(func):
                         result = await func(*args, **kwargs)
                     else:
                         result = func(*args, **kwargs)
-                    
+
                     reasoning_ms = (time.perf_counter() - start_reasoning) * 1000
                     span.set_attribute("reasoning.spend_ms", reasoning_ms)
                     span.set_attribute("tool.outcome", "EXECUTED")
-                    
+
                     return result
                 except Exception as e:
                     span.record_exception(e)
