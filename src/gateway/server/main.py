@@ -160,7 +160,7 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
                 # Consensus Check
                 amount = params.get("amount", 0)
                 symbol = params.get("symbol", "UNKNOWN")
-                consensus = consensus_engine.check_consensus(tool_name, amount, symbol)
+                consensus = await consensus_engine.check_consensus(tool_name, amount, symbol)
 
                 if consensus["status"] == "REJECT":
                      return gateway_pb2.ToolResponse(status="BLOCKED", error=f"Consensus Rejected: {consensus['reason']}")

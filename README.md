@@ -73,13 +73,13 @@ This repository implements the advanced **Green Stack Governance Architecture**,
 
 ### The 4-Layer Safety Loop
 1.  **Define (Risk Agent):** An offline "A2 Discovery" agent continuously scans for financial risks (e.g., Slippage, Drawdown) and defines Unsafe Control Actions (UCAs).
-2.  **Verify (Evaluator Agent):** A dedicated "Proctor" subsystem audits agent traces against the STPA safety ontology and simulates adversarial attacks (Red Teaming). **[See Evaluator Agent Docs](src/evaluator_agent/README.md)**
+2.  **Verify (Evaluator Agent):** A dedicated "Proctor" subsystem audits agent traces against the STPA safety ontology and simulates adversarial attacks (Red Teaming). **[See Evaluator Agent Docs](src/governed_financial_advisor/evaluator_agent/README.md)**
 3.  **Bridge (Transpiler):** A policy transpiler automatically converts discovered risks into executable code.
-4.  **Enforce (NeMo Guardrails):** Real-time, deterministic Python actions intercept tool calls in <10ms to block unsafe actions. **[See Governance Logic Docs](src/governance/README.md)**
+4.  **Enforce (NeMo Guardrails):** Real-time, deterministic Python actions intercept tool calls in <10ms to block unsafe actions. **[See Governance Logic Docs](src/governed_financial_advisor/governance/README.md)**
 
 ### Automated Pipeline
 The entire risk discovery and rule deployment loop is automated via **Vertex AI Pipelines**.
-👉 **Pipeline Docs: [src/pipelines/README.md](src/pipelines/README.md)**
+👉 **Pipeline Docs: [src/governed_financial_advisor/pipelines/README.md](src/governed_financial_advisor/pipelines/README.md)**
 
 ## High-Reliability Architecture
 
@@ -179,7 +179,7 @@ uv run python src/gateway/server/main.py
 
 ```bash
 # Run the FastAPI server locally
-uv run python src/server.py
+uv run python src/governed_financial_advisor/server.py
 ```
 
 The server will start on `http://localhost:8080`.
@@ -203,27 +203,15 @@ This repository supports deploying the high-performance inference stack to Googl
 
 The `deploy_all.py` script automates the entire process, including provisioning infrastructure, building containers, and deploying manifests.
 
-#### Option A: NVIDIA H100 (Default)
+#### NVIDIA GPU (Default)
 Optimized for ultra-low latency using **Speculative Decoding**. Best for user-facing applications requiring strict SLAs (<200ms TTFT).
 
 ```bash
 python3 deployment/deploy_all.py \
     --project-id <YOUR_PROJECT_ID> \
     --region us-central1 \
-    --accelerator gpu
+    --accelerator-type l4
 ```
-
-#### Option B: Google TPU v5e (Cost Optimized)
-Uses **TPU v5e** (8 chips) with XLA/Pallas backend. significantly cheaper (~80%) but currently lacks Speculative Decoding support. Recommended for offline batch workloads.
-
-```bash
-python3 deployment/deploy_all.py \
-    --project-id <YOUR_PROJECT_ID> \
-    --region us-central1 \
-    --accelerator tpu
-```
-
-👉 **See [docs/TPU_MIGRATION_ANALYSIS.md](docs/TPU_MIGRATION_ANALYSIS.md) for a detailed architectural comparison.**
 
 ## Security Verification (Red Teaming)
 

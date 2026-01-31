@@ -20,7 +20,7 @@ class ConsensusEngine:
         self.threshold = threshold
         self.model_name = model_name
 
-    def _get_critic_vote(self, role: str, action: str, amount: float, symbol: str) -> str:
+    async def _get_critic_vote(self, role: str, action: str, amount: float, symbol: str) -> str:
         """
         Consults an LLM with a specific critic persona.
         """
@@ -43,7 +43,7 @@ class ConsensusEngine:
             Example: APPROVE - Standard equity purchase.
             """
 
-            response = llm.invoke(prompt)
+            response = await llm.ainvoke(prompt)
             content = response.content.strip()
 
             if "APPROVE" in content:
@@ -59,7 +59,7 @@ class ConsensusEngine:
             logger.error(f"Critic {role} failed: {e}")
             return "ERROR"
 
-    def check_consensus(self, action: str, amount: float, symbol: str) -> dict[str, Any]:
+    async def check_consensus(self, action: str, amount: float, symbol: str) -> dict[str, Any]:
         """
         If the amount > threshold, trigger a consensus check.
         Uses a Multi-Agent Debate pattern (simulated via multiple calls).
@@ -74,10 +74,10 @@ class ConsensusEngine:
             span.set_attribute("iso.control_id", "A.8.4")
 
             # 1. Risk Manager Vote
-            vote1 = self._get_critic_vote("Risk Manager", action, amount, symbol)
+            vote1 = await self._get_critic_vote("Risk Manager", action, amount, symbol)
 
             # 2. Compliance Officer Vote
-            vote2 = self._get_critic_vote("Compliance Officer", action, amount, symbol)
+            vote2 = await self._get_critic_vote("Compliance Officer", action, amount, symbol)
 
             votes = [vote1, vote2]
 

@@ -29,10 +29,10 @@ The `Agent` service acts as a "Pure Reasoner", computing *intent* but having no 
 
 | Component | Current Location | New Location (Gateway) | Notes |
 | :--- | :--- | :--- | :--- |
-| **HybridClient** | `infrastructure/llm_client.py` | `gateway/core/llm.py` | Gateway acts as the "Model Router". |
-| **OPAClient** | `governance/client.py` | `gateway/core/policy.py` | Policy checks are enforced strictly at the Gateway. |
-| **Tool Logic** | `tools/trades.py` | `gateway/core/tools.py` | The Agent code only contains stubs. Execution logic resides in the Gateway. |
-| **Safety Logic** | `evaluator/agent.py` | `gateway/server/main.py` | Mocks removed. Evaluator calls Gateway for `check_market_status`, `verify_policy_opa`, and `verify_content_safety`. |
+| **HybridClient** | `src/governed_financial_advisor/infrastructure/llm_client.py` | `src/gateway/core/llm.py` | Gateway acts as the "Model Router". |
+| **OPAClient** | `src/governed_financial_advisor/governance/client.py` | `src/gateway/core/policy.py` | Policy checks are enforced strictly at the Gateway. |
+| **Tool Logic** | `src/governed_financial_advisor/tools/trades.py` | `src/gateway/core/tools.py` | The Agent code only contains stubs. Execution logic resides in the Gateway. |
+| **Safety Logic** | `src/governed_financial_advisor/agents/evaluator/agent.py` | `src/gateway/server/main.py` | Mocks removed. Evaluator calls Gateway for `check_market_status`, `verify_policy_opa`, and `verify_content_safety`. |
 
 ---
 
