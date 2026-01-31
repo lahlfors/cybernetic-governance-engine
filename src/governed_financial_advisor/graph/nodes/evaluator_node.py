@@ -54,10 +54,10 @@ async def evaluator_node(state: AgentState) -> dict[str, Any]:
     with tracer.start_as_current_span("evaluator.simulation") as span:
         start_time = time.time()
 
-        # 1. Define Tasks
-        market_task = asyncio.to_thread(check_market_status, symbol)
-        opa_task = asyncio.to_thread(verify_policy_opa, action, str(plan))
-        nemo_task = asyncio.to_thread(verify_semantic_nemo, str(plan)) # Check entire plan text
+        # 1. Define Tasks (Tools are now Async via Gateway)
+        market_task = check_market_status(symbol)
+        opa_task = verify_policy_opa(action, str(plan))
+        nemo_task = verify_semantic_nemo(str(plan))
 
         # 2. Run in Parallel
         logger.info(f"⚡ Evaluator: Running Parallel Simulation for {symbol}")

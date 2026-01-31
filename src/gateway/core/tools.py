@@ -55,7 +55,7 @@ class TradeOrder(BaseModel):
 # NOTE: The @governed_tool decorator is REMOVED.
 # Governance is now applied by the Gateway Server before calling this function.
 
-def execute_trade(order: TradeOrder) -> str:
+async def execute_trade(order: TradeOrder) -> str:
     """
     Executes a trade on the exchange.
     This function is now 'Action Only' - it assumes governance has passed.

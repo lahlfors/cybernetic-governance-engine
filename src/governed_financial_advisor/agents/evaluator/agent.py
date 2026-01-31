@@ -15,6 +15,7 @@
 """Evaluator Agent (System 3 Control) - Simulation & Governance"""
 
 import logging
+import json
 from typing import Any, Literal
 
 from google.adk import Agent
@@ -23,42 +24,55 @@ from pydantic import BaseModel, Field
 
 from config.settings import MODEL_REASONING
 from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
+from src.governed_financial_advisor.infrastructure.gateway_client import gateway_client
 
 logger = logging.getLogger("EvaluatorAgent")
 
-# --- TOOLS ---
+# --- TOOLS (Real Implementations via Gateway) ---
 
-# 1. Mock Simulation Tool
-def check_market_status(symbol: str) -> str:
+async def check_market_status(symbol: str) -> str:
     """
-    Simulates checking the market status for a given symbol.
-    In a real system, this calls an exchange API.
+    Checks real market status via Gateway.
     """
-    # Mock Logic: Simple heuristic
-    if symbol.upper() == "CLOSED":
-        return "MARKET_CLOSED: Exchange is currently closed for maintenance."
-    return "MARKET_OPEN: Liquidity is high. Spread is tight."
+    try:
+        return await gateway_client.execute_tool("check_market_status", {"symbol": symbol})
+    except Exception as e:
+        logger.error(f"Market Check Failed: {e}")
+        return f"ERROR: Could not fetch market status: {e}"
 
-# 2. OPA Policy Wrapper
-def verify_policy_opa(action: str, params: str) -> str:
+async def verify_policy_opa(action: str, params: str) -> str:
     """
-    Checks the proposed action against Regulatory Policy (OPA).
+    Checks Regulatory Policy (OPA) via Gateway in Dry Run mode.
     """
-    # Mocking the client call for simplicity in this agent file,
-    # but normally this would import OPAClient.
-    # We simulate a basic check.
-    if "BANNED" in params.upper():
-        return "DENIED: Asset is on the restricted list."
-    return "ALLOWED: Action complies with standard regulatory policy."
+    try:
+        # Try to parse params
+        params_dict = {}
+        if isinstance(params, str):
+            try:
+                # Basic cleanup
+                cleaned_params = params.replace("'", '"')
+                params_dict = json.loads(cleaned_params)
+            except:
+                params_dict = {"description": params}
+        elif isinstance(params, dict):
+             params_dict = params
 
-# 3. NeMo Semantic Wrapper
-def verify_semantic_nemo(text: str) -> str:
+        params_dict['dry_run'] = True
+
+        return await gateway_client.execute_tool(action, params_dict)
+    except Exception as e:
+        logger.error(f"OPA Check Failed: {e}")
+        return f"DENIED: System Error: {e}"
+
+async def verify_semantic_nemo(text: str) -> str:
     """
-    Checks the input text against Semantic Guardrails (NeMo).
+    Checks Semantic Safety via Gateway (NeMo Proxy).
     """
-    if "jailbreak" in text.lower():
-         return "BLOCKED: Semantic violation detected (Jailbreak attempt)."
-    return "SAFE: Content aligns with safety guidelines."
+    try:
+        return await gateway_client.execute_tool("verify_content_safety", {"text": text})
+    except Exception as e:
+        logger.error(f"Semantic Check Failed: {e}")
+        return f"BLOCKED: System Error: {e}"
 
 
 # --- AGENT DEFINITION ---
