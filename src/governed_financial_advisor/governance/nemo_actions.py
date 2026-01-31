@@ -4,11 +4,11 @@ import os
 import time
 from typing import Any
 
-from governed_financial_advisor.demo.state import demo_state
+from src.governed_financial_advisor.demo.state import demo_state
 
 # Import generated actions if available
 try:
-    from governed_financial_advisor.governance.generated_actions import check_slippage_risk
+    from src.governed_financial_advisor.governance.generated_actions import check_slippage_risk
 except ImportError:
     logging.warning("Generated actions not found. Using fallback.")
     def check_slippage_risk(*args, **kwargs): return True

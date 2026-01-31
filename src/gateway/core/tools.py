@@ -1,17 +1,12 @@
+"""
+Gateway Core: Tool Execution Logic
+"""
+import logging
 import re
 import uuid
-import logging
 from pydantic import BaseModel, Field, field_validator
-from src.governed_financial_advisor.infrastructure.gateway_client import gateway_client
 
-# We keep the governance imports for `propose_trade` if it stays local,
-# BUT `execute_trade` now goes to Gateway.
-# If `propose_trade` also uses `governed_tool`, we need to see if `governed_tool` still works.
-# For now, we will assume `propose_trade` is just a local helper and doesn't strictly need the OPA check
-# (since it's just a proposal). Or we can route it too.
-# The user specifically mentioned "intercept Tool Calls (execute_trade)".
-
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("Gateway.Tools")
 
 class TradeOrder(BaseModel):
     """
@@ -37,7 +32,6 @@ class TradeOrder(BaseModel):
     @field_validator('transaction_id')
     @classmethod
     def validate_uuid(cls, v):
-        # Regex for UUID v4
         uuid_regex = r"^[0-9a-f]{8}-[0-9a-f]{4}-[4][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
         if not re.match(uuid_regex, v.lower()):
             raise ValueError("Invalid transaction_id format. Must be a valid UUID v4.")
@@ -46,9 +40,7 @@ class TradeOrder(BaseModel):
     @field_validator('symbol')
     @classmethod
     def validate_symbol(cls, v):
-        # Normalize to uppercase first
         v = v.upper()
-        # Regex for Ticker Symbol (1-5 Uppercase letters)
         if not re.match(r"^[A-Z]{1,5}$", v):
             raise ValueError("Invalid symbol format. Must be 1-5 letters.")
         return v
@@ -60,25 +52,13 @@ class TradeOrder(BaseModel):
              raise ValueError("Invalid role. Must be 'junior' or 'senior'.")
         return v.lower()
 
+# NOTE: The @governed_tool decorator is REMOVED.
+# Governance is now applied by the Gateway Server before calling this function.
 
-def propose_trade(order: TradeOrder) -> str:
+def execute_trade(order: TradeOrder) -> str:
     """
-    Proposes a trade strategy. This does NOT execute the trade.
+    Executes a trade on the exchange.
+    This function is now 'Action Only' - it assumes governance has passed.
     """
-    # Simply log it locally. No governance needed for thinking.
-    return f"PROPOSAL LOGGED: {order.symbol} {order.amount} {order.currency}. Transaction ID: {order.transaction_id}. Waiting for Verifier."
-
-async def execute_trade(order: TradeOrder) -> str:
-    """
-    Executes a trade via the Agentic Gateway.
-    The Gateway enforces all Policy (OPA), Safety, and Consensus checks.
-    """
-    logger.info(f"Delegating trade execution to Gateway: {order.transaction_id}")
-
-    # Serialize params
-    params = order.model_dump()
-
-    # Call Gateway
-    result = await gateway_client.execute_tool("execute_trade", params)
-
-    return result
+    logger.info(f"EXECUTING TRADE (System 1): {order.transaction_id} {order.symbol} {order.amount}")
+    return f"SUCCESS: Executed trade {order.transaction_id} for {order.amount} {order.currency} of {order.symbol}."
