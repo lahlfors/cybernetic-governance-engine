@@ -17,6 +17,7 @@
 import logging
 import json
 from typing import Any, Literal
+import asyncio
 
 from google.adk import Agent
 from google.adk.tools import FunctionTool, transfer_to_agent
@@ -25,6 +26,11 @@ from pydantic import BaseModel, Field
 from config.settings import MODEL_REASONING
 from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
 from src.governed_financial_advisor.infrastructure.gateway_client import gateway_client
+
+# REAL IMPLEMENTATIONS
+from src.gateway.core.policy import OPAClient
+from src.governed_financial_advisor.governance.consensus import consensus_engine
+from src.governed_financial_advisor.utils.nemo_manager import load_rails, validate_with_nemo
 
 logger = logging.getLogger("EvaluatorAgent")
 
@@ -64,6 +70,39 @@ async def verify_policy_opa(action: str, params: str) -> str:
         logger.error(f"OPA Check Failed: {e}")
         return f"DENIED: System Error: {e}"
 
+async def verify_consensus(action: str, params: str) -> str:
+    """
+    Checks Consensus for high-value trades.
+    """
+    try:
+        import json
+        data = json.loads(params)
+        amount = float(data.get("amount", 0))
+        symbol = data.get("symbol", "UNKNOWN")
+    except:
+        amount = 0.0
+        symbol = "UNKNOWN"
+
+    result = await consensus_engine.check_consensus(action, amount, symbol)
+    return f"CONSENSUS_RESULT: {result['status']} ({result['reason']})"
+>>>>>>> 446d8f4 (Refactor Governance Components for Production Readiness)
+
+async def verify_consensus(action: str, params: str) -> str:
+    """
+    Checks Consensus for high-value trades.
+    """
+    try:
+        import json
+        data = json.loads(params)
+        amount = float(data.get("amount", 0))
+        symbol = data.get("symbol", "UNKNOWN")
+    except:
+        amount = 0.0
+        symbol = "UNKNOWN"
+
+    result = await consensus_engine.check_consensus(action, amount, symbol)
+    return f"CONSENSUS_RESULT: {result['status']} ({result['reason']})"
+
 async def verify_semantic_nemo(text: str) -> str:
     """
     Checks Semantic Safety via Gateway (NeMo Proxy).
@@ -99,7 +138,8 @@ Your role is to act as the "Cybernetic Regulator" for the system. You must VALID
 Before approving ANY plan, you must "simulate" its execution using your tools.
 1.  **Feasibility:** Use `check_market_status` to ensure the market is open.
 2.  **Regulatory:** Use `verify_policy_opa` to ensure the trade is legal.
-3.  **Semantic:** Use `verify_semantic_nemo` to ensure the rationale is safe.
+3.  **Consensus:** Use `verify_consensus` to ensure high-value trades are approved by risk managers.
+4.  **Semantic:** Use `verify_semantic_nemo` to ensure the rationale is safe.
 
 **Decision Logic (The "Algedonic Signal"):**
 - If ALL checks pass -> Verdict: **APPROVED**.
@@ -134,6 +174,7 @@ def create_evaluator_agent(model_name: str = MODEL_REASONING) -> Agent:
         tools=[
             FunctionTool(check_market_status),
             FunctionTool(verify_policy_opa),
+            FunctionTool(verify_consensus),
             FunctionTool(verify_semantic_nemo),
             transfer_to_agent
         ],

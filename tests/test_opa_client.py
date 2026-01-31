@@ -2,7 +2,8 @@ import httpx
 import pytest
 import respx
 
-from src.governance.client import OPAClient
+# Updated import path to Gateway Core
+from src.gateway.core.policy import OPAClient
 
 
 @pytest.fixture

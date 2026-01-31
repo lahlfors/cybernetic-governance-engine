@@ -21,13 +21,26 @@ class ControlBarrierFunction:
         self.redis_key = "safety:current_cash"
 
         # Bootstrap state if empty (e.g. first run)
-        if redis_client.get(self.redis_key) is None:
-            redis_client.set(self.redis_key, "100000.0")
+        # In a real scenario, this would fail if Redis is down, which is safe.
+        try:
+            if redis_client.get(self.redis_key) is None:
+                redis_client.set(self.redis_key, "100000.0")
+        except Exception as e:
+            logger.critical(f"Failed to bootstrap Safety State: {e}")
 
         self.tracer = get_tracer()
 
     def _get_current_cash(self) -> float:
-        return redis_client.get_float(self.redis_key, 100000.0)
+        # FAIL-SAFE: If Redis is down, RAISE ERROR to block all trades.
+        # This is safer than defaulting to 0.0 as it prevents false negatives in bankruptcy checks.
+        try:
+            val = redis_client.get_float(self.redis_key)
+            if val is None:
+                 raise ConnectionError("Redis is unreachable")
+            return val
+        except Exception as e:
+            logger.critical(f"Safety Check Failed: Redis Unreachable. HALTING. {e}")
+            raise ConnectionError("Safety Infrastructure Down")
 
     def get_h(self, cash_balance: float) -> float:
         """
