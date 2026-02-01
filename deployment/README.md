@@ -13,53 +13,80 @@ The system is deployed as a **Triple-Hybrid Architecture** consisting of three d
     *   **Source:** `src/gateway`
     *   **Port:** 8080 (Cloud Run) / 50051 (gRPC default)
 
-2.  **Financial Advisor Agent (HTTP)**
-    *   **Service Name:** `governed-financial-advisor` (or `advisor`)
-    *   **Language:** Python (FastAPI + LangChain)
-    *   **Role:** Hosts the core agent logic and sub-agents (`data_analyst`, `risk_analyst`, etc.).
+2.  **Financial Advisor Agent (HTTP / Vertex AI)**
+    *   **Service Name:** `governed-financial-advisor` (GKE) OR `Vertex AI Agent`
+    *   **Role:** The core agent logic. Can run as a container on GKE or as a managed Reasoning Engine on Vertex AI.
     *   **Source:** `src/governed_financial_advisor`
-    *   **Port:** 8080
 
 3.  **NeMo Guardrails Service (HTTP)**
-    *   **Service Name:** `nemo-guardrails` (or `nemo`)
-    *   **Language:** Python (FastAPI + NeMo Guardrails)
-    *   **Role:** Dedicated sidecar/service for semantic safety checks (jailbreak detection, hallucination checks) and input/output validation.
+    *   **Service Name:** `nemo-guardrails`
+    *   **Role:** Dedicated sidecar/service for semantic safety checks.
     *   **Source:** `src/governed_financial_advisor/governance/nemo_server.py`
-    *   **Port:** 8000
 
 ## Deployment
 
-Deployment is managed via **Terraform** ensuring reproducible infrastructure and state management.
+### 1. Full Stack Deployment (Recommended)
+
+Terraform is the master orchestrator. It creates the infrastructure and triggers the application deployment automatically.
 
 ```bash
-cd terraform
-# Initialize Terraform
+cd deployment/terraform
+
+# Initialize Terraform (First time only)
 terraform init
 
-# Apply Configuration
-terraform apply
+# Plan and Apply
+# This provisions GKE, Redis, Network, Secrets, and Deploys the App.
+terraform apply -var="project_id=YOUR_PROJECT_ID"
 ```
 
-### Script Usage
-*   `deploy_sw.py`: A helper script invoked by Terraform (or manually if needed) to handle the application deployment logic (Kubernetes manifests, Helm charts, etc.) on top of the provisioned infrastructure.
+### 2. Software-Only Updates
 
-### Components Built
-*   `gateway`: Built from `src/gateway/Dockerfile`
-*   `advisor`: Built from `Dockerfile`
-*   `nemo`: Built from `Dockerfile.nemo`
+If the infrastructure is already running:
 
-## Prerequisites
+```bash
+# Run from the repository root
+python3 deployment/deploy_sw.py \
+  --project-id YOUR_PROJECT_ID \
+  --tf-managed \
+  --redis-host REDIS_IP \
+  --cluster-name governance-cluster
+```
 
-*   Google Cloud Project with billing enabled.
-*   `gcloud` CLI installed and authenticated.
-*   `terraform` and `kubectl` installed.
-*   Permissions to manage Cloud Run, Artifact Registry, and GKE.
+### 3. Hybrid Deployment (Vertex AI Agent Engine)
 
-## Service Inter-Communication
+To deploy the Agent to **Vertex AI Agent Engine** instead of GKE:
 
-*   **Gateway -> OPA**: The Gateway makes gRPC/HTTP calls to OPA for policy decisions.
-*   **Gateway -> NeMo**: The Gateway calls the NeMo service for content safety checks.
-*   **Gateway -> Advisor**: The Gateway routes user queries to the Advisor agent.
+```bash
+python3 deployment/deploy_sw.py \
+  --project-id YOUR_PROJECT_ID \
+  --tf-managed \
+  --redis-host REDIS_IP \
+  --cluster-name governance-cluster \
+  --deploy-agent-engine
+```
+
+**Architecture:**
+*   **Agent:** Deployed to Vertex AI Agent Engine.
+*   **Gateway:** Deployed to Cloud Run (connects to GKE).
+*   **Inference:** Remains on GKE (vLLM).
+
+**Prerequisites:**
+Ensure Terraform has been applied to create the necessary Service Accounts (`agent-engine-sa`, `gateway-sa`) and Buckets (`-agent-artifacts`).
+
+## Architecture & Security Details
+
+### GKE (Backend & Inference)
+*   **vLLM:** Runs as a dedicated Deployment on GPU nodes (NVIDIA L4).
+*   **Backend (Advisor):** Runs as a Deployment (if not using Vertex AI).
+*   **OPA Sidecar:** The backend pod includes an Open Policy Agent (OPA) sidecar.
+
+### Cloud Run (UI & Gateway)
+*   **Gateway:** Serves as the gRPC entry point.
+*   **UI:** Connects to the Gateway/Backend.
+
+### Identity & Access
+*   **Workload Identity:** GKE workloads use Kubernetes Service Accounts mapped to Google Service Accounts (GSA).
 
 ## Verification
 
