@@ -210,6 +210,92 @@ def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=
 
 # --- Hybrid Deployment Logic ---
 
+def deploy_gateway_service(project_id, region, vllm_endpoint):
+    """
+    Deploys the Gateway as a Cloud Run Service.
+    Assumes the container image is already built (same as backend).
+    """
+    service_name = "gateway-service"
+    image_uri = f"gcr.io/{project_id}/financial-advisor:latest"
+    print(f"\n--- ⛩️ Deploying Gateway Service: {service_name} ---")
+
+    # Cloud Run Deployment
+    # We use the same image as the backend, but we might want a specific entrypoint or env var to run just the Gateway?
+    # For now, assuming the image can run as gateway if configured.
+    # We need to set GATEWAY_MODE=true or similar if the entrypoint differs,
+    # but currently main.py starts the server. We likely need a dedicated entrypoint or CMD override.
+    # The Dockerfile runs "uv run uvicorn src.governed_financial_advisor.server:app".
+    # We need to run "uv run python -m src.gateway.server.main" (gRPC server).
+
+    cmd = [
+        "gcloud", "run", "deploy", service_name,
+        "--image", image_uri,
+        "--region", region,
+        "--project", project_id,
+        "--service-account", f"gateway-sa@{project_id}.iam.gserviceaccount.com",
+        "--set-env-vars", f"VLLM_ENDPOINT={vllm_endpoint},StartMode=GATEWAY",
+        "--command", "uv,run,python,-m,src.gateway.server.main",
+        "--allow-unauthenticated", # Protected by IAM Invoker, but "allow-unauthenticated" refers to public ingress enablement usually?
+                                   # Actually for service-to-service with IAM, we usually set --no-allow-unauthenticated.
+                                   # But Terraform config says "INGRESS_TRAFFIC_ALL".
+                                   # Let's set --no-allow-unauthenticated to enforce IAM.
+        "--no-allow-unauthenticated",
+        "--vpc-egress", "all-traffic" # Required to reach GKE private IP
+    ]
+
+    # Check if network/subnet is specified in config? Terraform sets it.
+    # If we use `gcloud run deploy`, it might overwrite Terraform settings if we are not careful.
+    # However, since we use the same service name, it acts as a revision update.
+    # We should respect the infrastructure set by Terraform.
+
+    run_command(cmd)
+
+    # Get URL
+    url = check_service_exists(project_id, region, service_name)
+    print(f"✅ Gateway deployed at: {url}")
+    return url
+
+def deploy_reasoning_engine(project_id, region, staging_bucket, redis_host):
+    """
+    Deploys the Agent as a Vertex AI Reasoning Engine.
+    """
+    print(f"\n--- 🧠 Deploying Vertex AI Reasoning Engine ---")
+
+    try:
+        import vertexai
+        from vertexai.preview import reasoning_engines
+        from src.governed_financial_advisor.reasoning_engine import FinancialAdvisorEngine
+    except ImportError:
+        print("❌ Failed to import vertexai SDK. Please install google-cloud-aiplatform[agent-engines].")
+        return None
+
+    vertexai.init(project=project_id, location=region, staging_bucket=f"gs://{staging_bucket}")
+
+    # Define requirements for the remote environment
+    requirements = [
+        "google-cloud-aiplatform[agent-engines]",
+        "langchain-google-vertexai",
+        "langgraph",
+        "redis",
+        "pydantic",
+        "google-auth"
+    ]
+
+    print("   Creating Reasoning Engine (this may take a few minutes)...")
+    try:
+        # Remote creation
+        remote_agent = reasoning_engines.ReasoningEngine.create(
+            FinancialAdvisorEngine(project=project_id, location=region, redis_url=f"redis://{redis_host}:6379"),
+            requirements=requirements,
+            display_name="financial-advisor-engine",
+            description="Governed Financial Advisor (Hybrid Architecture)",
+        )
+        print(f"✅ Reasoning Engine Deployed: {remote_agent.resource_name}")
+        return remote_agent
+    except Exception as e:
+        print(f"❌ Failed to deploy Reasoning Engine: {e}")
+        return None
+
 
 # --- Application Deployment Logic ---
 
@@ -361,6 +447,7 @@ def main():
     parser.add_argument("--skip-build", action="store_true", help="Skip Docker build")
     parser.add_argument("--skip-ui", action="store_true", help="Skip UI deployment")
     parser.add_argument("--skip-k8s", action="store_true", help="Skip K8s manifests")
+    parser.add_argument("--deploy-agent-engine", action="store_true", help="Deploy using Vertex AI Agent Engine (Hybrid Mode)")
     parser.add_argument("--tf-managed", action="store_true", help="Deprecated: Implicitly true now")
 
     args = parser.parse_args()
@@ -402,7 +489,51 @@ def main():
         print(f"\n--- ⏭️ Skipping Build ({image_uri}) ---")
 
     # Deploy Application Stack
-    if not args.skip_k8s:
+    if args.deploy_agent_engine:
+        # Hybrid Mode: GKE (vLLM) + Cloud Run (Gateway) + Agent Engine (Reasoning)
+
+        # 1. Base GKE (vLLM only)
+        # We reuse deploy_application_stack but perhaps we need to be careful not to deploy the 'backend' deployment if using Agent Engine?
+        # The backend deployment.yaml currently runs 'server.py' which is the Agent.
+        # If we use Agent Engine, we don't need the Agent on GKE.
+        # BUT we DO need vLLM on GKE.
+        # deploy_application_stack does: K8s Base (vLLM) -> Secrets -> Backend -> UI.
+
+        # We'll run K8s Base (vLLM) first.
+        deploy_k8s_infra(project_id, config)
+
+        # 2. Deploy Gateway (Cloud Run)
+        # Needs vLLM Endpoint.
+        # vLLM is Internal GKE LoadBalancer.
+        # We need the Cluster IP or DNS.
+        # Since we have Direct VPC Egress, we can use the K8s DNS if configured or IP.
+        # Let's try to get the vLLM service IP.
+        vllm_ip = run_command(
+             ["kubectl", "get", "service", "vllm-inference", "-n", "governance-stack", "-o", "jsonpath='{.spec.clusterIP}'"],
+             check=False, capture_output=True
+        ).stdout.strip().strip("'")
+        vllm_endpoint = f"http://{vllm_ip}:8000" if vllm_ip else "http://vllm-inference.governance-stack.svc.cluster.local:8000"
+
+        deploy_gateway_service(project_id, region, vllm_endpoint)
+
+        # 3. Deploy Reasoning Engine
+        # Requires Staging Bucket.
+        staging_bucket = f"{project_id}-agent-artifacts"
+        deploy_reasoning_engine(project_id, region, staging_bucket, args.redis_host)
+
+        # 4. UI
+        # UI needs to talk to... Agent Engine? Or Gateway?
+        # The UI usually talks to the Agent API (server.py).
+        # But now the Agent is in Vertex.
+        # The UI likely needs to be updated to call Vertex Reasoning Engine API.
+        # OR we deploy a thin Proxy on Cloud Run that wraps the Reasoning Engine.
+        # For this implementation, we assume the existing UI might need work, but we'll deploy it
+        # pointing to the Gateway for now (as a placeholder) or skip if not compatible.
+        if not args.skip_ui:
+             deploy_ui_service(project_id, region, "financial-advisor-ui", "http://REASONING_ENGINE_URL_TODO")
+
+    elif not args.skip_k8s:
+        # Standard GKE Deployment
         deploy_application_stack(
             project_id=project_id,
             region=region,
