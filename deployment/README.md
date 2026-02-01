@@ -15,7 +15,7 @@ The system uses a **Hybrid Cloud Architecture** on Google Cloud Platform:
     *   **Cloud Run (UI):** Hosts the Streamlit UI, effectively verifying the "external client" path.
 
 2.  **Application (Python Script Managed)**
-    *   **Deployment Orchestration:** `deploy_sw.py` acts as the glue code, triggered by Terraform (or run manually) to build containers and apply Kubernetes manifests.
+    *   **Deployment Orchestration:** `deploy_sw.py` acts as the glue code, triggered by Terraform (or run manually) to build containers and apply Kubernetes manifests (or deploy Agent Engine).
 
 ## Prerequisites
 
@@ -55,6 +55,27 @@ python3 deployment/deploy_sw.py \
 ```
 
 *   `--tf-managed`: Skips infrastructure provisioning (Redis creation, API enablement) since Terraform owns it.
+
+### 3. Hybrid Deployment (Vertex AI Agent Engine)
+
+To deploy the Agent to **Vertex AI Agent Engine** (Managed Runtime) instead of GKE:
+
+```bash
+python3 deployment/deploy_sw.py \
+  --project-id YOUR_PROJECT_ID \
+  --tf-managed \
+  --redis-host REDIS_IP \
+  --cluster-name governance-cluster \
+  --deploy-agent-engine
+```
+
+**Architecture:**
+*   **Agent:** Deployed to Vertex AI Agent Engine.
+*   **Gateway:** Deployed to Cloud Run (connects to GKE).
+*   **Inference:** Remains on GKE (vLLM).
+
+**Prerequisites:**
+Ensure Terraform has been applied to create the necessary Service Accounts (`agent-engine-sa`, `gateway-sa`) and Buckets (`-agent-artifacts`).
 
 ## Architecture & Security Details
 

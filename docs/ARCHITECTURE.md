@@ -4,10 +4,14 @@ This document describes the **Cybernetic Governance Architecture** of the Financ
 
 ## 1. The Agentic Gateway Pattern
 
-We have transitioned from a "Fat Agent" (In-Process Governance) to a **Sidecar Microservice** architecture.
+We have transitioned from a "Fat Agent" (In-Process Governance) to a **Hybrid Agentic Gateway** architecture.
 
-### 1.1. The Gateway Service (Sidecar)
+### 1.1. The Gateway Service (Sidecar or Microservice)
 The **Gateway** (`src/gateway/`) is a dedicated gRPC service that acts as the physical interface between the Agent's "Mind" and the "External World".
+
+*   **Deployment Mode:**
+    *   **Sidecar (Standard):** Deployed alongside the Agent in GKE/Cloud Run (Localhost).
+    *   **Microservice (Agent Engine):** Deployed as a standalone Cloud Run service when the Agent runs on Vertex AI Agent Engine.
 
 *   **Protocol:** gRPC (Port 50051).
 *   **Responsibilities:**
@@ -19,6 +23,7 @@ The **Gateway** (`src/gateway/`) is a dedicated gRPC service that acts as the ph
 ### 1.2. The Stateless Agent (Reasoning Engine)
 The **Agent** (`src/governed_financial_advisor/`) is now a "Pure Reasoner".
 
+*   **Platform:** Can run on **Kubernetes** (Standard) or **Vertex AI Agent Engine** (Hybrid).
 *   **No API Keys:** It does not hold credentials for the Exchange or Production LLMs.
 *   **No Execution Logic:** It cannot execute a trade. It can only *request* the Gateway to do so via `gateway_client.execute_tool()`.
 *   **Security Boundary:** Even if the Agent is compromised via Prompt Injection, it cannot bypass the Gateway's OPA checks because the network call to the Exchange happens *inside* the Gateway, not the Agent.
