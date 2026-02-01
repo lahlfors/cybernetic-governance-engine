@@ -3,8 +3,10 @@ import traceback
 import uvicorn
 
 # Initialize Vertex AI before importing agents
-import vertexai
-import vertexai
+# import vertexai
+# vertexai.init(project=Config.GOOGLE_CLOUD_PROJECT, location=Config.GOOGLE_CLOUD_LOCATION)
+# print(f"✅ Vertex AI initialized: project={Config.GOOGLE_CLOUD_PROJECT}, location={Config.GOOGLE_CLOUD_LOCATION}")
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from opentelemetry import trace
@@ -13,10 +15,6 @@ from opentelemetry.instrumentation.langchain import LangchainInstrumentor
 from pydantic import BaseModel
 
 from config.settings import Config
-
-vertexai.init(project=Config.GOOGLE_CLOUD_PROJECT, location=Config.GOOGLE_CLOUD_LOCATION)
-print(f"✅ Vertex AI initialized: project={Config.GOOGLE_CLOUD_PROJECT}, location={Config.GOOGLE_CLOUD_LOCATION}")
-
 from src.governed_financial_advisor.demo.router import demo_router
 from src.governed_financial_advisor.graph.graph import create_graph
 from src.governed_financial_advisor.utils.context import user_context
@@ -77,8 +75,6 @@ async def query_agent(req: QueryRequest, request: Request):
         if not is_safe:
             return {"response": msg}
 
-        # 2. Graph Execution (Calls Existing Agents)
-        # Using ainvoke to run the graph asynchronously
         # 2. Graph Execution (Calls Existing Agents)
         # Using ainvoke to run the graph asynchronously
         res = await request.app.state.graph.ainvoke(
