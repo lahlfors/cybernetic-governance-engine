@@ -54,6 +54,16 @@ While Cloud Run offers simplicity for stateless services, the hard requirement f
     *   **Complexity:** Requires managing node pools, upgrading clusters (mostly automated now), and writing Kubernetes manifests/Helm charts.
     *   **Cost:** Control plane fee (if not using Autopilot/Zonal) and idle node costs if not carefully autoscaled.
 
+### Hybrid (Cloud Run + GKE)
+*   **Concept:** Run stateless services (Advisor, Gateway, OPA, NeMo) on Cloud Run and the stateful/GPU workloads (vLLM, Redis) on GKE.
+*   **Pros:**
+    *   **Best of Both Worlds (Compute):** Serverless scaling for the app logic; persistent GPU power for inference.
+    *   **Security:** Strong isolation by default (different GCP services).
+*   **Cons:**
+    *   **Networking Complexity:** Requires **Direct VPC Egress** or Serverless VPC Connector to allow Cloud Run to talk to private GKE services (Internal Load Balancer).
+    *   **Operational Overhead:** You must maintain *two* distinct deployment pipelines and infrastructure stacks.
+    *   **Cost Inefficiency:** You still pay for the GKE Control Plane and the GPU node. Moving the lightweight apps to Cloud Run saves very little (scale-to-zero is rare for a main app) but adds network egress/connector costs.
+
 ---
 
 ## 3. Deep Dive: Critical Blockers
@@ -73,6 +83,12 @@ The application uses **LangGraph** with Redis checkpoints.
 ## 4. Architecture Recommendation: "Unified GKE Cluster"
 
 We recommend deploying the entire stack to a **GKE Standard Cluster**.
+
+**Why not Hybrid?**
+While a Hybrid approach (vLLM on GKE, App on Cloud Run) is technically feasible, it introduces unnecessary complexity.
+1.  **Networking:** You would need to configure Cloud Run Direct VPC Egress to talk to an Internal Load Balancer (ILB) in front of the vLLM service in GKE. This adds latency (~5-10ms) and configuration overhead.
+2.  **Cost:** You are already paying for the GKE Control Plane (unless Zonal) and the GPU node. The incremental cost of running the lightweight Financial Advisor and Gateway services *on that same cluster* is effectively zero (they fit into the spare CPU/RAM of the system nodes). Moving them to Cloud Run adds a separate bill.
+3.  **Operations:** A single Terraform state for GKE is simpler than managing Cloud Run IAM + GKE IAM + VPC Connectors.
 
 ### Architecture Diagram
 ```mermaid
