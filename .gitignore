@@ -67,3 +67,7 @@ deployment/artifacts/
 deployment/backend_service.yaml
 deployment/nemo_service.yaml
 manual_gateway_build.yaml
+
+# Local Builds & Plans
+*.tfplan
+tfplan
