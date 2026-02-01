@@ -6,7 +6,7 @@ resource "google_service_account" "opa_sa" {
 resource "google_secret_manager_secret_iam_member" "opa_secrets" {
   for_each = toset([
     google_secret_manager_secret.finance_policy.id,
-    google_secret_manager_secret.system_authz_policy.id,
+    google_secret_manager_secret.system_authz.id,
     google_secret_manager_secret.opa_config.id,
     google_secret_manager_secret.opa_auth_token.id
   ])
@@ -60,7 +60,7 @@ resource "google_cloud_run_v2_service" "opa" {
       secret {
         secret = google_secret_manager_secret.finance_policy.secret_id
         items {
-          key  = "latest"
+          version = "latest"
           path = "finance_policy.rego"
         }
       }
@@ -68,9 +68,9 @@ resource "google_cloud_run_v2_service" "opa" {
     volumes {
       name = "system-authz-vol"
       secret {
-        secret = google_secret_manager_secret.system_authz_policy.secret_id
+        secret = google_secret_manager_secret.system_authz.secret_id
         items {
-          key  = "latest"
+          version = "latest"
           path = "system_authz.rego"
         }
       }
@@ -80,7 +80,7 @@ resource "google_cloud_run_v2_service" "opa" {
       secret {
         secret = google_secret_manager_secret.opa_config.secret_id
         items {
-          key  = "latest"
+          version = "latest"
           path = "opa_config.yaml"
         }
       }
@@ -90,7 +90,7 @@ resource "google_cloud_run_v2_service" "opa" {
       secret {
         secret = google_secret_manager_secret.opa_auth_token.secret_id
         items {
-          key  = "latest"
+          version = "latest"
           path = "token"
         }
       }
@@ -103,5 +103,5 @@ resource "google_cloud_run_service_iam_member" "opa_invoker" {
   service  = google_cloud_run_v2_service.opa.name
   location = google_cloud_run_v2_service.opa.location
   role     = "roles/run.invoker"
-  member   = "allUsers"
+  member   = "serviceAccount:${google_service_account.backend_sa.email}"
 }

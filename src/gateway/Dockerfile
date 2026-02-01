@@ -6,6 +6,7 @@ WORKDIR /app
 # gcc and python3-dev might be needed for some grpc extensions or other libs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    g++ \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -35,8 +36,14 @@ RUN uv pip install \
     opentelemetry-api \
     python-json-logger \
     google-auth \
-    google-cloud-run-v2 \
-    python-dotenv
+    google-cloud-run \
+    python-dotenv \
+    langchain-google-genai \
+    langchain-google-vertexai \
+    langgraph \
+    langgraph-checkpoint-redis \
+    nemoguardrails \
+    google-cloud-firestore
 
 # Copy Source Code
 # We need src/gateway and src/governed_financial_advisor (for shared governance logic imports)

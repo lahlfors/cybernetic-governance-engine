@@ -1,12 +1,19 @@
+resource "google_service_account" "backend_sa" {
+  account_id   = "financial-advisor-backend-sa"
+  display_name = "Financial Advisor Backend SA"
+}
+
 resource "google_cloud_run_v2_service" "backend" {
   name     = "financial-advisor-backend"
   location = var.region
   ingress  = "INGRESS_TRAFFIC_ALL"
+  deletion_protection = false
 
   template {
+    service_account = google_service_account.backend_sa.email
     containers {
       image = "gcr.io/${var.project_id}/financial-advisor:latest"
-      command = ["python", "src/server.py"]
+      command = ["python", "-m", "src.governed_financial_advisor.server"]
       ports {
         container_port = 8080
       }
@@ -19,24 +26,24 @@ resource "google_cloud_run_v2_service" "backend" {
         value = var.region
       }
       env {
-        name  = "AGENT_ENGINE_ID"
-        value = google_vertex_ai_reasoning_engine.agent.resource_name
+        name  = "REDIS_HOST"
+        value = google_redis_instance.cache.host
       }
       env {
-        name  = "NEMO_URL"
-        value = google_cloud_run_v2_service.nemo.uri
+        name  = "REDIS_PORT"
+        value = google_redis_instance.cache.port
+      }
+      resources {
+        limits = {
+          cpu    = "1"
+          memory = "2Gi"
+        }
       }
     }
   }
-  depends_on = [google_vertex_ai_reasoning_engine.agent, google_cloud_run_v2_service.nemo]
 }
 
-resource "google_cloud_run_service_iam_member" "backend_invoker" {
-  service  = google_cloud_run_v2_service.backend.name
-  location = google_cloud_run_v2_service.backend.location
-  role     = "roles/run.invoker"
-  member   = "allUsers"
-}
+
 
 output "backend_url" {
   value = google_cloud_run_v2_service.backend.uri

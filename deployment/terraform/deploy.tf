@@ -24,10 +24,11 @@ resource "null_resource" "app_deployment" {
         --project-id ${var.project_id} \
         --region ${var.region} \
         --zone ${var.zone} \
-        --redis-host redis-master.governance-stack.svc.cluster.local \
-        --redis-port 6379 \
+        --redis-host ${google_redis_instance.cache.host} \
+        --redis-port ${google_redis_instance.cache.port} \
         --cluster-name ${google_container_cluster.primary.name} \
-        --tf-managed
+        --tf-managed \
+        --skip-build
     EOT
   }
 }

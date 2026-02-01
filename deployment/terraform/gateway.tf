@@ -14,6 +14,7 @@ resource "google_cloud_run_v2_service" "gateway_service" {
   name     = "gateway-service"
   location = var.region
   ingress  = "INGRESS_TRAFFIC_INTERNAL_ONLY" # Only internal traffic (Mesh/VPC)
+  deletion_protection = false
 
   template {
     service_account = google_service_account.gateway_sa.email
@@ -26,10 +27,7 @@ resource "google_cloud_run_v2_service" "gateway_service" {
         name           = "h2c" # Enable HTTP/2 for gRPC
       }
 
-      env {
-        name  = "PORT"
-        value = "8080"
-      }
+
 
       # Resources for Sidecar Pattern (e.g. 1 CPU, 512MB)
       resources {
@@ -40,6 +38,10 @@ resource "google_cloud_run_v2_service" "gateway_service" {
       }
     }
   }
+
+  depends_on = [
+    null_resource.app_deployment
+  ]
 }
 
 # 3. IAM Binding: Allow Agent to Invoke Gateway

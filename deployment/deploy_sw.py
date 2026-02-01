@@ -60,6 +60,8 @@ load_dotenv()
 
 # --- Service Deployment ---
 
+# --- Service Deployment ---
+
 def check_service_exists(project_id, region, service_name):
     """Checks if a Cloud Run service exists."""
     cmd = [
@@ -72,6 +74,41 @@ def check_service_exists(project_id, region, service_name):
     if result.returncode == 0 and result.stdout.strip():
         return result.stdout.strip()
     return None
+
+def build_gateway_image(project_id):
+    """Builds the Gateway container image."""
+    gateway_image_uri = f"gcr.io/{project_id}/gateway:latest"
+    print(f"\n--- 🏗️ Building Gateway Image: {gateway_image_uri} ---")
+    
+    # Check if src/gateway exists
+    if not Path("src/gateway").exists():
+        print("❌ src/gateway directory not found. Skipping Gateway build.")
+        return None
+
+    # Create a temporary Cloud Build config
+    cloudbuild_yaml = f"""
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', '{gateway_image_uri}', '-f', 'src/gateway/Dockerfile', '.']
+images:
+- '{gateway_image_uri}'
+"""
+    cb_file = Path("gateway_cloudbuild.yaml")
+    with open(cb_file, "w") as f:
+        f.write(cloudbuild_yaml)
+
+    try:
+        run_command([
+            "gcloud", "builds", "submit",
+            "--config", str(cb_file),
+            "--project", project_id,
+            "." # Build context is root
+        ])
+    finally:
+        if cb_file.exists():
+            cb_file.unlink() # Cleanup
+
+    return gateway_image_uri
 
 def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=False):
     """
@@ -313,6 +350,9 @@ def main():
     if not args.skip_build:
         print("\n--- 🏗️ Building Backend Image ---")
         run_command(["gcloud", "builds", "submit", "--tag", image_uri, "--project", project_id, "."])
+        
+        # Build Gateway Image
+        build_gateway_image(project_id)
     else:
         print(f"\n--- ⏭️ Skipping Build ({image_uri}) ---")
 

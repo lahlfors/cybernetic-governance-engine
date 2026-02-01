@@ -33,13 +33,8 @@ ${RESOURCE_LIMITS}
               cpu: "16"
             requests:
 ${RESOURCE_REQUESTS}
-<<<<<<< HEAD
-              memory: "32Gi"
-              cpu: "12"
-=======
               memory: "10Gi"
               cpu: "3"
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
           volumeMounts:
             - mountPath: /dev/shm
               name: dshm
@@ -65,27 +60,12 @@ ${ENV_VARS}
             httpGet:
               path: /health
               port: 8000
-<<<<<<< HEAD
-            initialDelaySeconds: 300
-=======
             initialDelaySeconds: 600
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
             periodSeconds: 15
           command:
             - "python3"
             - "-m"
             - "vllm.entrypoints.openai.api_server"
-<<<<<<< HEAD
-${ARGS}
-            - "--enable-prefix-caching"
-      nodeSelector:
-${NODE_SELECTOR}
-      tolerations:
-      - key: "cloud.google.com/gke-spot"
-        operator: "Equal"
-        value: "true"
-        effect: "NoSchedule"
-=======
             - "--port"
             - "8000"
 ${ARGS}
@@ -93,4 +73,3 @@ ${ARGS}
 ${NODE_SELECTOR}
       tolerations:
 ${TOLERATIONS}
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359

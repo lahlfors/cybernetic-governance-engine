@@ -13,23 +13,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY . .
 
 # Install dependencies
-<<<<<<< HEAD
-# Set PYTHONPATH to include src
-# Set PYTHONPATH to include /app so 'from src...' imports work
-ENV PYTHONPATH="${PYTHONPATH}:/app:/app/src"
-
-RUN pip install uv && \
-    uv export --no-emit-project --no-dev --no-hashes --format requirements-txt > requirements.txt && \
-    pip install kfp && \
-    pip install --no-cache-dir -r requirements.txt uvicorn fastapi google-auth google-cloud-aiplatform google-adk opentelemetry-api opentelemetry-sdk opentelemetry-exporter-gcp-trace opentelemetry-instrumentation-fastapi opentelemetry-instrumentation-requests
-=======
 ENV PYTHONPATH="${PYTHONPATH}:/app:/app/src"
 RUN pip install uv keyring keyrings.google-artifactregistry-auth && \
     uv export --no-emit-project --no-dev --no-hashes --format requirements-txt > requirements.txt && \
     pip install kfp && \
     pip install --no-cache-dir -r requirements.txt uvicorn fastapi google-auth google-cloud-aiplatform google-adk opentelemetry-api opentelemetry-sdk opentelemetry-exporter-gcp-trace opentelemetry-instrumentation-fastapi opentelemetry-instrumentation-requests && \
     pip install -e .
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
 
 # Expose the port
 ENV PORT=8080
@@ -39,8 +28,4 @@ EXPOSE 8080
 RUN ls -R src
 
 # Run the server
-<<<<<<< HEAD
-CMD ["python", "src/server.py"]
-=======
 CMD ["python", "-m", "src.governed_financial_advisor.server"]
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359

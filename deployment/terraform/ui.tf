@@ -18,12 +18,7 @@ resource "google_cloud_run_v2_service" "ui" {
   depends_on = [google_cloud_run_v2_service.backend]
 }
 
-resource "google_cloud_run_service_iam_member" "ui_invoker" {
-  service  = google_cloud_run_v2_service.ui.name
-  location = google_cloud_run_v2_service.ui.location
-  role     = "roles/run.invoker"
-  member   = "allUsers"
-}
+
 
 output "ui_url" {
   value = google_cloud_run_v2_service.ui.uri
