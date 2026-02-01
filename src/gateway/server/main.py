@@ -48,8 +48,11 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
         """
         logger.info(f"Received Chat Request: Model={request.model}")
 
-        # Convert repeated Message field to list of dicts
-        messages = [{"role": m.role, "content": m.content} for m in request.messages]
+        # Validate Input
+        if not request.messages:
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            context.set_details("No messages provided")
+            return
 
         # Prepare kwargs for HybridClient
         kwargs = {}
@@ -73,7 +76,8 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
             mode = request.mode if request.mode else "chat"
 
             # Extract arguments
-            prompt_text = messages[-1]['content']
+            # Optimization: Access the last message directly (O(1)) instead of copying the whole list (O(N))
+            prompt_text = request.messages[-1].content
             system_instruction = request.system_instruction
 
             full_response = await self.llm_client.generate(
