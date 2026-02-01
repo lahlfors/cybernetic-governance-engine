@@ -10,7 +10,8 @@ resource "null_resource" "app_deployment" {
   }
 
   depends_on = [
-    google_container_node_pool.primary_nodes,
+    google_container_node_pool.general_pool,
+    google_container_node_pool.gpu_pool,
     google_redis_instance.cache,
     google_secret_manager_secret_version.system_authz_version,
     google_secret_manager_secret_version.finance_policy_version,

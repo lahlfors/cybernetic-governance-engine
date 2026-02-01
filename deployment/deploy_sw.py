@@ -110,20 +110,17 @@ images:
 
     return gateway_image_uri
 
-def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=False):
+def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=False, target_gke=True):
     """
-    Deploys UI service to Cloud Run (default behavior).
-    Use skip_ui=True to skip deployment entirely.
-    Returns the UI service URL.
+    Deploys UI service.
+    If target_gke=True, deploys to GKE.
+    If target_gke=False, deploys to Cloud Run.
     """
     print(f"\n--- 🖥️ Deploying UI Service: {ui_service_name} ---")
 
     if skip_ui:
         print("⏭️ Skipping UI deployment (--skip-ui flag set)")
-        existing_url = check_service_exists(project_id, region, ui_service_name)
-        if existing_url:
-            print(f"   Existing UI service at: {existing_url}")
-            return existing_url
+        # For now, just return None if skipped, or try getting existing URL if we really wanted to check
         return None
 
     ui_dir = Path("ui")
@@ -141,27 +138,74 @@ def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=
         str(ui_dir)
     ])
 
-    print("\n🚀 Deploying UI service to Cloud Run...")
-    run_command([
-        "gcloud", "run", "deploy", ui_service_name,
-        "--image", ui_image_uri,
-        "--region", region,
-        "--project", project_id,
-        "--platform", "managed",
-        "--allow-unauthenticated",
-        "--set-env-vars", f"BACKEND_URL={backend_url}",
-        "--port", "8080",
-        "--memory", "512Mi",
-        "--cpu", "1"
-    ])
+    if target_gke:
+        print(f"\n--- ☸️ Deploying UI to GKE ---")
+        deployment_tpl = Path("deployment/k8s/frontend-deployment.yaml.tpl")
+        if not deployment_tpl.exists():
+            print(f"❌ Frontend manifest template not found at {deployment_tpl}")
+            return None
 
-    deployed_url = check_service_exists(project_id, region, ui_service_name)
-    if deployed_url:
-        print(f"✅ UI service deployed at: {deployed_url}")
-        return deployed_url
+        with open(deployment_tpl) as f:
+            manifest_content = f.read()
 
-    print("⚠️ UI deployment completed but could not retrieve URL.")
-    return None
+        manifest_content = manifest_content.replace("${UI_IMAGE_URI}", ui_image_uri)
+        # BACKEND_URL in K8s is internal service DNS usually, but here we can rely on template default
+        # or override if we passed an external URL (though for GKE-to-GKE, internal DNS is better)
+        # The template defaults to http://governed-financial-advisor.governance-stack.svc.cluster.local:80
+        # If we wanted to support both, we'd substitute BACKEND_URL too.
+        # Let's assume the template has the correct internal DNS for now or we substitute it if variable exists.
+        
+        # Write Generated Manifest
+        generated_dir = Path("deployment/k8s/generated")
+        generated_dir.mkdir(parents=True, exist_ok=True)
+        generated_file = generated_dir / "frontend-deployment.yaml"
+        
+        with open(generated_file, 'w') as f:
+            f.write(manifest_content)
+            
+        print(f"📄 Generated manifest: {generated_file}")
+        run_command(["kubectl", "apply", "-f", str(generated_file)])
+        print("✅ UI manifest applied.")
+        
+        # Wait for LoadBalancer IP
+        print("\n--- ⏳ Waiting for UI IP ---")
+        for _ in range(30):
+            result = run_command(
+                ["kubectl", "get", "service", "financial-advisor-ui", "-n", "governance-stack", "-o", "jsonpath='{.status.loadBalancer.ingress[0].ip}'"],
+                check=False, capture_output=True
+            )
+            ip = result.stdout.strip("'")
+            if ip:
+                url = f"http://{ip}"
+                print(f"✅ Found UI IP: {ip}")
+                return url
+            print("   Waiting for LoadBalancer IP...")
+            time.sleep(10)
+        return None
+
+    else:
+        # Cloud Run Deployment
+        print("\n🚀 Deploying UI service to Cloud Run...")
+        run_command([
+            "gcloud", "run", "deploy", ui_service_name,
+            "--image", ui_image_uri,
+            "--region", region,
+            "--project", project_id,
+            "--platform", "managed",
+            "--allow-unauthenticated",
+            "--set-env-vars", f"BACKEND_URL={backend_url}",
+            "--port", "8080",
+            "--memory", "512Mi",
+            "--cpu", "1"
+        ])
+
+        deployed_url = check_service_exists(project_id, region, ui_service_name)
+        if deployed_url:
+            print(f"✅ UI service deployed at: {deployed_url}")
+            return deployed_url
+
+        print("⚠️ UI deployment completed but could not retrieve URL.")
+        return None
 
 
 # --- Hybrid Deployment Logic ---
@@ -289,8 +333,9 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         print("⚠️ Failed to retrieve Backend IP via kubectl. Cloud Run UI deployment may fail to connect.")
 
     # 6. Deploy UI
-    if backend_url:
-        deploy_ui_service(project_id, region, "financial-advisor-ui", backend_url, skip_ui=skip_ui)
+    if True: # Always attempt if not skipped (logic inside function)
+        # For GKE, backend_url might not be needed if using internal DNS, but passing it anyway
+        deploy_ui_service(project_id, region, "financial-advisor-ui", backend_url, skip_ui=skip_ui, target_gke=True)
 
 # --- Main Execution ---
 

@@ -78,7 +78,7 @@ resource "google_container_node_pool" "gpu_pool" {
   }
 
   node_config {
-    machine_type = "g2-standard-4" # L4 GPU optimized machine type
+    machine_type = "n1-standard-4" # T4 requires N1
 
     # Taint the node so only pods that tolerate it can schedule here
     taint {
@@ -88,7 +88,7 @@ resource "google_container_node_pool" "gpu_pool" {
     }
 
     guest_accelerator {
-      type  = "nvidia-l4"
+      type  = "nvidia-tesla-t4"
       count = 1
       gpu_driver_installation_config {
         gpu_driver_version = "LATEST"
