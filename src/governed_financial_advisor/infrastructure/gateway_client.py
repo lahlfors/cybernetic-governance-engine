@@ -30,18 +30,20 @@ class GatewayClient:
         Fetches OIDC Token for Cloud Run Service-to-Service authentication.
         Only runs if target_url is set (implies remote Cloud Run).
         """
-        if not self.target_url or "localhost" in self.target_url:
+        if not self.target_url or "localhost" in self.target_url or "127.0.0.1" in self.target_url:
             return None
 
         try:
-            # Clean URL for audience (remove protocol)
-            audience = self.target_url.replace("https://", "").replace("http://", "")
-            # Actually, id_token.fetch_id_token expects the full URL as audience usually?
-            # Cloud Run audience is the Service URL.
-
             # Use google.auth to check connectivity/creds
+            # When calling Cloud Run, the audience is the Service URL
             auth_req = AuthRequest()
-            token = id_token.fetch_id_token(auth_req, self.target_url)
+            # Verify if target_url has protocol, if not add https:// for audience generation if needed,
+            # but usually fetch_id_token expects the exact audience string of the service.
+            audience = self.target_url
+            if not audience.startswith("http"):
+                audience = f"https://{audience}"
+
+            token = id_token.fetch_id_token(auth_req, audience)
             return (("authorization", f"Bearer {token}"),)
         except Exception as e:
             logger.warning(f"Failed to fetch OIDC token for Gateway: {e}")
@@ -55,19 +57,27 @@ class GatewayClient:
 
         if not self.channel:
             # Detect if running on Cloud Run (using HTTPS usually)
-            if host != "localhost":
-                # Assume secure channel for Cloud Run
-                # Cloud Run URLs are https://... so host might contain protocol
-                if "https://" in host:
+            if host != "localhost" and host != "127.0.0.1":
+                # Assume secure channel for Cloud Run if port is 443 or https protocol specified
+                if "https://" in host or port == "443":
                     target = host.replace("https://", "")
+                    # Strip port if 443 to avoid SNI issues if needed, or keep it.
+                    # GRPC secure channel usually wants host:port or just host.
+                    if ":443" in target:
+                        target = target # keep as is
+
                     creds = grpc.ssl_channel_credentials()
                     self.channel = grpc.aio.secure_channel(target, creds)
-                    self.target_url = host
+                    self.target_url = host # Set full URL for Audience derivation
                 else:
-                    # Fallback or internal IP
+                    # Fallback or internal IP (e.g. PSC IP)
                     target = f"{host}:{port}"
                     self.channel = grpc.aio.insecure_channel(target)
-                    self.target_url = None # Assume no auth needed for plain IP/localhost
+                    # If using PSC with IP, we might still need Auth if the service requires it.
+                    # But usually PSC endpoints are accessed via HTTP/2 cleartext (h2c) inside VPC?
+                    # Let's assume if it's not localhost, we might need auth unless configured otherwise.
+                    # For now, treat non-https as insecure/no-auth unless overridden.
+                    self.target_url = None
             else:
                 target = f"{host}:{port}"
                 self.channel = grpc.aio.insecure_channel(target)

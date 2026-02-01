@@ -20,7 +20,7 @@ class ConsensusEngine:
         self.threshold = threshold
         self.model_name = model_name
 
-    def _get_critic_vote(self, role: str, action: str, amount: float, symbol: str) -> str:
+    async def _get_critic_vote(self, role: str, action: str, amount: float, symbol: str) -> str:
         """
         Consults an LLM with a specific critic persona.
         """
