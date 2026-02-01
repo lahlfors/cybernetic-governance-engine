@@ -71,10 +71,8 @@ def supervisor_node(state):
                 target_lower = target.lower()
                 if "data" in target_lower or "market" in target_lower:
                     next_step = "data_analyst"
-                elif "execution" in target_lower:
+                elif "execution" in target_lower or "risk" in target_lower:
                     next_step = "execution_analyst"
-                elif "risk" in target_lower:
-                    next_step = "risk_analyst"
                 elif "trade" in target_lower:
                     next_step = "governed_trader"
                 elif "human" in target_lower or "review" in target_lower:

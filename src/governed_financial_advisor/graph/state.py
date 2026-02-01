@@ -11,7 +11,6 @@ class AgentState(TypedDict):
     # Routing Control
     next_step: Literal[
         "data_analyst",
-        "risk_analyst",
         "execution_analyst",
         "evaluator",
         "governed_trader",

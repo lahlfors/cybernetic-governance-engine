@@ -10,7 +10,6 @@ class RouterIntent(str, Enum):
     MARKET_ANALYSIS = "MARKET_ANALYSIS"
     TRADING_STRATEGY = "TRADING_STRATEGY"
     EXECUTION_PLAN = "EXECUTION_PLAN"
-    RISK_ASSESSMENT = "RISK_ASSESSMENT"
 
 def route_request(intent: RouterIntent, tool_context: ToolContext) -> str:
     """
@@ -31,10 +30,6 @@ def route_request(intent: RouterIntent, tool_context: ToolContext) -> str:
         elif intent == RouterIntent.EXECUTION_PLAN:
             transfer_to_agent("execution_analyst_agent", tool_context)
             return "Routing to Execution Analyst.", "execution_analyst_agent"
-
-        elif intent == RouterIntent.RISK_ASSESSMENT:
-            transfer_to_agent("risk_analyst_agent", tool_context)
-            return "Routing to Risk Analyst.", "risk_analyst_agent"
 
         return "Error: Invalid Intent.", None
 

@@ -85,7 +85,7 @@ The entire risk discovery and rule deployment loop is automated via **Vertex AI 
 
 This system demonstrates a **Hybrid Cognitive Architecture** designed for regulated industries:
 
-*   **Stateless Compute (Cloud Run):** The core agent logic runs on Google Cloud Run. This ensures **infinite scalability** (scale-to-zero) and **deterministic restarts** (no drift).
+*   **Stateless Compute (GKE):** The core agent logic runs on Google Kubernetes Engine (GKE). This ensures **low latency** and **colocation** with the Gateway and vLLM services.
 *   **Redis State Store:** Session state is persisted to Redis (Cloud Memorystore) for reliable recovery across stateless compute instances.
 *   **Zero-Hop Policy (OPA Sidecar):** Regulatory checks happen over `localhost` or UDS. There is **no network latency** penalty for compliance, enabling high-frequency decision auditing.
 *   **Agentic Gateway (Sidecar):** A gRPC-based gateway handles all external IO and tool execution, isolating the Reasoning Plane from the Execution Plane.

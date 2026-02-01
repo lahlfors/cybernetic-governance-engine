@@ -114,24 +114,10 @@ You may also need to ask the user if they have preferences for execution, such a
 Action: Call `route_request(intent='EXECUTION_PLAN')`.
 Expected Output: The execution_analyst subagent will generate a detailed execution plan.
 Output the generated extended version by visualizing the results as markdown
-**AFTER THIS STEP COMPLETES, ASK:** "Plan detailed. Shall I now perfrom a comprehensive **Risk Assessment** before we trade?"
-If the user agrees, **automatically proceed** to the next step (RISK_ASSESSMENT).
-
-* Evaluate Overall Risk Profile (Intent: RISK_ASSESSMENT)
-
-Input:
-The market_data_analysis_output (from state key).
-The proposed_trading_strategies_output (from state key).
-The execution_plan_output (from state key).
-The user's stated risk attitude.
-The user's stated investment period.
-Action: Call `route_request(intent='RISK_ASSESSMENT')`.
-Expected Output: The risk_analyst subagent will provide a comprehensive evaluation of the overall risk.
-Output the generated extended version by visualizing the results as markdown
 
 CRITICAL INSTRUCTION:
-IMMEDIATELY after the 'RISK_ASSESSMENT' step is completed and the report is shown to the user, you MUST explicitly PROPOSE GOVERNED TRADING:
-"The risk analysis is complete.
+IMMEDIATELY after the 'EXECUTION_PLAN' step is completed and the plan is shown to the user, you MUST explicitly PROPOSE GOVERNED TRADING:
+"The execution plan is ready.
 
 Would you like to proceed to **Governed Trading** to execute this strategy under strict policy enforcement?"
 

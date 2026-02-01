@@ -18,7 +18,6 @@ from google.genai import types
 from src.governed_financial_advisor.agents.data_analyst.agent import create_data_analyst_agent
 from src.governed_financial_advisor.agents.execution_analyst.agent import create_execution_analyst_agent
 from src.governed_financial_advisor.agents.governed_trader.agent import create_governed_trader_agent
-from src.governed_financial_advisor.agents.risk_analyst.agent import create_risk_analyst_agent
 
 # Session management for ADK agents
 session_service = InMemorySessionService()
@@ -146,29 +145,6 @@ def data_analyst_node(state):
     last_msg = get_valid_last_message(state)
     res = run_adk_agent(agent, last_msg)
     return {"messages": [("ai", f"Data Analysis: {res.answer}")]}
-
-
-def risk_analyst_node(state):
-    """
-    Wraps the Risk Analyst agent for LangGraph.
-    Parses output to drive the Refinement Loop.
-    """
-    print("--- [Graph] Calling Risk Analyst ---")
-    agent = get_agent("risk_analyst", create_risk_analyst_agent)
-    last_plan = get_valid_last_message(state)
-    res = run_adk_agent(agent, f"Evaluate this plan: {last_plan}")
-
-    # Heuristic: Parse the Risk Agent's text output to drive the Loop
-    text = res.answer
-    status = "APPROVED"
-    if any(k in text.lower() for k in ["high risk", "reject", "unsafe", "denied"]):
-        status = "REJECTED_REVISE"
-
-    return {
-        "messages": [("ai", text)],
-        "risk_status": status,
-        "risk_feedback": text
-    }
 
 
 def execution_analyst_node(state):

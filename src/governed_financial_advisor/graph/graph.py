@@ -54,7 +54,6 @@ def create_graph(redis_url=None):
     # 3. Supervisor Routing (Intent -> Role)
     workflow.add_conditional_edges("supervisor", lambda x: x["next_step"], {
         "data_analyst": "data_analyst",
-        "risk_analyst": "execution_analyst", # Fallback
         "execution_analyst": "execution_analyst",
         "evaluator": "evaluator", # Direct route if re-entry
         "governed_trader": "execution_analyst", # Enforce: Must start at Planner

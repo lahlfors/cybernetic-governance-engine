@@ -34,13 +34,11 @@ configure_telemetry()
 from src.governed_financial_advisor.agents.data_analyst import create_data_analyst_agent
 from src.governed_financial_advisor.agents.execution_analyst import create_execution_analyst_agent
 from src.governed_financial_advisor.agents.governed_trader import create_governed_trader_agent
-from src.governed_financial_advisor.agents.risk_analyst import create_risk_analyst_agent
 
 # Instantiate Agents
 data_analyst_agent = create_data_analyst_agent()
 execution_analyst_agent = create_execution_analyst_agent()
 governed_trading_agent = create_governed_trader_agent()
-risk_analyst_agent = create_risk_analyst_agent()
 
 
 financial_coordinator = LlmAgent(
@@ -61,7 +59,6 @@ financial_coordinator = LlmAgent(
         data_analyst_agent,
         governed_trading_agent,
         execution_analyst_agent,
-        risk_analyst_agent,
     ],
     # Expose ONLY the deterministic router tool.
     tools=[
