@@ -62,6 +62,8 @@ The refactor prioritizes **Safety and Correctness** over raw latency for high-ri
     *   **Reason:** The "Optimistic Execution Node" logic (Parallel Prep + Safety) was incompatible with the strict MACAW "Simulation" step.
 *   **Removed:** `SequentialAgent` logic in `GovernedTrader`.
     *   **Reason:** Redundant. The Graph itself now manages the sequential flow (`Planner -> Evaluator -> Executor`).
+*   **Removed:** `Risk Analyst` Agent Code.
+    *   **Reason:** The Risk Analyst is an offline component. Its code has been removed from the runtime `src/agents/` path to prevent accidental inclusion in the synchronous execution graph.
 
 ---
 
