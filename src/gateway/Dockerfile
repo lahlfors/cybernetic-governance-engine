@@ -10,23 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv for dependency management (keeping consistent with repo)
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
-
-# Copy dependency definition
-COPY pyproject.toml .
-# Copy lock file if it exists, otherwise we generate
-# COPY uv.lock .
-
-# Create virtual env and install dependencies
+# Install dependencies using pip directly
 # We need grpcio, grpcio-tools, google-genai, openai, httpx, pydantic, opentelemetry-api, python-json-logger, google-auth
-# We can use `uv sync` if we have the full project structure or just install specifically.
-# Since this is a dedicated container, installing specifically is cleaner/smaller.
-RUN uv venv
-ENV VIRTUAL_ENV=/app/.venv
-ENV PATH="/app/.venv/bin:$PATH"
-
-RUN uv pip install \
+RUN pip install --no-cache-dir \
     grpcio \
     grpcio-tools \
     google-genai \

@@ -17,9 +17,11 @@ resource "google_cloud_run_v2_service" "gateway" {
       }
 
       ports {
-        container_port = 50051
+        container_port = 8080
         name           = "h2c" # Enable HTTP/2 for gRPC
       }
+
+      command = ["python", "-m", "src.gateway.server.main"]
 
       env {
         name = "VLLM_ENDPOINT"
@@ -28,6 +30,11 @@ resource "google_cloud_run_v2_service" "gateway" {
         # Otherwise, we might need the internal IP.
         # For now, let's assume we can inject the IP later or use a stable internal DNS if configured.
         value = "http://vllm-inference.governance-stack.svc.cluster.local:8000"
+      }
+
+      env {
+        name  = "StartMode"
+        value = "GATEWAY"
       }
     }
 

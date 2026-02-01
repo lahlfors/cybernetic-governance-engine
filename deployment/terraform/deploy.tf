@@ -21,15 +21,19 @@ resource "null_resource" "app_deployment" {
   provisioner "local-exec" {
     working_dir = "${path.module}/../../"
     command = <<EOT
-      /Users/laah/Code/cybernetic-governance-engine/.manual_deploy_venv/bin/python deployment/deploy_sw.py \
+      python3 -m venv .deploy_venv && \
+      source .deploy_venv/bin/activate && \
+      pip install --upgrade --quiet --extra-index-url https://pypi.org/simple keyrings.google-artifactregistry-auth && \
+      pip install --upgrade --quiet --extra-index-url https://pypi.org/simple google-cloud-aiplatform google-adk PyYAML langchain langchain-google-vertexai && \
+      python3 deployment/deploy_sw.py \
         --project-id ${var.project_id} \
         --region ${var.region} \
         --zone ${var.zone} \
         --redis-host ${google_redis_instance.cache.host} \
         --redis-port ${google_redis_instance.cache.port} \
         --cluster-name ${google_container_cluster.primary.name} \
-        --tf-managed \
-        --skip-build
+        --deploy-agent-engine \
+        --tf-managed
     EOT
   }
 }

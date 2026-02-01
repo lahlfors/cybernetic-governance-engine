@@ -234,13 +234,15 @@ def deploy_gateway_service(project_id, region, vllm_endpoint):
         "--project", project_id,
         "--service-account", f"gateway-sa@{project_id}.iam.gserviceaccount.com",
         "--set-env-vars", f"VLLM_ENDPOINT={vllm_endpoint},StartMode=GATEWAY",
-        "--command", "uv,run,python,-m,src.gateway.server.main",
+        "--command", "python,-m,src.gateway.server.main",
         "--allow-unauthenticated", # Protected by IAM Invoker, but "allow-unauthenticated" refers to public ingress enablement usually?
                                    # Actually for service-to-service with IAM, we usually set --no-allow-unauthenticated.
                                    # But Terraform config says "INGRESS_TRAFFIC_ALL".
                                    # Let's set --no-allow-unauthenticated to enforce IAM.
         "--no-allow-unauthenticated",
-        "--vpc-egress", "all-traffic" # Required to reach GKE private IP
+        "--vpc-egress", "all-traffic", # Required to reach GKE private IP
+        "--use-http2", # Required for gRPC
+        "--port", "8080" # Explicitly tell Cloud Run to listen on 8080 (app respects $PORT)
     ]
 
     # Check if network/subnet is specified in config? Terraform sets it.
@@ -275,10 +277,16 @@ def deploy_reasoning_engine(project_id, region, staging_bucket, redis_host):
     requirements = [
         "google-cloud-aiplatform[agent-engines]",
         "langchain-google-vertexai",
+        "langchain-google-genai",
         "langgraph",
+        "langgraph-checkpoint-redis",
         "redis",
         "pydantic",
-        "google-auth"
+        "google-auth",
+        "nemoguardrails",
+        "yfinance",
+        "pandas",
+        "httpx"
     ]
 
     print("   Creating Reasoning Engine (this may take a few minutes)...")
