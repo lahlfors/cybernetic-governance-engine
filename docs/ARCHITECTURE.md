@@ -30,7 +30,19 @@ The **Agent** (`src/governed_financial_advisor/`) is now a "Pure Reasoner".
 
 ---
 
-## 2. The Execution Flow
+## 2. Cybernetic Governance (VSM)
+
+We adapt Stafford Beer's **Viable System Model (VSM)** to structure the agent's cognition, ensuring strict separation between reasoning and execution.
+
+*   **System 5 (Identity):** **Supervisor & Policy Constitution**. Defines intent and routing.
+*   **System 4 (Intelligence):** **Execution Analyst (Planner)**. Simulates future states and builds plans.
+*   **System 3 (Control/Monitoring):** **Evaluator Agent & Explainer Agent**. Enforces safety and verifies faithfulness.
+*   **System 2 (Coordination):** **LangGraph State & Schema**. Manages data contracts and context.
+*   **System 1 (Operations):** **Governed Trader (Executor)**. Executes approved tools.
+
+---
+
+## 3. The Execution Flow
 
 ```mermaid
 sequenceDiagram
@@ -75,7 +87,7 @@ sequenceDiagram
 
 ---
 
-## 3. Infrastructure Migration
+## 4. Infrastructure Migration
 
 | Component | Old Location (Agent) | New Location (Gateway) |
 | :--- | :--- | :--- |
@@ -88,7 +100,7 @@ The Agent now contains **Stubs** (`infrastructure/gateway_client.py`) that forwa
 
 ---
 
-## 4. Why gRPC?
+## 5. Why gRPC?
 
 We selected gRPC for the Gateway interface to support the "Latency as Currency" model:
 
