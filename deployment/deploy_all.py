@@ -14,98 +14,44 @@
 # limitations under the License.
 
 """
-Cloud Run & Kubernetes Deployment Script for Governed Financial Advisor
+Deployment Script for Governed Financial Advisor (GKE Edition)
 
 Handles:
-1. Google Cloud API enablement.
-2. Redis (Memorystore) provisioning/verification.
-3. Secret Manager configuration (tokens, OPA policies).
-4. Kubernetes Infrastructure (vLLM on GKE).
-5. Cloud Run Service Deployment (Main App + Sidecar).
-6. UI Service Deployment.
+1. Validating Prerequisites (Terraform, kubectl, gcloud)
+2. Applying Terraform Infrastructure (GKE, VPC, Secrets)
+3. Configuring `kubectl` context
+4. Building & Pushing Containers
+5. Creating K8s Secrets & ConfigMaps
+6. Applying Kubernetes Manifests
+7. Providing Access Instructions
 
-Configuration is read from .env file as the single source of truth.
+Configuration is read from environment variables and CLI args.
 """
 
 import argparse
 import os
-import secrets
+import shutil
 import subprocess
 import sys
-import tempfile
-import shutil
-import random
 from pathlib import Path
-
-import yaml
-
-
-# --- Configuration Loading ---
-
-def load_dotenv():
-    """Load environment variables from .env file."""
-    env_path = Path(__file__).parent.parent / ".env"
-    if env_path.exists():
-        print(f"📂 Loading config from: {env_path}")
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    key, _, value = line.partition("=")
-                    # Don't override existing env vars (allow CLI overrides)
-                    if key.strip() not in os.environ:
-                        os.environ[key.strip()] = value.strip()
-    else:
-        print(f"⚠️ No .env file found at {env_path}")
-
-load_dotenv()
-
-# --- Model Configurations ---
-
-
-# updated endpoint for in-cluster Langfuse
-OTEL_ENDPOINT = "http://langfuse-web.langfuse.svc.cluster.local:4317/api/public/otel/v1/traces"
-
-# Strict Production Configuration
-CONFIG_MATRIX = {
-    "production": {
-        "model_id": "google/gemma-2-9b-it",
-        "accelerator_type": "nvidia-l4",
-        "count": 1,
-        "vllm_args": [
-            "--dtype", "bfloat16",
-            "--enable-prefix-caching",
-            "--max-model-len", "8192",
-            "--enforce-eager",
-            "--tensor-parallel-size", "1"
-        ]
-    }
-}
-
 
 # --- Helper Functions ---
 
-def run_command(command, check=True, capture_output=False, env=None):
+def run_command(command, check=True, capture_output=False, env=None, cwd=None):
     """
     Runs a shell command and prints the output.
-
-    Args:
-        command (list): The command to run.
-        check (bool): Whether to raise an exception on failure.
-        capture_output (bool): Whether to capture stdout/stderr.
-        env (dict): Environment variables to pass.
-
-    Returns:
-        subprocess.CompletedProcess or subprocess.CalledProcessError
     """
-    print(f"🚀 Running: {' '.join(command)}")
+    cmd_str = ' '.join(command) if isinstance(command, list) else command
+    print(f"🚀 Running: {cmd_str}")
     try:
         result = subprocess.run(
             command,
             check=check,
             capture_output=capture_output,
             text=True,
-            env=env or os.environ.copy()
+            env=env or os.environ.copy(),
+            cwd=cwd,
+            shell=isinstance(command, str)
         )
         if capture_output and result.stdout:
             print(result.stdout.strip())
@@ -118,852 +64,191 @@ def run_command(command, check=True, capture_output=False, env=None):
             sys.exit(1)
         return e
 
-def check_tool_availability(tool_name):
-    """Checks if a CLI tool is available in the PATH."""
-    return shutil.which(tool_name) is not None
+def check_tool(tool_name):
+    if not shutil.which(tool_name):
+        print(f"❌ Error: '{tool_name}' is not installed or not in PATH.")
+        sys.exit(1)
 
-def validate_config(args):
-    """
-    Validates and returns the strict production configuration.
-    Args are now mostly for overrides of infrastructure names, not architecture.
-    """
-    config = CONFIG_MATRIX["production"].copy()
-
-    print(f"✅ Configuration verified: Production")
-    print(f"   Model: {config['model_id']}")
-    print(f"   Accelerator: {config['accelerator_type']} x {config['count']}")
-
-    return config
-
-def generate_vllm_manifest(config, enable_tracing=None, spot_enabled=False):
-    """Generates the vLLM deployment YAML based on the strict config."""
-    tpl_path = Path("deployment/k8s/vllm-deployment.yaml.tpl")
-    if not tpl_path.exists():
-        print(f"❌ Template not found: {tpl_path}")
-        return None
-
-    with open(tpl_path) as f:
-        content = f.read()
-
-    model_id = config["model_id"]
-    print(f"ℹ️ Generating vLLM manifest for: {model_id}...")
-
-    # 1. Base Arguments
-    vllm_args_list = [
-        '            - "--model"',
-        f'            - "{model_id}"',
-        '            - "--served-model-name"',
-        f'            - "{model_id}"'
-    ]
+def build_and_push(project_id, image_name, build_path, dockerfile=None):
+    """Builds and pushes a container image using Cloud Build."""
+    tag = f"gcr.io/{project_id}/governance-stack/{image_name}:latest"
+    print(f"\n🏗️ Building {image_name} -> {tag}")
     
-    # Inject Config args
-    for arg in config.get("vllm_args", []):
-         vllm_args_list.append(f'            - "{arg}"')
-
-    # 2. Observability (Dynamic Injection)
-    # Default: Enable for GPU
-    should_trace = enable_tracing if enable_tracing is not None else True
-    
-    if should_trace:
-        print("ℹ️ Injecting OTLP Tracing arguments...")
-        vllm_args_list.append(f'            - "--otlp-traces-endpoint"')
-        vllm_args_list.append(f'            - "{OTEL_ENDPOINT}"')
-    else:
-        if "--disable-log-stats" not in str(vllm_args_list):
-             vllm_args_list.append('            - "--disable-log-stats"')
-
-    env_vars_list = []
-
-    # Determine Accelerator Type (GPU)
-    accel_type = config.get("accelerator_type", "nvidia-l4")
-    count = str(config.get("count", 1))
-
-    # GPU Configuration (L4/A100)
-    image_name = "vllm/vllm-openai:latest"
-    resource_limits = f'              nvidia.com/gpu: "{count}"'
-    resource_requests = f'              nvidia.com/gpu: "{count}"'
-    node_selector_lines = [
-        f'        cloud.google.com/gke-accelerator: "{accel_type}"'
-    ]
-    
-    node_selector_str = "\n".join(node_selector_lines)
-
-    # 3. Tolerations for Spot Instances
-    tolerations_list = []
-    if spot_enabled:
-        tolerations_list.append('      - key: "cloud.google.com/gke-spot"')
-        tolerations_list.append('        operator: "Equal"')
-        tolerations_list.append('        value: "true"')
-        tolerations_list.append('        effect: "NoSchedule"')
-
-    tolerations_str = "\n".join(tolerations_list) if tolerations_list else ""
-
-    vllm_args = "\n".join(vllm_args_list)
-    env_vars = "\n".join(env_vars_list) if env_vars_list else ""
-
-    content = content.replace("${IMAGE_NAME}", image_name)
-    content = content.replace("${RESOURCE_LIMITS}", resource_limits)
-    content = content.replace("${RESOURCE_REQUESTS}", resource_requests)
-    content = content.replace("${ENV_VARS}", env_vars)
-    content = content.replace("${ARGS}", vllm_args)
-    content = content.replace("${NODE_SELECTOR}", node_selector_str)
-    content = content.replace("${TOLERATIONS}", tolerations_str)
-
-    return content
-
-
-# --- Infrastructure Steps ---
-
-def enable_apis(project_id):
-    """Enables necessary Google Cloud APIs."""
-    print("\n--- 🛠️ Enabling APIs ---")
-    apis = [
-        "redis.googleapis.com",
-        "aiplatform.googleapis.com",
-        "secretmanager.googleapis.com",
-        "run.googleapis.com",
-        "cloudbuild.googleapis.com",
-        "container.googleapis.com" # Required for GKE/Kubectl
-    ]
-    for api in apis:
-        run_command([
-            "gcloud", "services", "enable", api, "--project", project_id
-        ], check=False)
-
-def get_redis_host(project_id, region, instance_name="financial-advisor-redis"):
-    """
-    Verifies if a Redis instance exists. If not, creates it.
-    Returns the Host IP and Port.
-    """
-    print(f"\n--- 🗄️ Verifying Redis: {instance_name} ---")
-
-    # Check if exists
-    check_cmd = [
-        "gcloud", "redis", "instances", "describe", instance_name,
-        "--region", region,
-        "--project", project_id,
-        "--format", "value(host, port)"
-    ]
-
-    result = run_command(check_cmd, check=False, capture_output=True)
-
-    if result.returncode == 0:
-        output = result.stdout.strip()
-        # Output format: "10.0.0.3 6379"
-        if output:
-            parts = output.split()
-            host = parts[0]
-            port = parts[1] if len(parts) > 1 else "6379"
-            print(f"✅ Found existing Redis at {host}:{port}")
-            return host, port
-
-    # Create if not exists
-    print(f"⚠️ Redis instance '{instance_name}' not found. Creating new instance (Basic Tier)...")
-    print("⏳ This operation may take 10-15 minutes.")
-
-    create_cmd = [
-        "gcloud", "redis", "instances", "create", instance_name,
-        "--region", region,
-        "--project", project_id,
-        "--tier", "BASIC",
-        "--size", "1",
-        "--redis-version", "redis_7_0"
-    ]
-
-    run_command(create_cmd)
-
-    # Retrieve details after creation
-    result = run_command(check_cmd, check=True, capture_output=True)
-    output = result.stdout.strip()
-    parts = output.split()
-    return parts[0], parts[1]
-
-    print("✅ K8s manifests applied.")
-
-
-def install_kubectl():
-    """Installs kubectl using gcloud and adds it to PATH."""
-    print("🛠️ Installing kubectl...")
-    run_command(["gcloud", "components", "install", "kubectl", "--quiet"], check=False)
-    
-    # Try to find SDK root and add to PATH
-    try:
-        res = run_command(["gcloud", "info", "--format", "value(installation.sdk_root)"], check=False, capture_output=True)
-        if res.returncode == 0:
-            sdk_root = res.stdout.strip()
-            if sdk_root:
-                bin_path = os.path.join(sdk_root, "bin")
-                if os.path.exists(bin_path):
-                    print(f"   Adding {bin_path} to PATH")
-                    os.environ["PATH"] = f"{bin_path}:{os.environ['PATH']}"
-    except Exception as e:
-        print(f"⚠️ Failed to determine SDK root: {e}")
-    
-    # Verify installation
-    if not check_tool_availability("kubectl"):
-        print("⚠️ kubectl installation attempted but still not found in PATH.")
-
-def setup_networking(project_id, region):
-    """Ensures Cloud Router and NAT exist for Private GKE connectivity."""
-    print(f"\n--- 🌐 Verifying Cloud NAT for Region: {region} ---")
-    router_name = f"nat-router-{region}"
-    nat_name = f"nat-config-{region}"
-    network = "default" # Assuming default network
-
-    # 1. Create Router
-    if run_command(["gcloud", "compute", "routers", "describe", router_name, "--region", region, "--project", project_id], check=False, capture_output=True).returncode != 0:
-        print(f"Creating Cloud Router: {router_name}")
-        run_command([
-            "gcloud", "compute", "routers", "create", router_name,
-            "--project", project_id,
-            "--region", region,
-            "--network", network
-        ])
-    else:
-        print(f"✅ Router {router_name} exists.")
-
-    # 2. Create NAT
-    if run_command(["gcloud", "compute", "routers", "nats", "describe", nat_name, "--router", router_name, "--region", region, "--project", project_id], check=False, capture_output=True).returncode != 0:
-        print(f"Creating Cloud NAT: {nat_name}")
-        run_command([
-            "gcloud", "compute", "routers", "nats", "create", nat_name,
-            "--router", router_name,
-            "--region", region,
-            "--project", project_id,
-            "--auto-allocate-nat-external-ips",
-            "--nat-all-subnet-ip-ranges"
-        ])
-    else:
-        print(f"✅ NAT {nat_name} exists.")
-
-def ensure_gke_cluster(project_id, region, cluster_name="governance-cluster", config=None, args=None):
-    """
-    Checks for GKE cluster. Creates one if not exists (Standard with GPU pool).
-    Configures kubectl context. 
-    Handles Org Policies: Private Nodes + Shielded Nodes.
-    """
-    print(f"\n--- ☸️ Verifying GKE Cluster: {cluster_name} ---")
-    
-    # Check if exists
-    location_flag = "--zone" if args and args.zone else "--region"
-    location_value = args.zone if args and args.zone else region
-
-    result = run_command([
-        "gcloud", "container", "clusters", "describe", cluster_name,
-        location_flag, location_value,
-        "--project", project_id,
-        "--format", "value(status)"
-    ], check=False, capture_output=True)
-    
-    if result.returncode == 0:
-        print(f"✅ Found existing GKE cluster: {cluster_name}")
-        status = result.stdout.strip()
-        if status != "RUNNING":
-            print(f"⚠️ Cluster status is {status}. Waiting might be required.")
-    else:
-        print(f"⚠️ GKE cluster '{cluster_name}' not found. Creating new Private Cluster (Standard, GPU-enabled)...")
-        print("⏳ This operation may take 15-20 minutes.")
-        
-        # Ensure Networking for Private Cluster
-        setup_networking(project_id, region)
-        
-        # Default System Node (CPU)
-        machine_type = "e2-standard-4"
-        disk_size = "50"
-        
-        print(f"🚀 Creating standard Control Plane ({machine_type})...")
-        print("ℹ️ Accelerators will be added as a separate Node Pool.")
-
-        # Create Private Standard cluster (CPU Only)
-        cmd = [
-            "gcloud", "container", "clusters", "create", cluster_name,
-            location_flag, location_value,
-            "--project", project_id,
-            "--num-nodes", "1",
-            "--machine-type", machine_type,
-            # No accelerator on default pool
-            "--disk-size", disk_size,
-            "--scopes", "cloud-platform",
-            # Security / Policy Compliance
-            "--shielded-secure-boot",
-            "--shielded-integrity-monitoring",
-            "--enable-private-nodes", 
-            "--master-ipv4-cidr", f"172.16.{random.randint(101, 200)}.0/28",
-            "--enable-ip-alias",
-            "--enable-master-authorized-networks",
-            "--master-authorized-networks", "0.0.0.0/0"
-            # No taints on system pool
-        ]
-        
-        run_command(cmd)
-
-    # Get Credentials
-    print("🔑 Configuring kubectl credentials...")
-    location_flag = "--zone" if args and args.zone else "--region"
-    location_value = args.zone if args and args.zone else region
-    run_command([
-        "gcloud", "container", "clusters", "get-credentials", cluster_name,
-        location_flag, location_value,
-        "--project", project_id
-    ])
-
-    # Ensure Namespace
-    subprocess.run("kubectl create namespace governance-stack --dry-run=client -o yaml | kubectl apply -f -", shell=True, check=False)
-
-def ensure_accelerator_node_pool(project_id, region, cluster_name, config=None, args=None):
-    """Ensures the appropriate GPU node pool exists."""
-
-    pool_name = "gpu-pool"
-    print(f"\n--- ⚡ Verifying GPU Node Pool: {pool_name} ---")
-
-    # Location logic (use zone if provided)
-    if args and args.zone:
-        location_flag = "--zone"
-        location = args.zone
-    else:
-        location_flag = "--region"
-        location = region
-
     cmd = [
-        "gcloud", "container", "node-pools", "describe", pool_name,
-        "--cluster", cluster_name, location_flag, location, "--project", project_id,
-        "--format", "value(status)"
-    ]
-    if run_command(cmd, check=False, capture_output=True).returncode == 0:
-        print(f"✅ Node pool '{pool_name}' exists.")
-        return
-
-    print(f"⚠️ Node pool '{pool_name}' not found. Creating GPU pool...")
-    
-    machine_type = "g2-standard-16" # Upgraded to match vLLM requests (12 vCPU, 32Gi Mem)
-    accelerator_type = config.get("accelerator_type", "nvidia-l4")
-    gpu_count = config.get("count", 1)
-    disk_size = "200"
-
-    create_cmd = [
-        "gcloud", "container", "node-pools", "create", pool_name,
-        "--cluster", cluster_name,
-        location_flag, location,
-        "--project", project_id,
-        "--node-locations", "us-central1-a", # Force single zone for reliability/quota
-        "--num-nodes", "1",
-        "--machine-type", machine_type,
-        "--accelerator", f"type={accelerator_type},count={gpu_count}",
-        "--disk-size", disk_size,
-        "--shielded-secure-boot",
-        "--shielded-integrity-monitoring"
-    ]
-
-    # Add Spot logic only if requested
-    if args and args.spot:
-        create_cmd.append("--spot")
-        create_cmd.append("--node-taints")
-        create_cmd.append("cloud.google.com/gke-spot=true:NoSchedule")
-
-    run_command(create_cmd)
-
-    return
-
-
-def deploy_k8s_infra(project_id, region, config=None, args=None):
-    """
-    Deploys Kubernetes manifests for Backend & vLLM.
-    Ensures kubectl and Cluster are ready.
-    """
-    print(f"\n--- ☸️ Deploying K8s Infrastructure (vLLM) ---")
-
-    if not check_tool_availability("kubectl"):
-        install_kubectl()
-        
-    if not check_tool_availability("kubectl"):
-        print("⚠️ 'kubectl' still not found. Skipping K8s deployment.")
-        return
-
-    # Ensure Cluster & Auth
-    ensure_gke_cluster(project_id, region, cluster_name=args.cluster_name, config=config, args=args)
-
-    # Ensure Node Pool for Accelerator
-    ensure_accelerator_node_pool(project_id, region, args.cluster_name, config=config, args=args)
-
-    k8s_dir = Path("deployment/k8s")
-    if not k8s_dir.exists():
-        print(f"⚠️ K8s directory {k8s_dir} not found. Skipping.")
-        return
-
-    # Generate Dynamic Manifests
-    print(f"📄 Generating vLLM manifest...")
-    # Pass optional tracing flag
-    enable_tracing = getattr(args, "enable_tracing", None) 
-    vllm_yaml = generate_vllm_manifest(config, enable_tracing=enable_tracing, spot_enabled=args.spot)
-    if not vllm_yaml:
-        print("❌ Failed to generate vLLM manifest.")
-        return
-
-    # Write generated manifest to the directory so kubectl apply finds it
-    vllm_path = k8s_dir / "vllm-deployment.yaml"
-    with open(vllm_path, 'w') as f:
-        f.write(vllm_yaml)
-
-    # Apply all manifests
-    print("🚀 Applying manifests from deployment/k8s/...")
-    run_command(["kubectl", "apply", "-f", str(k8s_dir)])
-    print("✅ K8s manifests applied.")
-
-
-# --- Secret Management ---
-
-def check_secret_exists(project_id, secret_name):
-    """Checks if a secret exists in Secret Manager."""
-    cmd = [
-        "gcloud", "secrets", "describe", secret_name,
-        "--project", project_id,
-        "--format", "value(name)"
-    ]
-    result = run_command(cmd, check=False, capture_output=True)
-    return result.returncode == 0
-
-def create_secret(project_id, secret_name, file_path=None, literal_value=None):
-    """Creates or updates a secret in Secret Manager."""
-    if not check_secret_exists(project_id, secret_name):
-        print(f"🔒 Creating secret: {secret_name}")
-        run_command([
-            "gcloud", "secrets", "create", secret_name,
-            "--project", project_id,
-            "--replication-policy", "automatic"
-        ])
-    else:
-        print(f"🔒 Secret {secret_name} exists. Updating version...")
-
-    if file_path:
-        run_command([
-            "gcloud", "secrets", "versions", "add", secret_name,
-            "--project", project_id,
-            "--data-file", file_path
-        ])
-    elif literal_value:
-        # Use piping to avoid exposing secret in process list
-        subprocess.run(
-            [
-                "gcloud", "secrets", "versions", "add", secret_name,
-                "--project", project_id,
-                "--data-file", "-"
-            ],
-            input=literal_value,
-            text=True,
-            check=True
-        )
-
-
-# --- Service Deployment ---
-
-def check_service_exists(project_id, region, service_name):
-    """Checks if a Cloud Run service exists."""
-    cmd = [
-        "gcloud", "run", "services", "describe", service_name,
-        "--region", region,
-        "--project", project_id,
-        "--format", "value(status.url)"
-    ]
-    result = run_command(cmd, check=False, capture_output=True)
-    if result.returncode == 0 and result.stdout.strip():
-        return result.stdout.strip()
-    return None
-
-def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=False):
-    """
-    Deploys UI service to Cloud Run (default behavior).
-    Use skip_ui=True to skip deployment entirely.
-    Returns the UI service URL.
-    """
-    print(f"\n--- 🖥️ Deploying UI Service: {ui_service_name} ---")
-
-    if skip_ui:
-        print("⏭️ Skipping UI deployment (--skip-ui flag set)")
-        existing_url = check_service_exists(project_id, region, ui_service_name)
-        if existing_url:
-            print(f"   Existing UI service at: {existing_url}")
-            return existing_url
-        return None
-
-    ui_dir = Path("ui")
-    if not ui_dir.exists():
-        print(f"❌ UI directory not found at: {ui_dir}")
-        print("   Skipping UI deployment.")
-        return None
-
-    ui_image_uri = f"gcr.io/{project_id}/financial-advisor-ui:latest"
-    print("\n🏗️ Building UI container image...")
-    run_command([
         "gcloud", "builds", "submit",
-        "--tag", ui_image_uri,
+        "--tag", tag,
         "--project", project_id,
-        str(ui_dir)
-    ])
+        str(build_path)
+    ]
+    if dockerfile:
+        cmd.extend(["--config", "cloudbuild.yaml"]) # Or use docker build logic if needed, but 'submit' auto-detects Dockerfile
 
-    print("\n🚀 Deploying UI service to Cloud Run...")
-    run_command([
-        "gcloud", "run", "deploy", ui_service_name,
-        "--image", ui_image_uri,
-        "--region", region,
-        "--project", project_id,
-        "--platform", "managed",
-        "--allow-unauthenticated",
-        "--set-env-vars", f"BACKEND_URL={backend_url}",
-        "--port", "8080",
-        "--memory", "512Mi",
-        "--cpu", "1"
-    ])
+    run_command(cmd)
+    return tag
 
-    deployed_url = check_service_exists(project_id, region, ui_service_name)
-    if deployed_url:
-        print(f"✅ UI service deployed at: {deployed_url}")
-        return deployed_url
+def create_secret_from_env(secret_name, key, env_var):
+    """Creates a generic K8s secret from an environment variable."""
+    value = os.environ.get(env_var)
+    if not value:
+        print(f"⚠️ Warning: {env_var} not found in environment. Secret {secret_name} may be empty.")
+        value = "placeholder-value-please-replace"
 
-    print("⚠️ UI deployment completed but could not retrieve URL.")
-    print("⚠️ UI deployment completed but could not retrieve URL.")
-    return None
+    print(f"🔒 Creating Secret: {secret_name}")
+    # Idempotent creation (delete first to update)
+    run_command(f"kubectl delete secret {secret_name} --ignore-not-found", shell=True)
+    run_command(f"kubectl create secret generic {secret_name} --from-literal={key}={value}", shell=True)
 
-def deploy_langfuse(project_id, region, cluster_name):
-    """Installs Langfuse observability stack via Helm."""
-    print("\n--- 🕵️ Deploying Langfuse Observability ---")
-    
-    if not check_tool_availability("helm"):
-        print("❌ Helm not found. Please install helm first.")
+def create_configmap_from_file(cm_name, file_path):
+    """Creates a ConfigMap from a file."""
+    if not Path(file_path).exists():
+        print(f"⚠️ Warning: Policy file {file_path} not found. ConfigMap {cm_name} will fail.")
         return
 
-    # Add Repo
-    run_command(["helm", "repo", "add", "langfuse", "https://langfuse.github.io/langfuse-k8s"], check=False)
-    run_command(["helm", "repo", "update"], check=False)
-    
-    # Install
-    print("🚀 Installing Langfuse Chart (with bundled Postgres/Clickhouse)...")
-    
-    # Generate secrets
-    salt = secrets.token_hex(16)
-    encryption_key = secrets.token_hex(32)
-    nextauth_secret = secrets.token_hex(32)
-    postgres_password = secrets.token_hex(16)
-    clickhouse_password = secrets.token_hex(16)
-    redis_password = secrets.token_hex(16)
-    minio_password = secrets.token_hex(16)
-    
-    cmd = [
-        "helm", "upgrade", "--install", "langfuse", "langfuse/langfuse",
-        "--namespace", "langfuse", "--create-namespace",
-        "--set", "postgresql.enabled=true",
-        "--set", f"postgresql.auth.password={postgres_password}",
-        "--set", "clickhouse.enabled=true",
-        "--set", f"clickhouse.auth.password={clickhouse_password}",
-        "--set", "redis.deploy=true",
-        "--set", f"redis.auth.password={redis_password}",
-        "--set", f"s3.auth.rootPassword={minio_password}",
-        "--set", "langfuse.baseUrl=http://localhost:3000",
-        "--set", f"langfuse.salt.value={salt}",
-        "--set", f"langfuse.encryptionKey.value={encryption_key}",
-        "--set", f"langfuse.nextauth.secret.value={nextauth_secret}",
-        "--set", f"langfuse.nextauth.url=http://localhost:3000"
-    ]
-    run_command(cmd)
-    
-    print("✅ Langfuse deployed. Port-forward to access: kubectl port-forward svc/langfuse-web 3000:3000 -n langfuse")
+    print(f"📄 Creating ConfigMap: {cm_name} from {file_path}")
+    run_command(f"kubectl delete configmap {cm_name} --ignore-not-found", shell=True)
+    run_command(f"kubectl create configmap {cm_name} --from-file={file_path}", shell=True)
 
-
-# --- Main Execution Flow ---
+# --- Main Logic ---
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Deploy Financial Advisor to Cloud Run & GKE"
-    )
+    parser = argparse.ArgumentParser(description="Deploy Governed Financial Advisor to GKE")
     parser.add_argument("--project-id", required=True, help="Google Cloud Project ID")
-    parser.add_argument("--region", default="us-central1", help="Cloud Run Region")
-    parser.add_argument("--zone", help="GKE Cluster Zone (optional, overrides region for GKE)")
-    parser.add_argument("--service-name", default="governed-financial-advisor", help="Cloud Run Service Name")
-
-    # Build/Deploy Skip Flags
-    parser.add_argument("--skip-build", action="store_true", help="Skip image build step")
-    parser.add_argument("--skip-redis", action="store_true", help="Skip Redis provisioning")
-    parser.add_argument("--skip-ui", action="store_true", help="Skip UI service deployment")
-    parser.add_argument("--skip-k8s", action="store_true", help="Skip Kubernetes deployment")
-    parser.add_argument("--deploy-langfuse", action="store_true", help="Deploy Langfuse stack")
-
-    # Override Arguments
-    parser.add_argument("--redis-host", help="Use existing Redis Host")
-    parser.add_argument("--redis-port", default="6379", help="Redis Port")
-    parser.add_argument("--redis-instance-name", default="financial-advisor-redis", help="Name for auto-provisioned Redis")
-    parser.add_argument("--ui-service-name", default="financial-advisor-ui", help="Cloud Run UI Service Name")
-    parser.add_argument("--target", default="cloud_run", choices=["cloud_run", "hybrid", "gke"], help="Deployment target")
-
-    # Accelerator Support
-    parser.add_argument("--accelerator-type", default="l4", choices=["t4", "l4", "a100"], help="GPU Accelerator Type")
-    parser.add_argument("--spot", action="store_true", help="Use Spot VMs for GKE nodes")
-
-    # Observability
-    parser.add_argument("--enable-tracing", action="store_true", default=None, help="Force enable vLLM OTLP tracing")
-    parser.add_argument("--disable-tracing", action="store_false", dest="enable_tracing", help="Force disable vLLM OTLP tracing")
-
-    parser.add_argument("--cluster-name", default="governance-cluster", help="GKE Cluster Name") # Added arg
-
-    args = parser.parse_args()
-
-    project_id = args.project_id
-    region = args.region
-
-    # 0. Validate Configuration (Strict Golden Path)
-    config = validate_config(args)
-
-    # 1. Enable APIs
-    enable_apis(project_id)
-
-    # 1. Infrastructure Provisioning - Firestore (No Redis)
-    # Replaced Redis with Firestore Session Service (Native)
-    print("\n--- 🗄️ Verifying Firestore (Native Session Storage) ---")
-    run_command(["gcloud", "services", "enable", "firestore.googleapis.com", "--project", project_id], check=False)
+    parser.add_argument("--region", default="us-central1", help="GCP Region")
+    parser.add_argument("--zone", default="us-central1-a", help="GCP Zone")
+    parser.add_argument("--skip-terraform", action="store_true", help="Skip Terraform Apply step")
+    parser.add_argument("--skip-build", action="store_true", help="Skip Container Build step")
     
-    # We still keep redis variables for compatibility with hybrid/UI args if needed, but they are generally unused
-    redis_host = None
-    redis_port = "6379"
-
-    if args.deploy_langfuse:
-        # Just deploy langfuse and exit or continue?
-        # Ensure cluster first
-        ensure_gke_cluster(project_id, region, cluster_name=args.cluster_name, args=args)
-        deploy_langfuse(project_id, region, args.cluster_name)
-        if args.skip_k8s and args.skip_build and args.skip_redis:
-             return # Exit if only deploying langfuse
-
-    # Redis Provisioning Block Removed - Using Firestore
-
-    # 2. Kubernetes Infrastructure (vLLM)
-    if not args.skip_k8s:
-        deploy_k8s_infra(project_id, region, config=config, args=args)
+    args = parser.parse_args()
+    
+    # 1. Prerequisite Checks
+    print("\n--- 🔍 Checking Prerequisites ---")
+    check_tool("terraform")
+    check_tool("kubectl")
+    check_tool("gcloud")
+    
+    # 2. Terraform Apply
+    tf_dir = Path("deployment/terraform")
+    if not args.skip_terraform:
+        print("\n--- 🏗️ Applying Infrastructure (Terraform) ---")
+        
+        # Init
+        run_command(["terraform", "init"], cwd=tf_dir)
+        
+        # Apply
+        tf_cmd = [
+            "terraform", "apply", "-auto-approve",
+            f"-var=project_id={args.project_id}",
+            f"-var=region={args.region}",
+            f"-var=zone={args.zone}",
+            f"-var=gateway_image=gcr.io/{args.project_id}/governance-stack/gateway:latest"
+        ]
+        run_command(tf_cmd, cwd=tf_dir)
     else:
-        print("\n--- ⏭️ Skipping K8s deployment (--skip-k8s flag set) ---")
+        print("\n--- ⏭️ Skipping Terraform Apply ---")
 
-
-    # 3. Secret Management
-    print("\n--- 🔑 Managing Secrets ---")
-
-    # Random Auth Token
-    token = secrets.token_urlsafe(32)
-    create_secret(project_id, "opa-auth-token", literal_value=token)
-
-    # System Authz Policy
-    create_secret(project_id, "system-authz-policy", file_path="deployment/system_authz.rego")
-
-    # Finance Policy - Strict Check (No Mocks)
-    policy_path = "src/governance/policy/finance_policy.rego"
-    if not os.path.exists(policy_path):
-        # Fallback to local deployment/ folder if src/ is missing (e.g. in some build contexts)
-        if os.path.exists("deployment/finance_policy.rego"):
-             policy_path = "deployment/finance_policy.rego"
-        else:
-            print(f"❌ Critical Error: Finance Policy not found at {policy_path}")
-            print("   Ensure 'src/governance/policy/finance_policy.rego' exists.")
-            sys.exit(1)
-
-    print(f"📄 Using Finance Policy from: {policy_path}")
-    create_secret(project_id, "finance-policy-rego", file_path=policy_path)
-
-    # OPA Config
-    create_secret(project_id, "opa-configuration", file_path="deployment/opa_config.yaml")
-
-    # 4. Build Image
-    image_uri = f"gcr.io/{project_id}/financial-advisor:latest"
+    # 3. Configure kubectl
+    print("\n--- 🔑 Configuring kubectl ---")
+    cluster_name = "governance-cluster" # Defined in gke.tf
+    run_command([
+        "gcloud", "container", "clusters", "get-credentials", cluster_name,
+        "--zone", args.zone,
+        "--project", args.project_id
+    ])
+    
+    # 4. Build Images
     if not args.skip_build:
-        print("\n--- 🏗️ Building Container Image ---")
+        print("\n--- 🐳 Building Container Images ---")
+        # Build Gateway (Dockerfile is in src/gateway/Dockerfile, context is root)
+        # Note: We need to build from root to include shared modules if any.
+        # But per Dockerfile analysis earlier, Gateway Dockerfile is at root level or src/gateway level?
+        # Checked `src/gateway/Dockerfile` -> Needs specific build context.
+        # Actually repo has `Dockerfile` in root for 'app' and `src/gateway/Dockerfile` for gateway?
+        # Let's check file list.
+        # `Dockerfile` in root is for the main app (Financial Advisor).
+        # `src/gateway/Dockerfile` exists.
+        # `Dockerfile.nemo` exists.
+        
+        # Build Gateway
+        # Note: src/gateway/Dockerfile likely expects context to be root to copy src/
         run_command([
             "gcloud", "builds", "submit",
-            "--tag", image_uri,
-            "--project", project_id,
+            "--tag", f"gcr.io/{args.project_id}/governance-stack/gateway:latest",
+            "--file", "src/gateway/Dockerfile",
+            "--project", args.project_id,
+            "."
+        ])
+
+        # Build Financial Advisor (Root Dockerfile)
+        run_command([
+            "gcloud", "builds", "submit",
+            "--tag", f"gcr.io/{args.project_id}/governance-stack/advisor:latest",
+            "--file", "Dockerfile",
+            "--project", args.project_id,
+            "."
+        ])
+
+        # Build NeMo (Dockerfile.nemo)
+        run_command([
+            "gcloud", "builds", "submit",
+            "--tag", f"gcr.io/{args.project_id}/governance-stack/nemo:latest",
+            "--file", "Dockerfile.nemo",
+            "--project", args.project_id,
             "."
         ])
     else:
-        print(f"\n--- ⏭️ Skipping Build (Image: {image_uri}) ---")
+         print("\n--- ⏭️ Skipping Image Build ---")
 
-    # 5. Prepare Service YAML
-    print("\n--- 📝 Preparing Service Configuration ---")
-
-    with open("deployment/service.yaml") as f:
-        service_config = yaml.safe_load(f)
-
-    # Update Ingress Image and Inject Environment Variables
-    containers = service_config["spec"]["template"]["spec"]["containers"]
-    for container in containers:
-        if container["name"] == "ingress-agent":
-            container["image"] = image_uri
-
-            # Environment Variables Injection
-            env = container.setdefault("env", [])
-
-            def add_env(k, v):
-                for item in env:
-                    if item["name"] == k:
-                        item["value"] = str(v)
-                        return
-                env.append({"name": k, "value": str(v)})
-
-            # Inject all deployment envs from .env (single source of truth)
-            # REDIS removed
-            add_env("GOOGLE_CLOUD_PROJECT", project_id)
-            add_env("GOOGLE_CLOUD_LOCATION", region)
-            add_env("GOOGLE_GENAI_USE_VERTEXAI", os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "true"))
-            add_env("OPA_URL", os.environ.get("OPA_URL", "http://localhost:8181/v1/data/finance/allow"))
-
-            # vLLM Configuration
-            # Default to K8s internal DNS (assumes connectivity via VPC or similar)
-            vllm_url = os.environ.get("VLLM_BASE_URL", "http://vllm-service.governance-stack.svc.cluster.local:8000/v1")
-            add_env("VLLM_BASE_URL", vllm_url)
-            add_env("VLLM_API_KEY", os.environ.get("VLLM_API_KEY", "EMPTY"))
-
-            # Force Cloud Run to create a new revision by injecting a timestamp
-            import time
-            deploy_timestamp = str(int(time.time()))
-            add_env("DEPLOY_TIMESTAMP", deploy_timestamp)
-
-            print(f"✅ Injected Envs: REDIS_HOST={redis_host}, VLLM_BASE_URL={vllm_url}, DEPLOY_TIMESTAMP={deploy_timestamp}")
-            break
-
-    # Guarantee Secret Name Consistency
-    volumes = service_config["spec"]["template"]["spec"]["volumes"]
-    for volume in volumes:
-        if volume["name"] == "policy-volume":
-            volume["secret"]["secretName"] = "finance-policy-rego"
-            break
-
-    # Write to temp file
-    with tempfile.NamedTemporaryFile(mode='w', suffix=".yaml", delete=False) as temp:
-        yaml.dump(service_config, temp)
-        temp_path = temp.name
-
-    try:
-        if args.target == "hybrid" or args.target == "gke":
-             deploy_hybrid(project_id, region, image_uri, redis_host, redis_port, args=args)
-             return
-
-        # 6. Deploy Main Service
-        print("\n--- 🚀 Deploying to Cloud Run ---")
-        run_command([
-            "gcloud", "run", "services", "replace", temp_path,
-            "--region", region,
-            "--project", project_id
-        ])
-
-        # Get the backend URL for UI configuration
-        backend_url = check_service_exists(project_id, region, args.service_name)
-        if not backend_url:
-            backend_url = f"https://{args.service_name}-{project_id}.{region}.run.app"
-
-        print("\n--- ✅ Main Service Deployment Complete ---")
-        print(f"Backend URL: {backend_url}")
-
-        # 7. Deploy UI Service
-        ui_url = deploy_ui_service(
-            project_id,
-            region,
-            args.ui_service_name,
-            backend_url,
-            skip_ui=args.skip_ui
-        )
-
-        print("\n--- ✅ Full Deployment Complete ---")
-        print(f"Backend Service: {backend_url}")
-        if ui_url:
-            print(f"UI Service: {ui_url}")
-
-        if ui_url:
-            print(f"UI Service: {ui_url}")
-
-    finally:
-        os.remove(temp_path)
-
-# --- Hybrid Deployment Logic ---
-
-def deploy_hybrid(project_id, region, image_uri, redis_host, redis_port, args=None):
-    """
-    Orchestrates Hybrid Deployment:
-    1. Deploys vLLM & Backend to GKE.
-    2. Retrieves Backend External IP.
-    3. Deploys UI to Cloud Run pointed at Backend IP.
-    """
-    # Use Production Config
-    config = CONFIG_MATRIX["production"]
-
-    print(f"\n--- 🌐 Starting Hybrid Deployment (GKE + Cloud Run) [Target: {config['accelerator_type']}] ---")
+    # 5. Create Secrets & ConfigMaps
+    print("\n--- 🔐 Configuring K8s Secrets ---")
     
-    # 1. Deploy GKE Infrastructure (vLLM)
-    deploy_k8s_infra(project_id, region, config=config, args=args)
+    # vLLM HF Token
+    create_secret_from_env("hf-token-secret", "token", "HUGGING_FACE_HUB_TOKEN")
     
-    # 2. Deploy Backend to GKE
-    print("\n--- ☸️ Deploying Backend to GKE ---")
-    deployment_file = Path("deployment/k8s/backend-deployment.yaml")
-    if not deployment_file.exists():
-        print(f"❌ Backend manifest not found at {deployment_file}")
-        sys.exit(1)
-        
-    with open(deployment_file) as f:
-        manifest_content = f.read()
-        
-    # Substitute Variables
-    import time
-    timestamp = str(int(time.time()))
+    # NeMo / LLM Secrets
+    create_secret_from_env("llm-secrets", "openai-api-key", "OPENAI_API_KEY")
     
-    manifest_content = manifest_content.replace("${IMAGE_URI}", image_uri)
-    manifest_content = manifest_content.replace("${PROJECT_ID}", project_id)
-    manifest_content = manifest_content.replace("${REGION}", region)
-    manifest_content = manifest_content.replace("${DEPLOY_TIMESTAMP}", timestamp)
-    
-    # Apply Manifest
-    with tempfile.NamedTemporaryFile(mode='w', suffix=".yaml", delete=False) as temp:
-        temp.write(manifest_content)
-        temp_path = temp.name
-        
-    try:
-        run_command(["kubectl", "apply", "-f", temp_path])
-        print("✅ Backend manifest applied.")
-    finally:
-        os.remove(temp_path)
-        
-    # 3. Create Secrets in K8s (Mirror from Secret Manager or File)
-    print("\n--- 🔑 Mirroring Secrets to K8s ---")
-    # OPA Config
-    if Path("deployment/opa_config.yaml").exists():
-        run_command(["kubectl", "create", "secret", "generic", "opa-configuration", 
-                     "--from-file=opa_config.yaml=deployment/opa_config.yaml", 
-                     "--namespace=governance-stack", "--dry-run=client", "-o", "yaml", "|", "kubectl", "apply", "-f", "-"], check=False) # Pipe needs shell=True or specialized handling, simplifying for now
-        # Simplified:
-        subprocess.run("kubectl create secret generic opa-configuration --from-file=opa_config.yaml=deployment/opa_config.yaml -n governance-stack --dry-run=client -o yaml | kubectl apply -f -", shell=True)
-
-    # Finance Policy
+    # OPA Policy
+    # Assuming policy file is at `src/governance/policy/finance_policy.rego` or similar.
+    # We will look for it.
     policy_path = "src/governance/policy/finance_policy.rego"
-    if not os.path.exists(policy_path) and os.path.exists("deployment/finance_policy.rego"):
-         policy_path = "deployment/finance_policy.rego"
-         
-    subprocess.run(f"kubectl create secret generic finance-policy-rego --from-file=finance_policy.rego={policy_path} -n governance-stack --dry-run=client -o yaml | kubectl apply -f -", shell=True)
+    if not Path(policy_path).exists():
+         # Fallback check
+         if Path("deployment/finance_policy.rego").exists():
+             policy_path = "deployment/finance_policy.rego"
     
-    # 4. Wait for Backend External IP
-    print("\n--- ⏳ Waiting for Backend Service External IP ---")
-    backend_url = None
-    for _ in range(20): # Retry for ~2 minutes
-        result = run_command(
-            ["kubectl", "get", "service", "governed-financial-advisor", "-n", "governance-stack", "-o", "jsonpath='{.status.loadBalancer.ingress[0].ip}'"],
-            check=False, capture_output=True
-        )
-        ip = result.stdout.strip("'")
-        if ip:
-            backend_url = f"http://{ip}"
-            print(f"✅ Found Backend IP: {ip}")
-            break
-        print("   Waiting for LoadBalancer IP...")
-        time.sleep(10)
+    create_configmap_from_file("opa-policies", policy_path)
+
+    # 6. Apply Kubernetes Manifests
+    print("\n--- ☸️ Applying Kubernetes Manifests ---")
+    k8s_dir = Path("deployment/k8s")
+    
+    manifests = list(k8s_dir.glob("*.yaml"))
+    temp_dir = Path("deployment/k8s_rendered")
+    temp_dir.mkdir(exist_ok=True)
+
+    for manifest in manifests:
+        if "tpl" in manifest.name: continue # Skip templates
         
-    if not backend_url:
-        print("⚠️ Could not retrieve Backend IP. GKE deployment may be pending. Check 'kubectl get svc -n governance-stack'.")
-        # Fallback to internal DNS for testing inside cluster? No, UI is external.
-        print("   Proceeding assuming manual URL configuration or failure.")
+        with open(manifest) as f:
+            content = f.read()
+
+        content = content.replace("${PROJECT_ID}", args.project_id)
+
+        target_path = temp_dir / manifest.name
+        with open(target_path, "w") as f:
+            f.write(content)
+
+    # Apply Rendered Manifests
+    run_command(["kubectl", "apply", "-f", str(temp_dir)])
+
+    # Cleanup
+    shutil.rmtree(temp_dir)
     
-    # 5. Deploy UI to Cloud Run
-    if backend_url:
-        deploy_ui_service(project_id, region, "financial-advisor-ui", backend_url)
+    # 7. Wait for Ingress IP
+    print("\n--- ⏳ Waiting for Ingress IP ---")
+    print("Run: kubectl get ingress financial-advisor-ingress -w")
+
+    print("\n✅ Deployment script completed successfully.")
 
 if __name__ == "__main__":
     main()

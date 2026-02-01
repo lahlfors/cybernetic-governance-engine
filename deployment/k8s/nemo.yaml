@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nemo-service
+  namespace: default
+  labels:
+    app: nemo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nemo
+  template:
+    metadata:
+      labels:
+        app: nemo
+    spec:
+      containers:
+      - name: nemo
+        image: gcr.io/${PROJECT_ID}/governance-stack/nemo:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: llm-secrets
+              key: openai-api-key
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "1"
+            memory: "2Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nemo-service
+  namespace: default
+spec:
+  selector:
+    app: nemo
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+  type: ClusterIP

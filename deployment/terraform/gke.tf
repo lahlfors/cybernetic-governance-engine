@@ -2,9 +2,6 @@ resource "google_container_cluster" "primary" {
   name     = "governance-cluster"
   location = var.zone
 
-  # We can't create a cluster with no node pool defined, but we want to only use
-  # separately managed node pools. So we create the smallest possible default
-  # node pool and immediately delete it.
   remove_default_node_pool = true
   initial_node_count       = 1
 
@@ -42,27 +39,65 @@ resource "google_container_cluster" "primary" {
   }
 }
 
-resource "google_container_node_pool" "primary_nodes" {
-  name       = "governance-node-pool"
+# 1. General Purpose Node Pool (System + Lightweight Apps)
+resource "google_container_node_pool" "general_pool" {
+  name       = "general-pool"
   location   = var.zone
   cluster    = google_container_cluster.primary.name
   node_count = 1
 
-  node_config {
-    machine_type = var.machine_type
+  autoscaling {
+    min_node_count = 1
+    max_node_count = 5
+  }
 
-    # Google recommends custom service accounts that have cloud-platform scope and permissions granted via IAM Roles.
+  node_config {
+    machine_type = "e2-standard-4" # Cost-effective general purpose
+
     oauth_scopes = [
       "https://www.googleapis.com/auth/cloud-platform"
     ]
 
+    shielded_instance_config {
+      enable_secure_boot          = true
+      enable_integrity_monitoring = true
+    }
+  }
+}
+
+# 2. GPU Node Pool (Dedicated for vLLM Inference)
+resource "google_container_node_pool" "gpu_pool" {
+  name       = "gpu-pool"
+  location   = var.zone
+  cluster    = google_container_cluster.primary.name
+  node_count = 1
+
+  autoscaling {
+    min_node_count = 0 # Scale to zero if no inference needed (optional cost saving)
+    max_node_count = 2
+  }
+
+  node_config {
+    machine_type = "g2-standard-4" # L4 GPU optimized machine type
+
+    # Taint the node so only pods that tolerate it can schedule here
+    taint {
+      key    = "nvidia.com/gpu"
+      value  = "present"
+      effect = "NO_SCHEDULE"
+    }
+
     guest_accelerator {
-      type  = var.gpu_type
-      count = var.gpu_count
+      type  = "nvidia-l4"
+      count = 1
       gpu_driver_installation_config {
-        gpu_driver_version = "DEFAULT"
+        gpu_driver_version = "LATEST"
       }
     }
+
+    oauth_scopes = [
+      "https://www.googleapis.com/auth/cloud-platform"
+    ]
 
     shielded_instance_config {
       enable_secure_boot          = true

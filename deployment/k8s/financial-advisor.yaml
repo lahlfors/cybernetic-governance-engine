@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: financial-advisor
+  namespace: default
+  labels:
+    app: financial-advisor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: financial-advisor
+  template:
+    metadata:
+      labels:
+        app: financial-advisor
+    spec:
+      containers:
+      - name: advisor
+        image: gcr.io/${PROJECT_ID}/governance-stack/advisor:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: PORT
+          value: "8080"
+        - name: GATEWAY_URL
+          value: "gateway-service:8080"
+        - name: REDIS_URL
+          value: "redis://redis-0.redis-service.default.svc.cluster.local:6379"
+        resources:
+          requests:
+            cpu: "1"
+            memory: "1Gi"
+          limits:
+            cpu: "2"
+            memory: "2Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: financial-advisor
+  namespace: default
+spec:
+  selector:
+    app: financial-advisor
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP
