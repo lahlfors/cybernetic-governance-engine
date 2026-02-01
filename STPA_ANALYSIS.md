@@ -150,27 +150,27 @@ To ensure this architecture meets the rigorous standards of ISO/IEC 42001:2023 (
 System 5: Policy & Identity (The Constitutional Core)
 VSM Function: Ultimate authority, balancing present and future needs to maintain identity.
 ISO 42001 Mapping: Clause 5.1 (Leadership and Commitment) & Clause 5.2 (AI Policy).
-Implementation: System 5 represents the organization's "Constitution." In the context of Agentic AI, this is the encoding of top management's commitment to responsible AI into the system's fundamental constraints. It involves defining the high-level ethical directives (e.g., "No autonomous financial transactions > $1M", "Prioritize user privacy over task completion") and the boundaries of the "Safe Set." These policies are not just documents; they are "System Prompts" and foundational OPA policies that the agent cannot override. Leadership is responsible for establishing these policies and ensuring resources are available for the AIMS (Artificial Intelligence Management System).
+Implementation: **Supervisor & Policy Constitution**. This defines the high-level intent, routing logic, and immutable "System Prompts" that govern the entire graph. It represents the "Board of Directors" for the agent.
 
 System 4: Intelligence & Adaptation (The Future)
 VSM Function: Monitoring the external environment, planning, and risk assessment (The "Outside and Then").
 ISO 42001 Mapping: Clause 6.1 (Actions to address risks and opportunities) & Clause 8.2 (AI Risk Assessment).
-Implementation: System 4 is the domain of STPA Hazard Analysis. It is responsible for "Red Teaming" and looking ahead. Before an agent is deployed, System 4 functions run simulations to identify potential "Unsafe Control Actions" (UCAs). During operation, "Intelligence Agents" scan for changes in the regulatory landscape (e.g., new EU AI Act rules) or market conditions that might render current policies unsafe. This system feeds into the Risk Assessment process required by Clause 8.2, ensuring that risks are not static but continuously re-evaluated.
+Implementation: **Execution Analyst (Planner)**. This component looks ahead, formulating the `ExecutionPlan` based on user intent and strategy. It simulates future states and builds the DAG of operations.
 
 System 3: Control & Optimization (The Now)
 VSM Function: Resource allocation, monitoring internal operations, and audit (The "Inside and Now").
 ISO 42001 Mapping: Clause 8.1 (Operational planning and control) & Clause 9.1 (Monitoring, measurement, analysis).
-Implementation: This is the "Audit Channel" and the runtime orchestration layer. System 3 is the **Supervisor Agent (LangGraph node)**—specifically `src/graph/nodes/supervisor_node.py` which wraps the `financial_coordinator` ADK agent. It enforces the budget, monitors "algedonic" signals (pain/pleasure signals like error rates, latency, or toxic output flags), and applies Control Barrier Functions (CBFs) to keep operations within the safe set. It ensures that the operational controls planned in Clause 8.1 are executed and that performance is measured against the metrics defined in Clause 9.1. Crucially, System 3 maintains the "Audit Trail" via tools like OpenTelemetry, ensuring every decision is traceable.
+Implementation: **Evaluator Agent & Explainer Agent**. The Evaluator acts as the "Pessimistic Gatekeeper" (Simulation Engine) that verifies the plan before execution. The Explainer acts as the "Auditor" (Monitoring) that verifies the execution result matches the intent.
 
 System 2: Coordination (The Stabilizer)
 VSM Function: Preventing oscillation and conflict between operational units.
 ISO 42001 Mapping: Annex A.7 (Data for AI systems) & Annex A.5 (Assessing impacts).
-Implementation: System 2 is the "Service Mesh" for agents. In a multi-agent system, agents may compete for resources (API rate limits) or produce contradictory outputs. System 2 manages the shared ontologies, data schemas (Pydantic), and communication protocols to dampen these oscillations. It also governs the data pipeline, ensuring data quality and provenance as required by Annex A.7 (Data for AI systems), and supports the impact assessments of Annex A.5 by providing visibility into how data flows through the system.
+Implementation: **LangGraph State & Schema**. The shared state definition (`AgentState`) and Pydantic schemas dampen oscillation by ensuring strict data contracts between nodes.
 
 System 1: Operations (The Doers)
 VSM Function: The autonomous units performing value-adding tasks.
 ISO 42001 Mapping: Clause 8.4 (AI System impact assessment) & Clause 8.3 (AI Risk Treatment).
-Implementation: These are the Agentic AI models themselves—the "Skills" or "Workers": **Data Analyst**, **Execution Analyst**, **Risk Analyst**, and **Governed Trader**. They operate with Bounded Autonomy, executing tasks within the constraints set by System 3 and the coordination provided by System 2. Their actions are the subject of the AI Risk Treatment (Clause 8.3), where specific controls (like the 5-layer stack) are applied to mitigate the risks inherent in their autonomy.
+Implementation: **Governed Trader (Executor)**. The "Dumb Muscle" that executes the tools (`execute_trade`) authorized by the control systems.
 
 5. Strategic Implications and Compliance Roadmap
 
