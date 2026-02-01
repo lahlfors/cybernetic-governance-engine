@@ -43,7 +43,7 @@ The system uses gRPC for high-performance, strongly-typed communication between 
 
 *   **LLM Streaming:** Supported via `stream ChatResponse`.
 *   **Tool Calls:** Strongly typed via `ToolRequest` and `ToolResponse`.
-*   **Security:** Cloud Run Service-to-Service authentication (OIDC) is supported via `GatewayClient`.
+*   **Security:** Service-to-Service authentication (e.g., K8s Service Accounts or OIDC) is supported via `GatewayClient`.
 
 ---
 

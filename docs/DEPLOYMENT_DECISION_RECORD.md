@@ -1,8 +1,8 @@
-# Deployment Options Analysis: Cloud Run vs. GKE
+# Deployment Decision Record: Cloud Run vs. GKE
 
 ## Executive Summary
 
-This document analyzes the deployment strategy for the **Governed Financial Advisor** system, focusing on the trade-offs between **Google Cloud Run** (Serverless) and **Google Kubernetes Engine (GKE)**.
+This document records the architectural decision to deploy the **Governed Financial Advisor** system to **Google Kubernetes Engine (GKE)**, rejecting the Serverless (Cloud Run) approach due to persistent GPU and state requirements.
 
 **Key Constraints:**
 1.  **GPU Requirement:** The **Gateway Subsystem** (specifically the `vLLM` service) requires persistent GPU resources for local LLM inference.
@@ -14,7 +14,7 @@ This document analyzes the deployment strategy for the **Governed Financial Advi
     *   **OPA** (Policy Engine, lightweight)
     *   **NeMo Guardrails** (Governance Sidecar)
 
-**Recommendation:** **Deploy to GKE (Standard)**.
+**Decision:** **Deploy to GKE (Standard)**.
 While Cloud Run offers simplicity for stateless services, the hard requirement for **persistent GPU inference (vLLM)** and **stateful storage (Redis)** makes GKE the more robust and cost-effective choice for this specific architecture. Cloud Run's GPU support is currently in Preview and optimized for sporadic inference, not the high-throughput, low-latency "always-on" serving required by vLLM.
 
 ---
@@ -80,9 +80,9 @@ The application uses **LangGraph** with Redis checkpoints.
 
 ---
 
-## 4. Architecture Recommendation: "Unified GKE Cluster"
+## 4. Selected Architecture: "Unified GKE Cluster"
 
-We recommend deploying the entire stack to a **GKE Standard Cluster**.
+We have deployed the entire stack to a **GKE Standard Cluster**.
 
 **Why not Hybrid?**
 While a Hybrid approach (vLLM on GKE, App on Cloud Run) is technically feasible, it introduces unnecessary complexity.
@@ -144,9 +144,9 @@ graph TD
 
 **Verdict:** The cost difference is negligible when factoring in the requirement to keep the GPU warm. GKE offers significantly better performance, debugging capabilities, and local state management for this specific complex stack.
 
-## 6. Migration Steps (from current Terraform)
+## 6. Implementation Status (Completed)
 
-1.  **Refine `gke.tf`**: Ensure `google_container_node_pool` is split into `default-pool` (CPU) and `gpu-pool` (GPU) with correct taints.
-2.  **Redis on K8s**: Add a Kubernetes manifest for Redis (Deployment or StatefulSet) instead of relying on external services or Cloud Run sidecars.
-3.  **vLLM Manifest**: Ensure `vllm-deployment.yaml` tolerates the GPU node taints.
-4.  **Gateway Service**: Deploy as a standard Kubernetes Deployment + Service.
+1.  **Refine `gke.tf`**: `google_container_node_pool` is split into `default-pool` (CPU) and `gpu-pool` (GPU) with correct taints.
+2.  **Redis on K8s**: Redis is deployed via Kubernetes manifest (StatefulSet).
+3.  **vLLM Manifest**: `vllm-deployment.yaml` correctly tolerates the GPU node taints.
+4.  **Gateway Service**: Deployed as a standard Kubernetes Deployment + Service.

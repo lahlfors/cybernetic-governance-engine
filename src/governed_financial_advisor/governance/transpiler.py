@@ -5,8 +5,8 @@ from typing import Any
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from config.settings import MODEL_REASONING, Config
-from src.agents.risk_analyst.agent import ProposedUCA
-from src.governance.judge import JudgeAgent
+from src.governed_financial_advisor.governance.structs import ProposedUCA
+from src.governed_financial_advisor.governance.judge import JudgeAgent
 
 logger = logging.getLogger("Governance.Transpiler")
 
