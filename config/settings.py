@@ -5,13 +5,18 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Tiered Model Configuration (from .env)
-# Fast path: Supervisor, Data Analyst, Execution Analyst
-# Defaulting to Gemini 2.5 Flash-Lite (Jan 2026 Stable)
-MODEL_FAST = os.getenv("MODEL_FAST", "gemini-2.5-flash-lite")
 
-# Reasoning path: Risk Analyst, Verifier, Consensus (safety-critical)
-# Defaulting to Gemini 2.5 Pro (Jan 2026 Stable)
+# --- FAST PATH (Control Plane) ---
+# Used for: Routing, JSON formatting, Simple Execution
+# Recommended: Llama 3.1 8B (vLLM) or Gemini 2.5 Flash-Lite
+MODEL_FAST = os.getenv("MODEL_FAST", "gemini-2.5-flash-lite")
+VLLM_FAST_API_BASE = os.getenv("VLLM_FAST_API_BASE", "http://localhost:8000/v1")
+
+# --- REASONING PATH (Reasoning Plane) ---
+# Used for: Risk Analysis, Strategic Planning, Evaluation (STPA)
+# Recommended: Llama 3.1 70B (vLLM) or Gemini 2.5 Pro
 MODEL_REASONING = os.getenv("MODEL_REASONING", "gemini-2.5-pro")
+VLLM_REASONING_API_BASE = os.getenv("VLLM_REASONING_API_BASE", "http://localhost:8001/v1") # Default to port 8001 for separate instance
 
 # Consensus Engine: Separate model for multi-agent debate (can use different provider)
 MODEL_CONSENSUS = os.getenv("MODEL_CONSENSUS", MODEL_REASONING)
@@ -39,6 +44,10 @@ class Config:
     OPA_URL = os.getenv("OPA_URL", "http://localhost:8181/v1/data/finance/decision")
     OPA_AUTH_TOKEN = os.getenv("OPA_AUTH_TOKEN")
     NEMO_URL = os.getenv("NEMO_URL", "http://nemo:8000/v1/guardrails/check")
+
+    # Model Endpoints
+    VLLM_FAST_API_BASE = VLLM_FAST_API_BASE
+    VLLM_REASONING_API_BASE = VLLM_REASONING_API_BASE
 
     # Runtime Configuration Override (for Agent Engine)
     try:
