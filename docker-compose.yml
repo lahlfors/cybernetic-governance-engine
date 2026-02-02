@@ -54,25 +54,30 @@ services:
       - redis
 
   # Optional: Local vLLM for "Fast Path" / Open Weights Control Plane
-  # Requires NVIDIA GPU. Uncomment to use.
-  # vllm-fast:
-  #   image: vllm/vllm-openai:latest
-  #   deploy:
-  #     resources:
-  #       reservations:
-  #         devices:
-  #           - driver: nvidia
-  #             count: 1
-  #             capabilities: [gpu]
-  #   volumes:
-  #     - ~/.cache/huggingface:/root/.cache/huggingface
-  #   environment:
-  #     - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
-  #   command: --model meta-llama/Meta-Llama-3.1-8B-Instruct --gpu-memory-utilization 0.9 --max-model-len 8192 --enable-prefix-caching
-  #   ports:
-  #     - "8000:8000"
+  # vllm-fast: ...
 
-  # Main Agent Service (ADK Native)
+  # Gateway (MCP Server)
+  # Replaces gRPC Gateway
+  gateway:
+    build:
+      context: .
+      dockerfile: src/gateway/Dockerfile
+    command: ["python", "src/gateway/server/mcp_server.py"]
+    ports:
+      - "50051:50051"
+    environment:
+      - PORT=50051
+      - OPA_URL=http://opa:8181/v1/data/finance/allow
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./src:/app/src
+      - ./.env:/app/.env
+      - opa_socket_vol:/tmp
+    depends_on:
+      - opa
+      - redis
+
+  # Main Agent Service
   app:
     build: .
     ports:
@@ -81,22 +86,20 @@ services:
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
       - GOOGLE_CLOUD_LOCATION=${GOOGLE_CLOUD_LOCATION:-us-central1}
       - REDIS_URL=redis://redis:6379
-      # Point to Local OPA (TCP) for Docker; UDS if using sidecar
       - OPA_URL=http://opa:8181/v1/data/finance/allow
       - OPA_AUTH_TOKEN=${OPA_AUTH_TOKEN:-dev-token}
-      - GOOGLE_GENAI_USE_VERTEXAI=true
-      # Model Config
-      - MODEL_FAST=${MODEL_FAST:-gemini-2.5-flash-lite}
-      - MODEL_REASONING=${MODEL_REASONING:-gemini-2.5-pro}
-      # vLLM Endpoints
+      - MODEL_FAST=${MODEL_FAST:-meta-llama/Llama-3.1-8B-Instruct}
+      - MODEL_REASONING=${MODEL_REASONING:-meta-llama/Llama-3.1-70B-Instruct}
       - VLLM_FAST_API_BASE=http://vllm-fast:8000/v1
+      # Gateway Host updated to point to MCP Gateway
+      - GATEWAY_HOST=gateway
+      - GATEWAY_PORT=50051
     volumes:
       - ./src:/app/src
       - ./.env:/app/.env
       - opa_socket_vol:/tmp
     depends_on:
-      - opa
-      - nemo
+      - gateway
       - redis
 
 volumes:

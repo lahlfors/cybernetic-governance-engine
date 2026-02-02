@@ -1,16 +1,16 @@
 """
-Gateway Client Wrapper (Async)
+Gateway Client Wrapper (MCP Implementation)
+Uses mcp.client.sse to connect to the Gateway MCP Server.
 """
-import grpc.aio
-import json
 import logging
 import os
-import google.auth
-from google.auth.transport.requests import Request as AuthRequest
-from google.oauth2 import id_token
+import json
+import asyncio
+from contextlib import asynccontextmanager
 
-from src.gateway.protos import gateway_pb2
-from src.gateway.protos import gateway_pb2_grpc
+from mcp import ClientSession
+from mcp.client.sse import sse_client
+from mcp.types import CallToolRequest, Tool
 
 logger = logging.getLogger("GatewayClient")
 
@@ -20,32 +20,8 @@ class GatewayClient:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(GatewayClient, cls).__new__(cls)
-            cls._instance.channel = None
-            cls._instance.stub = None
-            cls._instance.target_url = None
+            cls._instance.url = None
         return cls._instance
-
-    def _get_auth_metadata(self):
-        """
-        Fetches OIDC Token for Cloud Run Service-to-Service authentication.
-        Only runs if target_url is set (implies remote Cloud Run).
-        """
-        if not self.target_url or "localhost" in self.target_url:
-            return None
-
-        try:
-            # Clean URL for audience (remove protocol)
-            audience = self.target_url.replace("https://", "").replace("http://", "")
-            # Actually, id_token.fetch_id_token expects the full URL as audience usually?
-            # Cloud Run audience is the Service URL.
-
-            # Use google.auth to check connectivity/creds
-            auth_req = AuthRequest()
-            token = id_token.fetch_id_token(auth_req, self.target_url)
-            return (("authorization", f"Bearer {token}"),)
-        except Exception as e:
-            logger.warning(f"Failed to fetch OIDC token for Gateway: {e}")
-            return None
 
     def connect(self, host=None, port=None):
         if not host:
@@ -53,85 +29,72 @@ class GatewayClient:
         if not port:
             port = os.getenv("GATEWAY_PORT", "50051")
 
-        if not self.channel:
-            # Detect if running on Cloud Run (using HTTPS usually)
-            if host != "localhost":
-                # Assume secure channel for Cloud Run
-                # Cloud Run URLs are https://... so host might contain protocol
-                if "https://" in host:
-                    target = host.replace("https://", "")
-                    creds = grpc.ssl_channel_credentials()
-                    self.channel = grpc.aio.secure_channel(target, creds)
-                    self.target_url = host
-                else:
-                    # Fallback or internal IP
-                    target = f"{host}:{port}"
-                    self.channel = grpc.aio.insecure_channel(target)
-                    self.target_url = None # Assume no auth needed for plain IP/localhost
-            else:
-                target = f"{host}:{port}"
-                self.channel = grpc.aio.insecure_channel(target)
-                self.target_url = None
+        # Build SSE URL
+        protocol = "http"
+        if "https" in host:
+            protocol = "https"
+            host = host.replace("https://", "")
 
-            self.stub = gateway_pb2_grpc.GatewayStub(self.channel)
-            logger.info(f"Connected to Gateway at {target} (Auth: {self.target_url is not None})")
+        self.url = f"{protocol}://{host}:{port}/sse"
+        logger.info(f"Configured MCP Gateway Client for: {self.url}")
 
     async def execute_tool(self, tool_name: str, params: dict) -> str:
-        if not self.stub:
+        """
+        Calls an MCP Tool on the Gateway Server.
+        """
+        if not self.url:
             self.connect()
 
-        metadata = self._get_auth_metadata()
-
-        req = gateway_pb2.ToolRequest(
-            tool_name=tool_name,
-            params_json=json.dumps(params)
-        )
-
         try:
-            resp = await self.stub.ExecuteTool(req, metadata=metadata)
-            if resp.status == "SUCCESS":
-                return resp.output
-            else:
-                return f"BLOCKED/ERROR: {resp.error}"
-        except grpc.aio.AioRpcError as e:
-            logger.error(f"RPC Failed: {e}")
-            return f"SYSTEM ERROR: Could not reach Gateway. {e.details()}"
+            # MCP Client Session Context Manager
+            # Note: For high frequency, we might want to keep the session open,
+            # but SSE connections can be fragile. Retrying per-request is safer for now.
+            async with sse_client(self.url) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+
+                    # Map 'execute_trade' -> 'execute_trade_action' if needed, or update server to match.
+                    # Server has `execute_trade_action`.
+                    target_tool = tool_name
+                    if tool_name == "execute_trade":
+                        target_tool = "execute_trade_action"
+
+                    # Call Tool
+                    result = await session.call_tool(target_tool, arguments=params)
+
+                    # Result is a CallToolResult with content list
+                    # usually [TextContent(type='text', text='...')]
+                    output_text = []
+                    for content in result.content:
+                        if content.type == "text":
+                            output_text.append(content.text)
+
+                    full_output = "\n".join(output_text)
+
+                    # Check for "BLOCKED" or "ERROR" prefix conventions used in our server
+                    if full_output.startswith("BLOCKED") or full_output.startswith("ERROR"):
+                         return f"{full_output}"
+
+                    return full_output
+
+        except Exception as e:
+            logger.error(f"MCP Tool Call Failed: {e}")
+            return f"SYSTEM ERROR: Could not call MCP Gateway. {e}"
 
     async def chat(self, prompt: str, system_instruction: str = None, mode: str = "chat", **kwargs) -> str:
-        if not self.stub:
-            self.connect()
+        """
+        Deprecated: MCP Gateway is primarily for TOOLS.
+        Chat logic should now be handled by the Agent invoking the LLM directly,
+        OR via a specialized "chat" tool if we exposed one.
 
-        metadata = self._get_auth_metadata()
-
-        msgs = []
-        msgs.append(gateway_pb2.Message(role="user", content=prompt))
-
-        temperature = kwargs.get("temperature", 0.0)
-        guided_json = None
-        if "guided_json" in kwargs:
-             guided_json = json.dumps(kwargs["guided_json"])
-
-        req = gateway_pb2.ChatRequest(
-            model="default",
-            messages=msgs,
-            temperature=temperature,
-            system_instruction=system_instruction,
-            mode=mode,
-            guided_json=guided_json,
-            guided_regex=kwargs.get("guided_regex"),
-            guided_choice=str(kwargs.get("guided_choice")) if kwargs.get("guided_choice") else None
+        For refactor compatibility, we will assume the Gateway Server
+        might expose a 'chat' tool or we throw NotImplementedError
+        forcing the Agent to use its own LLM Client (Open Weights).
+        """
+        raise NotImplementedError(
+            "Gateway.chat() is deprecated in MCP Refactor. "
+            "Agents should use their local HybridClient/OpenAI Client directly."
         )
-
-        full_text = []
-        try:
-            call = self.stub.Chat(req, metadata=metadata)
-            async for resp in call:
-                full_text.append(resp.content)
-
-            return "".join(full_text)
-        except grpc.aio.AioRpcError as e:
-            logger.error(f"Chat RPC Failed: {e}")
-            raise e
 
 # Singleton instance
 gateway_client = GatewayClient()
