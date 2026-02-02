@@ -22,6 +22,7 @@ resource "null_resource" "app_deployment" {
     working_dir = "${path.module}/../../"
     command = <<EOT
       python3 -m venv .deploy_venv && \
+      export PATH=$PATH:/opt/homebrew/bin && \
       source .deploy_venv/bin/activate && \
       pip install --upgrade --quiet --extra-index-url https://pypi.org/simple keyrings.google-artifactregistry-auth && \
       pip install --upgrade --quiet --extra-index-url https://pypi.org/simple google-cloud-aiplatform google-adk PyYAML langchain langchain-google-vertexai && \
