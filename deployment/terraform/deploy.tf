@@ -21,7 +21,7 @@ resource "null_resource" "app_deployment" {
   provisioner "local-exec" {
     working_dir = "${path.module}/../../"
     command = <<EOT
-      python3 deployment/deploy_sw.py \
+      /Users/laah/Code/cybernetic-governance-engine/.manual_deploy_venv/bin/python deployment/deploy_sw.py \
         --project-id ${var.project_id} \
         --region ${var.region} \
         --zone ${var.zone} \

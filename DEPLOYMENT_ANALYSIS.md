@@ -60,7 +60,7 @@ While Terraform is superior for infrastructure, it cannot natively serialize Pyt
     Terraform will output the `ui_url`. Open this URL in your browser.
 
 ## Migration from `deploy_all.py`
-The `deploy_all.py` script is deprecated for this architecture. If you need to teardown resources created by the old script, run:
+The `deploy_all.py` script has been **removed**. All deployments are now handled via Terraform. If you need to teardown resources created by the old script, run:
 ```bash
 python3 deployment/teardown.py
 ```

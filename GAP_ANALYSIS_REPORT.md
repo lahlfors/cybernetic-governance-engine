@@ -52,7 +52,7 @@ The repository uses "Risk Analyst" and "Safety Node" instead of the abstract "Gr
 
 ## 4. Missing Features (Gap Analysis)
 
-*   **Sidecar Deployment Config:** The implementation of the Sidecar pattern is fully realized in `deployment/service.yaml` (Knative/Cloud Run configuration) and orchestrated by `deployment/deploy_all.py`. This contradicts the initial gap finding; the infrastructure code is present but located in the `deployment/` directory rather than the root.
+*   **Sidecar Deployment Config:** The implementation of the Sidecar pattern is fully realized in `deployment/service.yaml` (Knative/Cloud Run configuration) and orchestrated by **Terraform**. This contradicts the initial gap finding; the infrastructure code is present but located in the `deployment/` directory rather than the root.
 *   **Green Agent Entry Point:** There is no `src/green_agent/` directory, despite the terminology. The logic is distributed across `src/governance/` and `src/agents/risk_analyst/`.
 
 ## 5. Deep Dive Findings (Response to Specific Questions)

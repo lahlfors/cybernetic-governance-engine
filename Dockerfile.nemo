@@ -31,4 +31,7 @@ HEALTHCHECK --interval=5s --timeout=3s \
   CMD curl -f http://localhost:8000/health || exit 1
 
 # Command to run the application
-CMD ["uvicorn", "src.governance.nemo_server:app", "--host", "0.0.0.0", "--port", "8000"]
+# Command to run the application
+# We need src in PYTHONPATH to import governed_financial_advisor
+ENV PYTHONPATH="${PYTHONPATH}:/app/src"
+CMD ["uvicorn", "governed_financial_advisor.governance.nemo_server:app", "--host", "0.0.0.0", "--port", "8000"]

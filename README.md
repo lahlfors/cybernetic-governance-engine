@@ -201,16 +201,14 @@ This repository supports deploying the high-performance inference stack to Googl
 
 ### Deployment Options
 
-The `deploy_all.py` script automates the entire process, including provisioning infrastructure, building containers, and deploying manifests.
-
 #### NVIDIA GPU (Default)
 Optimized for ultra-low latency using **Speculative Decoding**. Best for user-facing applications requiring strict SLAs (<200ms TTFT).
 
 ```bash
-python3 deployment/deploy_all.py \
-    --project-id <YOUR_PROJECT_ID> \
-    --region us-central1 \
-    --accelerator-type l4
+cd deployment/terraform
+# Create terraform.tfvars with your project details
+terraform init
+terraform apply
 ```
 
 ## Security Verification (Red Teaming)

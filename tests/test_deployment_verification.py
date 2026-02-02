@@ -28,7 +28,7 @@ class TestDeploymentConfig(unittest.TestCase):
         self.assertIn('auth-token-vol', volume_mounts)
 
     def test_deploy_script_paths(self):
-        """Verifies that the paths referenced in deploy_all.py exist."""
+        """Verifies that the paths referenced in deployment scripts exist."""
         # This is a static check of the expectations
         self.assertTrue(os.path.exists("deployment/system_authz.rego"))
         self.assertTrue(os.path.exists("deployment/opa_config.yaml"))
