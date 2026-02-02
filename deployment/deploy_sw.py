@@ -75,41 +75,6 @@ def check_service_exists(project_id, region, service_name):
         return result.stdout.strip()
     return None
 
-def build_gateway_image(project_id):
-    """Builds the Gateway container image."""
-    gateway_image_uri = f"gcr.io/{project_id}/gateway:latest"
-    print(f"\n--- 🏗️ Building Gateway Image: {gateway_image_uri} ---")
-    
-    # Check if src/gateway exists
-    if not Path("src/gateway").exists():
-        print("❌ src/gateway directory not found. Skipping Gateway build.")
-        return None
-
-    # Create a temporary Cloud Build config
-    cloudbuild_yaml = f"""
-steps:
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', '{gateway_image_uri}', '-f', 'src/gateway/Dockerfile', '.']
-images:
-- '{gateway_image_uri}'
-"""
-    cb_file = Path("gateway_cloudbuild.yaml")
-    with open(cb_file, "w") as f:
-        f.write(cloudbuild_yaml)
-
-    try:
-        run_command([
-            "gcloud", "builds", "submit",
-            "--config", str(cb_file),
-            "--project", project_id,
-            "." # Build context is root
-        ])
-    finally:
-        if cb_file.exists():
-            cb_file.unlink() # Cleanup
-
-    return gateway_image_uri
-
 def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=False, target_gke=True):
     """
     Deploys UI service.
@@ -235,10 +200,7 @@ def deploy_gateway_service(project_id, region, vllm_endpoint):
         "--service-account", f"gateway-sa@{project_id}.iam.gserviceaccount.com",
         "--set-env-vars", f"VLLM_ENDPOINT={vllm_endpoint},StartMode=GATEWAY",
         "--command", "python,-m,src.gateway.server.main",
-        "--allow-unauthenticated", # Protected by IAM Invoker, but "allow-unauthenticated" refers to public ingress enablement usually?
-                                   # Actually for service-to-service with IAM, we usually set --no-allow-unauthenticated.
-                                   # But Terraform config says "INGRESS_TRAFFIC_ALL".
-                                   # Let's set --no-allow-unauthenticated to enforce IAM.
+        # "--allow-unauthenticated", # Protected by IAM Invoker
         "--no-allow-unauthenticated",
         "--vpc-egress", "all-traffic", # Required to reach GKE private IP
         "--use-http2", # Required for gRPC
@@ -292,9 +254,12 @@ def deploy_reasoning_engine(project_id, region, staging_bucket, redis_host):
     print("   Creating Reasoning Engine (this may take a few minutes)...")
     try:
         # Remote creation
+        redis_url = f"redis://{redis_host}:6379" if redis_host else None
+        
         remote_agent = reasoning_engines.ReasoningEngine.create(
-            FinancialAdvisorEngine(project=project_id, location=region, redis_url=f"redis://{redis_host}:6379"),
+            FinancialAdvisorEngine(project=project_id, location=region, redis_url=redis_url),
             requirements=requirements,
+            extra_packages=["src"],
             display_name="financial-advisor-engine",
             description="Governed Financial Advisor (Hybrid Architecture)",
         )
@@ -307,7 +272,7 @@ def deploy_reasoning_engine(project_id, region, staging_bucket, redis_host):
 
 # --- Application Deployment Logic ---
 
-def deploy_application_stack(project_id, region, image_uri, redis_host, redis_port, config, skip_ui=False, cluster_name=None):
+def deploy_application_stack(project_id, region, image_uri, redis_host, redis_port, config, cluster_name=None):
     """
     Orchestrates Application Deployment on top of provisions Infrastructure:
     1. Deploys/Updates vLLM Inference Engine (GKE).
@@ -453,9 +418,10 @@ def main():
 
     # Operational Flags
     parser.add_argument("--skip-build", action="store_true", help="Skip Docker build")
-    parser.add_argument("--skip-ui", action="store_true", help="Skip UI deployment")
+
     parser.add_argument("--skip-k8s", action="store_true", help="Skip K8s manifests")
     parser.add_argument("--deploy-agent-engine", action="store_true", help="Deploy using Vertex AI Agent Engine (Hybrid Mode)")
+    parser.add_argument("--agent-engine-name", help="Existing Agent Engine Resource Name (skips creation)")
     parser.add_argument("--tf-managed", action="store_true", help="Deprecated: Implicitly true now")
 
     args = parser.parse_args()
@@ -491,8 +457,6 @@ def main():
         print("\n--- 🏗️ Building Backend Image ---")
         run_command(["gcloud", "builds", "submit", "--tag", image_uri, "--project", project_id, "."])
         
-        # Build Gateway Image
-        build_gateway_image(project_id)
     else:
         print(f"\n--- ⏭️ Skipping Build ({image_uri}) ---")
 
@@ -501,21 +465,9 @@ def main():
         # Hybrid Mode: GKE (vLLM) + Cloud Run (Gateway) + Agent Engine (Reasoning)
 
         # 1. Base GKE (vLLM only)
-        # We reuse deploy_application_stack but perhaps we need to be careful not to deploy the 'backend' deployment if using Agent Engine?
-        # The backend deployment.yaml currently runs 'server.py' which is the Agent.
-        # If we use Agent Engine, we don't need the Agent on GKE.
-        # BUT we DO need vLLM on GKE.
-        # deploy_application_stack does: K8s Base (vLLM) -> Secrets -> Backend -> UI.
-
-        # We'll run K8s Base (vLLM) first.
         deploy_k8s_infra(project_id, config)
 
         # 2. Deploy Gateway (Cloud Run)
-        # Needs vLLM Endpoint.
-        # vLLM is Internal GKE LoadBalancer.
-        # We need the Cluster IP or DNS.
-        # Since we have Direct VPC Egress, we can use the K8s DNS if configured or IP.
-        # Let's try to get the vLLM service IP.
         vllm_ip = run_command(
              ["kubectl", "get", "service", "vllm-inference", "-n", "governance-stack", "-o", "jsonpath='{.spec.clusterIP}'"],
              check=False, capture_output=True
@@ -525,20 +477,18 @@ def main():
         deploy_gateway_service(project_id, region, vllm_endpoint)
 
         # 3. Deploy Reasoning Engine
-        # Requires Staging Bucket.
-        staging_bucket = f"{project_id}-agent-artifacts"
-        deploy_reasoning_engine(project_id, region, staging_bucket, args.redis_host)
+        if args.agent_engine_name:
+             print(f"ℹ️ Skipping Reasoning Engine creation (provided): {args.agent_engine_name}")
+             # We might want to fetch the object to get the URL or similar if needed, but resource_name is usually enough for UI?
+             # The UI currently expects a URL.
+             # Reasoning Engine has no "URL" in the same way as Cloud Run. It's an API resource.
+             # We might need to construct the URL or just pass the resource name.
+             # For now, we'll assume the UI or Gateway handles it.
+        else:
+            staging_bucket = f"{project_id}-agent-artifacts"
+            deploy_reasoning_engine(project_id, region, staging_bucket, None)
 
-        # 4. UI
-        # UI needs to talk to... Agent Engine? Or Gateway?
-        # The UI usually talks to the Agent API (server.py).
-        # But now the Agent is in Vertex.
-        # The UI likely needs to be updated to call Vertex Reasoning Engine API.
-        # OR we deploy a thin Proxy on Cloud Run that wraps the Reasoning Engine.
-        # For this implementation, we assume the existing UI might need work, but we'll deploy it
-        # pointing to the Gateway for now (as a placeholder) or skip if not compatible.
-        if not args.skip_ui:
-             deploy_ui_service(project_id, region, "financial-advisor-ui", "http://REASONING_ENGINE_URL_TODO")
+
 
     elif not args.skip_k8s:
         # Standard GKE Deployment
@@ -549,7 +499,7 @@ def main():
             redis_host=args.redis_host,
             redis_port=args.redis_port,
             config=config,
-            skip_ui=args.skip_ui,
+
             cluster_name=args.cluster_name
         )
     else:

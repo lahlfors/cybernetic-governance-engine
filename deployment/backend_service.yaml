@@ -1,0 +1,92 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  annotations:
+    run.googleapis.com/deletion-protection: 'false'
+    run.googleapis.com/ingress: all
+    run.googleapis.com/ingress-status: all
+    run.googleapis.com/maxScale: '100'
+    run.googleapis.com/operation-id: d5b98af9-08e9-4014-b4ef-ed8986739448
+    run.googleapis.com/urls: '["https://financial-advisor-backend-104563134786.us-central1.run.app"]'
+    serving.knative.dev/creator: admin@laah.altostrat.com
+    serving.knative.dev/lastModifier: admin@laah.altostrat.com
+  creationTimestamp: '2026-02-01T01:23:24.944582Z'
+  generation: 1
+  labels:
+    cloud.googleapis.com/location: us-central1
+    goog-terraform-provisioned: 'true'
+  name: financial-advisor-backend
+  namespace: '104563134786'
+  resourceVersion: AAZJuRQ9wmM
+  selfLink: /apis/serving.knative.dev/v1/namespaces/104563134786/services/financial-advisor-backend
+  uid: a909c0b9-c94b-4604-ba62-71fda689949b
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: '0'
+        run.googleapis.com/sessionAffinity: 'false'
+      labels:
+        run.googleapis.com/startupProbeType: Default
+    spec:
+      containerConcurrency: 80
+      containers:
+      - command:
+        - python
+        - -m
+        - src.governed_financial_advisor.server
+        env:
+        - name: GOOGLE_CLOUD_PROJECT
+          value: laah-cybernetics
+        - name: GOOGLE_CLOUD_LOCATION
+          value: us-central1
+        image: gcr.io/laah-cybernetics/financial-advisor:latest
+        ports:
+        - containerPort: 8080
+          name: http1
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        startupProbe:
+          failureThreshold: 1
+          periodSeconds: 240
+          tcpSocket:
+            port: 8080
+          timeoutSeconds: 240
+      serviceAccountName: financial-advisor-backend-sa@laah-cybernetics.iam.gserviceaccount.com
+      timeoutSeconds: 300
+  traffic:
+  - latestRevision: true
+    percent: 100
+status:
+  conditions:
+  - lastTransitionTime: '2026-02-01T01:25:17.595851Z'
+    message: |-
+      The user-provided container failed to start and listen on the port defined provided by the PORT=8080 environment variable within the allocated timeout. This can happen when the container port is misconfigured or if the timeout is too short. The health check timeout can be extended. Logs for this revision might contain more information.
+
+      Logs URL: https://console.cloud.google.com/logs/viewer?project=laah-cybernetics&resource=cloud_run_revision/service_name/financial-advisor-backend/revision_name/financial-advisor-backend-00001-tl9&advancedFilter=resource.type%3D%22cloud_run_revision%22%0Aresource.labels.service_name%3D%22financial-advisor-backend%22%0Aresource.labels.revision_name%3D%22financial-advisor-backend-00001-tl9%22 
+      For more troubleshooting guidance, see https://cloud.google.com/run/docs/troubleshooting#container-failed-to-start
+    reason: HealthCheckContainerError
+    status: 'False'
+    type: Ready
+  - lastTransitionTime: '2026-02-01T01:25:17.517274Z'
+    message: |-
+      The user-provided container failed to start and listen on the port defined provided by the PORT=8080 environment variable within the allocated timeout. This can happen when the container port is misconfigured or if the timeout is too short. The health check timeout can be extended. Logs for this revision might contain more information.
+
+      Logs URL: https://console.cloud.google.com/logs/viewer?project=laah-cybernetics&resource=cloud_run_revision/service_name/financial-advisor-backend/revision_name/financial-advisor-backend-00001-tl9&advancedFilter=resource.type%3D%22cloud_run_revision%22%0Aresource.labels.service_name%3D%22financial-advisor-backend%22%0Aresource.labels.revision_name%3D%22financial-advisor-backend-00001-tl9%22 
+      For more troubleshooting guidance, see https://cloud.google.com/run/docs/troubleshooting#container-failed-to-start
+    reason: HealthCheckContainerError
+    status: 'False'
+    type: ConfigurationsReady
+  - lastTransitionTime: '2026-02-01T01:25:17.595851Z'
+    message: |-
+      The user-provided container failed to start and listen on the port defined provided by the PORT=8080 environment variable within the allocated timeout. This can happen when the container port is misconfigured or if the timeout is too short. The health check timeout can be extended. Logs for this revision might contain more information.
+
+      Logs URL: https://console.cloud.google.com/logs/viewer?project=laah-cybernetics&resource=cloud_run_revision/service_name/financial-advisor-backend/revision_name/financial-advisor-backend-00001-tl9&advancedFilter=resource.type%3D%22cloud_run_revision%22%0Aresource.labels.service_name%3D%22financial-advisor-backend%22%0Aresource.labels.revision_name%3D%22financial-advisor-backend-00001-tl9%22 
+      For more troubleshooting guidance, see https://cloud.google.com/run/docs/troubleshooting#container-failed-to-start
+    reason: HealthCheckContainerError
+    status: 'False'
+    type: RoutesReady
+  latestCreatedRevisionName: financial-advisor-backend-00001-tl9
+  observedGeneration: 1

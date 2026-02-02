@@ -1,21 +1,31 @@
 """
 Factory for creating NeMo Guardrails manager with custom Gemini support.
+Supports Remote Guardrails via HTTP.
 """
 import datetime
 import logging
 import os
-from typing import Any
+from typing import Any, Optional
 
 import nest_asyncio
 import yaml
-from langchain_core.language_models.llms import LLM
-from nemoguardrails import LLMRails, RailsConfig
-from nemoguardrails.context import streaming_handler_var
-from nemoguardrails.llm.providers import register_llm_provider
+import httpx
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
-from src.governed_financial_advisor.infrastructure.telemetry.nemo_exporter import NeMoOTelCallback
+# Conditional Import of NeMo
+try:
+    from nemoguardrails import LLMRails, RailsConfig
+    from nemoguardrails.context import streaming_handler_var
+    from nemoguardrails.llm.providers import register_llm_provider
+    from langchain_core.language_models.llms import LLM
+    HAS_NEMO = True
+except ImportError:
+    HAS_NEMO = False
+    LLMRails = Any # Type alias for static analysis check skipping
+    RailsConfig = Any
+    LLM = Any
+
 
 # Configure Logging
 logger = logging.getLogger("NeMoManager")
@@ -49,19 +59,10 @@ def _get_or_create_cache(config_path: str, model_name: str) -> str | None:
             return None
 
         # 2. Define Cache (TTL: 1 hour)
-        # We use a static name or just let it generate one.
-        # For simplicity, we create a new one on startup (ephemeral).
-        # In prod, we might check for existing one.
-
-        # We need to wrap content in Content object
         contents = [Content(role="user", parts=[Part.from_text(system_prompt)])]
 
         cache = CachedContent.create(
             model_name=model_name,
-            system_instruction=None, # NeMo injects system instructions in the prompt usually?
-            # Wait, if we use cache, we should put system prompt here?
-            # Instructions: "cache the NeMo system prompts"
-            # If we put it in contents, it acts as context.
             contents=contents,
             ttl=datetime.timedelta(hours=1),
             display_name="governance_cache_v1"
@@ -77,103 +78,106 @@ def _get_or_create_cache(config_path: str, model_name: str) -> str | None:
         logger.warning(f"⚠️ Failed to create context cache: {e}")
         return None
 
-class GeminiLLM(LLM):
-    """Custom LangChain-compatible wrapper for Google Gemini using Vertex AI."""
+if HAS_NEMO:
+    class GeminiLLM(LLM):
+        """Custom LangChain-compatible wrapper for Google Gemini using Vertex AI."""
 
-    model: str = os.environ.get("GUARDRAILS_MODEL_NAME", "gemini-2.0-flash")
+        model: str = os.environ.get("GUARDRAILS_MODEL_NAME", "gemini-2.0-flash")
 
-    @property
-    def _llm_type(self) -> str:
-        return "gemini"
+        @property
+        def _llm_type(self) -> str:
+            return "gemini"
 
-    def _call(self, prompt: str, stop: list[str] | None = None, **kwargs: Any) -> str:
-        """Call the Gemini model via Vertex AI."""
-        try:
-            # Use Vertex AI integration (works with service account)
-            from langchain_google_vertexai import ChatVertexAI
-
-            # Inject Cache if available
-            llm_kwargs = {}
-            if CACHED_CONTENT_NAME:
-                # Assuming ChatVertexAI supports cached_content (newer versions)
-                # If not, this might fail, so we wrap in try/except or check version
-                llm_kwargs["cached_content"] = CACHED_CONTENT_NAME
-
-            llm = ChatVertexAI(
-                model_name=self.model,
-                project=os.environ.get("GOOGLE_CLOUD_PROJECT", "laah-cybernetics"),
-                location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
-                **llm_kwargs
-            )
-            response = llm.invoke(prompt)
-            return response.content
-        except ImportError:
-            # Fallback to google-genai if vertexai not available
+        def _call(self, prompt: str, stop: list[str] | None = None, **kwargs: Any) -> str:
+            """Call the Gemini model via Vertex AI."""
             try:
-                from langchain_google_genai import ChatGoogleGenerativeAI
-                llm = ChatGoogleGenerativeAI(
-                    model=self.model,
-                    convert_system_message_to_human=True,
+                # Use Vertex AI integration (works with service account)
+                from langchain_google_vertexai import ChatVertexAI
+
+                # Inject Cache if available
+                llm_kwargs = {}
+                if CACHED_CONTENT_NAME:
+                    llm_kwargs["cached_content"] = CACHED_CONTENT_NAME
+
+                llm = ChatVertexAI(
+                    model_name=self.model,
+                    project=os.environ.get("GOOGLE_CLOUD_PROJECT", "laah-cybernetics"),
+                    location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
+                    **llm_kwargs
                 )
                 response = llm.invoke(prompt)
                 return response.content
+            except ImportError:
+                # Fallback to google-genai if vertexai not available
+                try:
+                    from langchain_google_genai import ChatGoogleGenerativeAI
+                    llm = ChatGoogleGenerativeAI(
+                        model=self.model,
+                        convert_system_message_to_human=True,
+                    )
+                    response = llm.invoke(prompt)
+                    return response.content
+                except Exception as e:
+                    return f"Error calling Gemini: {e}"
             except Exception as e:
                 return f"Error calling Gemini: {e}"
-        except Exception as e:
-            return f"Error calling Gemini: {e}"
 
-    async def _acall(self, prompt: str, stop: list[str] | None = None, **kwargs: Any) -> str:
-        """Async call to the Gemini model via Vertex AI."""
-        try:
-            from langchain_google_vertexai import ChatVertexAI
-
-            llm_kwargs = {}
-            if CACHED_CONTENT_NAME:
-                llm_kwargs["cached_content"] = CACHED_CONTENT_NAME
-
-            llm = ChatVertexAI(
-                model_name=self.model,
-                project=os.environ.get("GOOGLE_CLOUD_PROJECT", "laah-cybernetics"),
-                location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
-                **llm_kwargs
-            )
-            response = await llm.ainvoke(prompt)
-            return response.content
-        except ImportError:
+        async def _acall(self, prompt: str, stop: list[str] | None = None, **kwargs: Any) -> str:
+            """Async call to the Gemini model via Vertex AI."""
             try:
-                from langchain_google_genai import ChatGoogleGenerativeAI
-                llm = ChatGoogleGenerativeAI(
-                    model=self.model,
-                    convert_system_message_to_human=True,
+                from langchain_google_vertexai import ChatVertexAI
+
+                llm_kwargs = {}
+                if CACHED_CONTENT_NAME:
+                    llm_kwargs["cached_content"] = CACHED_CONTENT_NAME
+
+                llm = ChatVertexAI(
+                    model_name=self.model,
+                    project=os.environ.get("GOOGLE_CLOUD_PROJECT", "laah-cybernetics"),
+                    location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
+                    **llm_kwargs
                 )
                 response = await llm.ainvoke(prompt)
                 return response.content
+            except ImportError:
+                try:
+                    from langchain_google_genai import ChatGoogleGenerativeAI
+                    llm = ChatGoogleGenerativeAI(
+                        model=self.model,
+                        convert_system_message_to_human=True,
+                    )
+                    response = await llm.ainvoke(prompt)
+                    return response.content
+                except Exception as e:
+                    return f"Error calling Gemini: {e}"
             except Exception as e:
                 return f"Error calling Gemini: {e}"
-        except Exception as e:
-            return f"Error calling Gemini: {e}"
 
-    @property
-    def _identifying_params(self) -> dict:
-        return {"model": self.model}
+        @property
+        def _identifying_params(self) -> dict:
+            return {"model": self.model}
+
+    def _get_gemini_llm(model_name: str, **kwargs) -> GeminiLLM:
+        """Factory function for creating Gemini LLM instances."""
+        return GeminiLLM(model=model_name)
+else:
+    # Dummy classes if NeMo is missing
+    GeminiLLM = Any
 
 
-def _get_gemini_llm(model_name: str, **kwargs) -> GeminiLLM:
-    """Factory function for creating Gemini LLM instances."""
-    return GeminiLLM(model=model_name)
-
-
-def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
+def create_nemo_manager(config_path: str = "config/rails") -> Optional[Any]:
     """
-    Creates and initializes a NeMo Guardrails manager with Gemini support.
-
-    Args:
-        config_path: Path to the guardrails configuration directory.
-                     Defaults to 'config/rails'.
-
-    Returns:
-        An initialized LLMRails instance.
+    Creates and initializes a NeMo Guardrails manager.
+    Returns None if using Remote Service or if NeMo is not installed.
     """
+    # 1. Check for Remote Configuration
+    if os.environ.get("NEMO_SERVICE_URL"):
+        logger.info(f"🌐 configured to use Remote NeMo Service at {os.environ.get('NEMO_SERVICE_URL')}")
+        return None
+
+    if not HAS_NEMO:
+        raise RuntimeError("nemoguardrails not installed. Cannot initialize local Rails.")
+
     global CACHED_CONTENT_NAME
 
     # Fix for nested event loops
@@ -182,27 +186,26 @@ def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
     except Exception:
         pass
 
-    # Register custom Gemini provider - pass the class directly, not a factory
+    # Register custom Gemini provider
     register_llm_provider("gemini", GeminiLLM)
 
     # Resolve config path
     if not os.path.exists(config_path):
-        # Try finding it relative to the current working directory
         cwd_path = os.path.join(os.getcwd(), config_path)
         if os.path.exists(cwd_path):
             config_path = cwd_path
         else:
-            # Try relative to this file
             base_dir = os.path.dirname(os.path.abspath(__file__))
             possible_path = os.path.join(base_dir, "rails_config")
             if os.path.exists(possible_path):
                 config_path = possible_path
 
     if not os.path.exists(config_path):
-        raise FileNotFoundError(f"NeMo Guardrails config not found at: {config_path}")
+        # Fail softly if config missing?
+        logger.warning(f"NeMo Guardrails config not found at: {config_path}")
+        return None
 
     # Initialize Cache if using Vertex AI
-    # Check env var to allow disabling it
     if os.environ.get("ENABLE_GOVERNANCE_CACHE", "true").lower() == "true":
         model_name = os.environ.get("GUARDRAILS_MODEL_NAME", "gemini-2.0-flash")
         CACHED_CONTENT_NAME = _get_or_create_cache(config_path, model_name)
@@ -231,33 +234,69 @@ def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
 
     return rails
 
-# --- New Adapter Functions for Refactor ---
-
-def load_rails() -> LLMRails:
+def load_rails() -> Optional[Any]:
     """Wrapper to maintain consistency with new design."""
     return create_nemo_manager()
 
-async def validate_with_nemo(user_input: str, rails: LLMRails) -> tuple[bool, str]:
+async def validate_with_nemo(user_input: str, rails: Optional[Any] = None) -> tuple[bool, str]:
     """
-    Validates user input using NeMo Guardrails.
+    Validates user input using NeMo Guardrails (Local or Remote).
     Returns (is_safe: bool, response: str).
+    Raises Exception if validation fails to execute (Fail Closed).
     """
-    # 1. Initialize ISO 42001 OTel callback
-    handler = NeMoOTelCallback()
-
-    # 2. Set the global context variable for custom actions to capture events
-    token = streaming_handler_var.set(handler)
-
-    # Start a new span for the guardrail check
+    remote_url = os.environ.get("NEMO_SERVICE_URL")
+    
+    # Start OTel span
     with tracer.start_as_current_span("guardrails.validate_input") as span:
-        try:
-            span.set_attribute("guardrails.framework", "nemo")
-            span.set_attribute("guardrails.input_length", len(user_input))
+        span.set_attribute("guardrails.input_length", len(user_input))
 
-            # Check for 'self_check_input' or similar rails
-            # We perform a generation call which triggers the input rails
-            # If blocked, the response will be a refusal message.
-            # 3. Call generate_async with the handler
+        # --- REMOTE MODE ---
+        if remote_url:
+            span.set_attribute("guardrails.mode", "remote")
+            try:
+                async with httpx.AsyncClient() as client:
+                    resp = await client.post(
+                        f"{remote_url}/v1/guardrails/check",
+                        json={"input": user_input},
+                        timeout=10.0
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    
+                    response_content = data.get("response", "")
+                    
+                    # Heuristic Check
+                    is_safe = True
+                    if any(phrase in response_content for phrase in ["I cannot answer", "policy", "I am programmed", "I am sorry"]):
+                        is_safe = False
+                    
+                    span.set_attribute("guardrails.outcome", "ALLOWED" if is_safe else "BLOCKED")
+                    return is_safe, response_content
+            except Exception as e:
+                logger.error(f"Remote Guardrail Check Failed: {e}")
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR))
+                # Production: Fail Closed. Governance is mandatory.
+                raise RuntimeError(f"Governance Check Failed (Remote): {e}")
+
+        # --- LOCAL MODE ---
+        if not rails:
+            # If no rails and no remote, this is a misconfiguration in Production.
+            error_msg = "Guardrails not configured (No Remote URL and No Local Rails)"
+            logger.error(error_msg)
+            span.set_status(Status(StatusCode.ERROR, error_msg))
+            raise RuntimeError(error_msg)
+
+        span.set_attribute("guardrails.mode", "local")
+        if not HAS_NEMO:
+             raise RuntimeError("NeMo Guardrails not installed but Local Mode requested.")
+
+        # Initialize callback
+        from src.governed_financial_advisor.infrastructure.telemetry.nemo_exporter import NeMoOTelCallback
+        handler = NeMoOTelCallback()
+        token = streaming_handler_var.set(handler)
+
+        try:
             res = await rails.generate_async(
                 messages=[{"role": "user", "content": user_input}],
                 streaming_handler=handler
@@ -266,43 +305,28 @@ async def validate_with_nemo(user_input: str, rails: LLMRails) -> tuple[bool, st
             is_safe = True
             response_content = ""
 
-            # Heuristic: Check if the response indicates a block
-            # NeMo typically returns a predefined message if blocked by a rail
             if res and isinstance(res, dict) and "content" in res:
                 content = res["content"]
                 if any(phrase in content for phrase in ["I cannot answer", "policy", "I am programmed", "I am sorry"]):
                     is_safe = False
                     response_content = content
                 else:
-                    is_safe = True
                     response_content = content
-
-            # If response object structure varies (e.g. string)
             elif isinstance(res, str):
                  if any(phrase in res for phrase in ["I cannot answer", "policy", "I am programmed", "I am sorry"]):
                     is_safe = False
                     response_content = res
                  else:
-                    is_safe = True
                     response_content = res
 
-            # Record outcome
-            verdict = "APPROVED" if is_safe else "REJECTED"
             span.set_attribute("guardrails.outcome", "ALLOWED" if is_safe else "BLOCKED")
-            span.set_attribute("risk.verdict", verdict) # Consistent naming
-            span.set_attribute("guardrails.intervened", not is_safe)
-
             return is_safe, response_content
 
         except Exception as e:
             logger.error(f"NeMo Validation Error: {e}")
             span.record_exception(e)
             span.set_status(Status(StatusCode.ERROR))
-
-            # Fail safe (or fail closed depending on policy)
-            # Here we allow the graph to proceed if NeMo crashes,
-            # relying on the Graph's internal safety.
-            return True, ""
+            # Production: Fail Closed.
+            raise RuntimeError(f"Governance Check Failed (Local): {e}")
         finally:
-            # Clean up the context variable
             streaming_handler_var.reset(token)

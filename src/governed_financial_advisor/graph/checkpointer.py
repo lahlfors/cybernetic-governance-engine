@@ -21,6 +21,7 @@ def get_checkpointer(redis_url: str | None = None) -> BaseCheckpointSaver:
 
         # We assume the caller handles the connection lifecycle or we let garbage collection handle it.
         # Ideally, we should close, but for a global checkpointer in a long-running app, it's fine.
+
         
         print(f"✅ Using AsyncRedisSaver at {redis_url}")
         return AsyncRedisSaver(redis_url)

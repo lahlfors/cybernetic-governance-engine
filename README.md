@@ -201,8 +201,17 @@ This repository supports deploying the high-performance inference stack to Googl
 
 ### Deployment Options
 
-#### NVIDIA GPU (Default)
-Optimized for ultra-low latency using **Speculative Decoding**. Best for user-facing applications requiring strict SLAs (<200ms TTFT).
+#### Option A: Terraform (Recommended)
+This uses Terraform to provision the entire stack (Reasoning Engine, GKE, Redis, Networking).
+
+```bash
+cd deployment/terraform
+terraform init
+terraform apply
+```
+
+#### Option B: Manual Script (Development)
+The `deploy_sw.py` script automates the process but is less robust for production state management.
 
 ```bash
 cd deployment/terraform

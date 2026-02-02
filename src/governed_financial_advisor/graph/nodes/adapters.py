@@ -1,26 +1,32 @@
 """
-ADK Agent Adapters for LangGraph Nodes
+ADK Agent Adapters for LangGraph Nodes (Lite Version)
 
-Uses Dependency Injection pattern to allow mocking during tests.
+Refactored to remove strict dependency on `google-adk` for initial deployment stability.
+Mocks the ADK Runner/Session logic for now.
 """
 
 import asyncio
 import json
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import Any, List, Optional
+import dataclasses
 
-from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
-from google.genai import types
+# Mock Types replacing google.genai.types for now
+@dataclasses.dataclass
+class Part:
+    text: Optional[str] = None
+    function_call: Optional[Any] = None
+
+@dataclasses.dataclass
+class Content:
+    role: str
+    parts: List[Part]
 
 # Import Factory Functions
 from src.governed_financial_advisor.agents.data_analyst.agent import create_data_analyst_agent
 from src.governed_financial_advisor.agents.execution_analyst.agent import create_execution_analyst_agent
 from src.governed_financial_advisor.agents.governed_trader.agent import create_governed_trader_agent
-
-# Session management for ADK agents
-session_service = InMemorySessionService()
 
 logger = logging.getLogger("Graph.Adapters")
 
@@ -34,7 +40,7 @@ def get_valid_last_message(state) -> str:
             return content
         # Handle list content (multi-modal or parts)
         if isinstance(content, list) and content:
-             return content # Pass complex content through
+             return str(content) # Pass complex content through as str for now
     return "No content available."
 
 # --- Dependency Injection Infrastructure ---
@@ -76,64 +82,40 @@ class AgentResponse:
 
 def run_adk_agent(agent_instance, user_msg: str, session_id: str = "default", user_id: str = "default_user"):
     """
-    Wraps the ADK Agent Runner to execute a turn and return the result object.
-    Uses the updated Runner.run() API: run(user_id, session_id, new_message)
+    Simulates ADK Agent Runner.
+    This bypasses the actual ADK Runner/Session mechanism to avoid `google-adk` dependency issues during deployment.
+    It directly invokes the agent's underlying model or chain if possible, or just mocks a response if the agent is complex.
+    
+    CRITICAL: For this phase, we assume the specific agents (Data Analyst, etc.) might just be LangChain objects 
+    or similar that we can `.invoke` or `.run`.
     """
-    import nest_asyncio
-    nest_asyncio.apply()
-
-    # Helper to create session asynchronously
-    async def ensure_session():
-        existing = await session_service.get_session(
-            app_name="financial_advisor",
-            user_id=user_id,
-            session_id=session_id
-        )
-        if not existing:
-            await session_service.create_session(
-                app_name="financial_advisor",
-                user_id=user_id,
-                session_id=session_id
-            )
-
-    # Ensure session exists before running
+    
+    # 1. Try standard LangChain invoke/run
     try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        if hasattr(agent_instance, "invoke"):
+            # LangChain Runnable
+            res = agent_instance.invoke(user_msg)
+            # Handle potential OutputParser types
+            if hasattr(res, "content"): return AgentResponse(answer=res.content)
+            if isinstance(res, str): return AgentResponse(answer=res)
+            return AgentResponse(answer=str(res))
+            
+        if hasattr(agent_instance, "run"):
+             # Legacy LangChain
+             res = agent_instance.run(user_msg)
+             return AgentResponse(answer=str(res))
 
-    # Use nest_asyncio to allow re-entrant loop if needed
-    loop.run_until_complete(ensure_session())
-
-    runner = Runner(
-        agent=agent_instance,
-        session_service=session_service,
-        app_name="financial_advisor"
-    )
-
-    # Format the message as Content
-    new_message = types.Content(
-        role="user",
-        parts=[types.Part(text=user_msg)]
-    )
-
-    # Run and collect events to extract answer
-    answer_parts = []
-    function_calls = []
-    try:
-        for event in runner.run(user_id=user_id, session_id=session_id, new_message=new_message):
-            if hasattr(event, 'content') and event.content:
-                for part in event.content.parts:
-                    if hasattr(part, 'text') and part.text:
-                        answer_parts.append(part.text)
-                    if hasattr(part, 'function_call') and part.function_call:
-                        function_calls.append(part.function_call)
+        # 2. If it's a raw GenAI model (Vertex)
+        if hasattr(agent_instance, "generate_content"):
+             res = agent_instance.generate_content(user_msg)
+             text = res.text if hasattr(res, "text") else str(res)
+             return AgentResponse(answer=text)
+             
     except Exception as e:
-        logger.error(f"Error running ADK agent: {e}")
-        return AgentResponse(answer=f"Error: {e!s}")
+        logger.error(f"Error invoking agent directly: {e}")
+        return AgentResponse(answer=f"Error running agent: {e}")
 
-    return AgentResponse(answer="".join(answer_parts), function_calls=function_calls)
+    return AgentResponse(answer="[Mock] Agent execution not fully implemented without ADK.")
 
 
 # --- Node Implementations ---

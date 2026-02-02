@@ -29,19 +29,31 @@ class FinancialAdvisorEngine:
         self.project = project or os.environ.get("GOOGLE_CLOUD_PROJECT")
         self.location = location or os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
         self.redis_url = redis_url or os.environ.get("REDIS_URL")
-
-        # Initialize the LangGraph Application
-        # We perform lazy initialization of the graph here to capture any runtime config
-        self.app = create_graph(redis_url=self.redis_url)
-        logger.info(f"FinancialAdvisorEngine initialized (Project: {self.project}, Redis: {self.redis_url})")
+        self.app = None
 
     def set_up(self):
         """
         Setup method called by Reasoning Engine runtime during initialization.
         Used to pre-warm connections or load heavy resources.
         """
-        # In a real scenario, we might verify Redis connection or pre-load embeddings here.
-        pass
+        logger.info("Running set_up for FinancialAdvisorEngine...")
+        
+        # PROD: Fetch NeMo URL from Secret Manager if not in Env
+        if not os.environ.get("NEMO_SERVICE_URL"):
+            try:
+                from google.cloud import secretmanager
+                client = secretmanager.SecretManagerServiceClient()
+                name = f"projects/{self.project}/secrets/nemo-service-url/versions/latest"
+                response = client.access_secret_version(request={"name": name})
+                nemo_url = response.payload.data.decode("UTF-8").strip()
+                os.environ["NEMO_SERVICE_URL"] = nemo_url
+                logger.info(f"Loaded NEMO_SERVICE_URL from Secret Manager: {nemo_url}")
+            except Exception as e:
+                logger.warning(f"Failed to load NEMO_SERVICE_URL from Secret Manager: {e}")
+
+        # Initialize the graph here to ensure it uses the server environment
+        self.app = create_graph(redis_url=self.redis_url)
+        logger.info(f"FinancialAdvisorEngine initialized (Project: {self.project}, Redis: {self.redis_url})")
 
     def query(self, prompt: str, thread_id: str = None) -> Dict[str, Any]:
         """

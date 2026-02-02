@@ -1,31 +1,36 @@
-# Use python 3.12 slim image
-FROM python:3.12-slim
+# Dockerfile
+# Unified Dockerfile for Backend and Agent
+# Installs all dependencies from pyproject.toml
 
-# Set working directory
-WORKDIR /app
+FROM python:3.11-slim
 
-# Install system dependencies
+# 1. Install System Dependencies
+# nemoguardrails often needs build-essential, and potentially others.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy project files
-COPY . .
+WORKDIR /app
 
-# Install dependencies
-ENV PYTHONPATH="${PYTHONPATH}:/app:/app/src"
-ENV PYTHONPATH="${PYTHONPATH}:/app:/app/src"
-# Install specific packages first if needed for caching, or just install everything from pyproject.toml
-# Installing kfp and other deps
-RUN pip install --no-cache-dir kfp uvicorn fastapi google-auth google-cloud-aiplatform google-adk opentelemetry-api opentelemetry-sdk opentelemetry-exporter-gcp-trace opentelemetry-instrumentation-fastapi opentelemetry-instrumentation-requests && \
-    pip install --no-cache-dir .
+# 2. Copy Project Files
+COPY pyproject.toml .
+COPY src/ src/
+COPY config/ config/
+# Copy any other needed files (e.g. README if pyproject checks it)
+COPY README.md . 
 
-# Expose the port
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# 3. Install Python Dependencies
+# Use uv for faster resolution
+RUN uv pip install --system . openai nemoguardrails
+
+# 4. Environment
 ENV PORT=8080
-EXPOSE 8080
+ENV PYTHONPATH=/app
 
-# DEBUG: Check file content
-RUN ls -R src
-
-# Run the server
+# 5. Default Entrypoint (Can be overridden by Cloud Run command)
+# Default to running the server (Backend)
 CMD ["python", "-m", "src.governed_financial_advisor.server"]

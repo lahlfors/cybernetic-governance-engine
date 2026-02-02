@@ -33,6 +33,8 @@ resource "null_resource" "app_deployment" {
         --redis-port ${google_redis_instance.cache.port} \
         --cluster-name ${google_container_cluster.primary.name} \
         --deploy-agent-engine \
+        --agent-engine-name ${google_vertex_ai_reasoning_engine.financial_advisor.name} \
+        --skip-build \
         --tf-managed
     EOT
   }

@@ -13,61 +13,12 @@ env.bak/
 venv.bak/
 .deploy_venv/
 .new_venv/
+# Local Deployments & Scripts
 .manual_deploy_venv/
-.build_venv/
-source/
-
-# IDEs
-.vscode/
-.idea/
-*.swp
-.DS_Store
-
-# Logs
-*.log
-agents_log/
-deploy_*.txt
-
-# Project Specific
-opa
-verification_*.txt
-
-# Generated Kubernetes manifests
-deployment/k8s/governed-financial-advisor.yaml
-deployment/k8s/vllm-deployment.yaml
-deployment/k8s/generated/
-
-# Traces
-*.parquet
-trace_*.parquet
-logs/cold_tier/
-tests/temp_*/
-GEMINI.md
-.manifest
-
-# Terraform
-deployment/terraform/.terraform/
-deployment/terraform/.terraform.lock.hcl
-deployment/terraform/terraform.tfstate
-deployment/terraform/terraform.tfstate.backup
-*.tfstate
-*.tfstate.*
-crash.log
-crash.*.log
-override.tf
-override.tf.json
-*_override.tf
-*_override.tf.json
-.terraformrc
-terraform.rc
-
-# Temporary Deployment Artifacts
-deployment/terraform/tfplan
 deployment/artifacts/
-deployment/backend_service.yaml
-deployment/nemo_service.yaml
-manual_gateway_build.yaml
-
-# Local Builds & Plans
-*.tfplan
-tfplan
+*_log.txt
+debug_*.py
+verify_agent*.py
+list_*.py
+build_*.py
+register_*.py
