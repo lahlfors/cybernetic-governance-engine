@@ -80,6 +80,9 @@ resource "google_container_node_pool" "gpu_pool" {
   node_config {
     machine_type = var.machine_type # Default: g2-standard-8 (L4)
 
+    # Standardization: Use Spot VMs for Cost Efficiency (L4 GPU Pattern)
+    spot = true
+
     # Enable Image Streaming (Phase 2: Eliminate Latency)
     gcfs_config {
       enabled = true
