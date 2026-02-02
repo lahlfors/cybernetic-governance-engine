@@ -19,10 +19,10 @@ services:
   ui: financial-advisor-ui
 
 model:
-  name: meta-llama/Meta-Llama-3.1-8B-Instruct
-  quantization: bitsandbytes
-  max_model_len: 4096
-  gpu_memory_utilization: 0.80
+  name: Qwen/Qwen2.5-3B-Instruct
+  quantization: null 
+  max_model_len: 4096 
+  gpu_memory_utilization: 0.90
 
 vllm:
   image_gpu: vllm/vllm-openai:latest

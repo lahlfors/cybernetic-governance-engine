@@ -29,12 +29,12 @@ spec:
           resources:
             limits:
 ${RESOURCE_LIMITS}
-              memory: "64Gi"
-              cpu: "16"
+              memory: "12Gi"
+              cpu: "4"
             requests:
 ${RESOURCE_REQUESTS}
-              memory: "10Gi"
-              cpu: "3"
+              memory: "8Gi"
+              cpu: "2"
           volumeMounts:
             - mountPath: /dev/shm
               name: dshm
