@@ -22,3 +22,22 @@ verify_agent*.py
 list_*.py
 build_*.py
 register_*.py
+
+# Agent & Brain
+.agent/
+.manifest
+GEMINI.md
+
+# Build & Deployment
+.build_venv/
+deployment/k8s/generated/
+deployment/terraform/.terraform/
+deployment/terraform/terraform.tfstate
+deployment/terraform/terraform.tfstate.*
+deployment/terraform/tfplan
+source/
+
+# Logs & Temporary
+logs/
+tests/temp_*/
+verification_*.txt
