@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import time
+from typing import Any, Dict
 
 from openai import APIConnectionError, APIStatusError, AsyncOpenAI
 from opentelemetry import trace
@@ -62,10 +63,6 @@ class HybridClient:
         Returns: (client, base_url, effective_model)
         """
         # 1. Determine Effective Model
-        # If model is explicitly passed, respect it.
-        # If not passed:
-        #   - If mode is 'verifier'/'reasoning', default to REASONING model.
-        #   - Else default to FAST model.
         effective_model = requested_model
 
         is_reasoning_mode = mode in ["verifier", "reasoning", "analysis"]
@@ -77,7 +74,6 @@ class HybridClient:
                 effective_model = self.fast_model
 
         # 2. Determine Backend Client
-        # If effective_model matches the configured reasoning model, OR mode implies it, route to reasoning backend.
         if effective_model == self.reasoning_model or is_reasoning_mode:
              return self.reasoning_client, self.reasoning_base_url, effective_model
 
@@ -86,30 +82,38 @@ class HybridClient:
     async def generate(self, prompt: str, system_instruction: str = None, mode: str = "chat", **kwargs) -> str:
         """
         Generates a response using the appropriate vLLM Client.
+        Handles vLLM-specific Guided Generation parameters via 'extra_body'.
         """
         is_verifier = (mode == "verifier")
         stream_request = not is_verifier
 
-        # 1. Identify FSM Mode
+        # 1. Identify FSM Mode & Prepare extra_body
         fsm_mode = "none"
         fsm_constraint = "none"
+        extra_body: Dict[str, Any] = {}
 
         if "guided_json" in kwargs:
             fsm_mode = "json_schema"
+            # Move guided_json to extra_body
+            extra_body["guided_json"] = kwargs.pop("guided_json")
             try:
-                schema_str = json.dumps(kwargs['guided_json'], sort_keys=True)
+                schema_str = json.dumps(extra_body['guided_json'], sort_keys=True)
                 fsm_constraint = hashlib.md5(schema_str.encode()).hexdigest()
             except Exception:
                 fsm_constraint = "hash_error"
+
         elif "guided_regex" in kwargs:
             fsm_mode = "regex"
-            fsm_constraint = kwargs['guided_regex']
+            extra_body["guided_regex"] = kwargs.pop("guided_regex")
+            fsm_constraint = extra_body['guided_regex']
+
         elif "guided_choice" in kwargs:
             fsm_mode = "choice"
-            fsm_constraint = str(kwargs['guided_choice'])
+            extra_body["guided_choice"] = kwargs.pop("guided_choice")
+            fsm_constraint = str(extra_body['guided_choice'])
 
         # 2. Select Backend & Model
-        requested_model_arg = kwargs.get("model")
+        requested_model_arg = kwargs.pop("model", None)
         client, backend_url, effective_model = self._get_client_and_model(requested_model_arg, mode)
 
         with tracer.start_as_current_span("hybrid_generate") as span:
@@ -119,9 +123,18 @@ class HybridClient:
             span.set_attribute("gen_ai.system", "sovereign_vllm")
             span.set_attribute("llm.backend_url", backend_url)
             span.set_attribute("llm.type", "verifier" if is_verifier else "planner")
+            span.set_attribute("llm.fsm_mode", fsm_mode)
+            span.set_attribute("llm.fsm_constraint", str(fsm_constraint))
 
             try:
-                logger.info(f"Generating via vLLM: {backend_url} [Model: {effective_model}, Mode: {mode}]")
+                logger.info(f"Generating via vLLM: {backend_url} [Model: {effective_model}, Mode: {mode}, FSM: {fsm_mode}]")
+
+                # Merge extra_body if provided
+                if extra_body:
+                    if "extra_body" in kwargs:
+                        kwargs["extra_body"].update(extra_body)
+                    else:
+                        kwargs["extra_body"] = extra_body
 
                 response = await client.chat.completions.create(
                     model=effective_model,

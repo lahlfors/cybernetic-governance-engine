@@ -23,6 +23,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Updated dependencies for MCP Refactor
 RUN uv pip install \
     mcp \
+    sse-starlette \
     grpcio \
     grpcio-tools \
     openai \
@@ -48,10 +49,10 @@ COPY config /app/config
 
 # Environment Variables
 ENV PYTHONUNBUFFERED=1
-ENV PORT=50051
+ENV PORT=8080
 
-# Expose port (MCP SSE uses 50051 in our config)
-EXPOSE 50051
+# Expose port (MCP SSE uses 8080 in our config)
+EXPOSE 8080
 
-# Run the MCP server
-CMD ["python", "src/gateway/server/mcp_server.py"]
+# Run the Hybrid Gateway server
+CMD ["python", "src/gateway/server/hybrid_server.py"]

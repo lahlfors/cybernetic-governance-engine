@@ -1,11 +1,12 @@
 """
-Gateway Client Wrapper (MCP Implementation)
-Uses mcp.client.sse to connect to the Gateway MCP Server.
+Gateway Client Wrapper (Hybrid: MCP + REST)
+Uses mcp.client.sse for Tools and httpx for Chat.
 """
 import logging
 import os
 import json
 import asyncio
+import httpx
 from contextlib import asynccontextmanager
 
 from mcp import ClientSession
@@ -20,41 +21,41 @@ class GatewayClient:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(GatewayClient, cls).__new__(cls)
-            cls._instance.url = None
+            cls._instance.sse_url = None
+            cls._instance.chat_url = None
         return cls._instance
 
     def connect(self, host=None, port=None):
         if not host:
             host = os.getenv("GATEWAY_HOST", "localhost")
         if not port:
-            port = os.getenv("GATEWAY_PORT", "50051")
+            port = os.getenv("GATEWAY_PORT", "8080")
 
-        # Build SSE URL
+        # Build Base URL
         protocol = "http"
         if "https" in host:
             protocol = "https"
             host = host.replace("https://", "")
 
-        self.url = f"{protocol}://{host}:{port}/sse"
-        logger.info(f"Configured MCP Gateway Client for: {self.url}")
+        base_url = f"{protocol}://{host}:{port}"
+        self.sse_url = f"{base_url}/mcp/sse"
+        self.chat_url = f"{base_url}/v1/chat/completions"
+        logger.info(f"Configured Gateway Client: SSE={self.sse_url}, Chat={self.chat_url}")
 
     async def execute_tool(self, tool_name: str, params: dict) -> str:
         """
         Calls an MCP Tool on the Gateway Server.
         """
-        if not self.url:
+        if not self.sse_url:
             self.connect()
 
         try:
             # MCP Client Session Context Manager
-            # Note: For high frequency, we might want to keep the session open,
-            # but SSE connections can be fragile. Retrying per-request is safer for now.
-            async with sse_client(self.url) as (read, write):
+            async with sse_client(self.sse_url) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
 
-                    # Map 'execute_trade' -> 'execute_trade_action' if needed, or update server to match.
-                    # Server has `execute_trade_action`.
+                    # Map 'execute_trade' -> 'execute_trade_action' if needed
                     target_tool = tool_name
                     if tool_name == "execute_trade":
                         target_tool = "execute_trade_action"
@@ -62,8 +63,6 @@ class GatewayClient:
                     # Call Tool
                     result = await session.call_tool(target_tool, arguments=params)
 
-                    # Result is a CallToolResult with content list
-                    # usually [TextContent(type='text', text='...')]
                     output_text = []
                     for content in result.content:
                         if content.type == "text":
@@ -71,7 +70,6 @@ class GatewayClient:
 
                     full_output = "\n".join(output_text)
 
-                    # Check for "BLOCKED" or "ERROR" prefix conventions used in our server
                     if full_output.startswith("BLOCKED") or full_output.startswith("ERROR"):
                          return f"{full_output}"
 
@@ -83,18 +81,37 @@ class GatewayClient:
 
     async def chat(self, prompt: str, system_instruction: str = None, mode: str = "chat", **kwargs) -> str:
         """
-        Deprecated: MCP Gateway is primarily for TOOLS.
-        Chat logic should now be handled by the Agent invoking the LLM directly,
-        OR via a specialized "chat" tool if we exposed one.
-
-        For refactor compatibility, we will assume the Gateway Server
-        might expose a 'chat' tool or we throw NotImplementedError
-        forcing the Agent to use its own LLM Client (Open Weights).
+        Invokes LLM via Gateway REST Endpoint.
         """
-        raise NotImplementedError(
-            "Gateway.chat() is deprecated in MCP Refactor. "
-            "Agents should use their local HybridClient/OpenAI Client directly."
-        )
+        if not self.chat_url:
+            self.connect()
+
+        payload = {
+            "model": kwargs.get("model", "default"),
+            "messages": [],
+            "temperature": kwargs.get("temperature", 0.0),
+            "stream": False
+        }
+
+        if system_instruction:
+            payload["messages"].append({"role": "system", "content": system_instruction})
+        payload["messages"].append({"role": "user", "content": prompt})
+
+        # Forward guided generation params
+        if "guided_json" in kwargs: payload["guided_json"] = kwargs["guided_json"]
+        if "guided_regex" in kwargs: payload["guided_regex"] = kwargs["guided_regex"]
+        if "guided_choice" in kwargs: payload["guided_choice"] = kwargs["guided_choice"]
+
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.post(self.chat_url, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+                # OpenAI format: choices[0].message.content
+                return data["choices"][0]["message"]["content"]
+        except Exception as e:
+            logger.error(f"Chat Request Failed: {e}")
+            raise e
 
 # Singleton instance
 gateway_client = GatewayClient()
