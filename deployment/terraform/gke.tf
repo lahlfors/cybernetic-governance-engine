@@ -78,7 +78,17 @@ resource "google_container_node_pool" "gpu_pool" {
   }
 
   node_config {
-    machine_type = "n1-standard-4" # T4 requires N1
+    machine_type = var.machine_type # Default: g2-standard-8 (L4)
+
+    # Enable Image Streaming (Phase 2: Eliminate Latency)
+    gcfs_config {
+      enabled = true
+    }
+
+    # Use Local SSD for ephemeral storage (Phase 2: Eliminate Latency)
+    ephemeral_storage_local_ssd_config {
+      local_ssd_count = 1
+    }
 
     # Taint the node so only pods that tolerate it can schedule here
     taint {
@@ -88,10 +98,17 @@ resource "google_container_node_pool" "gpu_pool" {
     }
 
     guest_accelerator {
-      type  = "nvidia-tesla-t4"
-      count = 1
+      type  = var.gpu_type
+      count = var.gpu_count
+
       gpu_driver_installation_config {
         gpu_driver_version = "LATEST"
+      }
+
+      # Phase 2: GPU Time-Sharing for higher density
+      gpu_sharing_config {
+        gpu_sharing_strategy       = "TIME_SHARING"
+        max_shared_clients_per_gpu = 8
       }
     }
 
