@@ -22,7 +22,7 @@ Handles:
 3. Configuring `kubectl` context
 4. Building & Pushing Containers
 5. Creating K8s Secrets & ConfigMaps
-6. Applying Kubernetes Manifests
+6. Applying Kubernetes Manifests (including Templating)
 7. Providing Access Instructions
 
 Configuration is read from environment variables and CLI args.
@@ -120,6 +120,16 @@ def main():
     
     args = parser.parse_args()
     
+    # Load Environment Defaults for Models
+    model_fast = os.environ.get("MODEL_FAST", "meta-llama/Llama-3.1-8B-Instruct")
+    model_reasoning = os.environ.get("MODEL_REASONING", "meta-llama/Llama-3.1-70B-Instruct")
+    tp_size_fast = os.environ.get("TP_SIZE_FAST", "1")
+    tp_size_reasoning = os.environ.get("TP_SIZE_REASONING", "1") # Default to 1 (assume quantized or user override)
+
+    print(f"\n--- 🤖 Model Configuration ---")
+    print(f"FAST: {model_fast} (TP={tp_size_fast})")
+    print(f"REASONING: {model_reasoning} (TP={tp_size_reasoning})")
+
     # 1. Prerequisite Checks
     print("\n--- 🔍 Checking Prerequisites ---")
     check_tool("terraform")
@@ -158,18 +168,8 @@ def main():
     # 4. Build Images
     if not args.skip_build:
         print("\n--- 🐳 Building Container Images ---")
-        # Build Gateway (Dockerfile is in src/gateway/Dockerfile, context is root)
-        # Note: We need to build from root to include shared modules if any.
-        # But per Dockerfile analysis earlier, Gateway Dockerfile is at root level or src/gateway level?
-        # Checked `src/gateway/Dockerfile` -> Needs specific build context.
-        # Actually repo has `Dockerfile` in root for 'app' and `src/gateway/Dockerfile` for gateway?
-        # Let's check file list.
-        # `Dockerfile` in root is for the main app (Financial Advisor).
-        # `src/gateway/Dockerfile` exists.
-        # `Dockerfile.nemo` exists.
         
         # Build Gateway
-        # Note: src/gateway/Dockerfile likely expects context to be root to copy src/
         run_command([
             "gcloud", "builds", "submit",
             "--tag", f"gcr.io/{args.project_id}/governance-stack/gateway:latest",
@@ -178,7 +178,7 @@ def main():
             "."
         ])
 
-        # Build Financial Advisor (Root Dockerfile)
+        # Build Financial Advisor
         run_command([
             "gcloud", "builds", "submit",
             "--tag", f"gcr.io/{args.project_id}/governance-stack/advisor:latest",
@@ -187,7 +187,7 @@ def main():
             "."
         ])
 
-        # Build NeMo (Dockerfile.nemo)
+        # Build NeMo
         run_command([
             "gcloud", "builds", "submit",
             "--tag", f"gcr.io/{args.project_id}/governance-stack/nemo:latest",
@@ -201,18 +201,11 @@ def main():
     # 5. Create Secrets & ConfigMaps
     print("\n--- 🔐 Configuring K8s Secrets ---")
     
-    # vLLM HF Token
     create_secret_from_env("hf-token-secret", "token", "HUGGING_FACE_HUB_TOKEN")
-    
-    # NeMo / LLM Secrets
     create_secret_from_env("llm-secrets", "openai-api-key", "OPENAI_API_KEY")
     
-    # OPA Policy
-    # Assuming policy file is at `src/governance/policy/finance_policy.rego` or similar.
-    # We will look for it.
     policy_path = "src/governance/policy/finance_policy.rego"
     if not Path(policy_path).exists():
-         # Fallback check
          if Path("deployment/finance_policy.rego").exists():
              policy_path = "deployment/finance_policy.rego"
     
@@ -222,19 +215,32 @@ def main():
     print("\n--- ☸️ Applying Kubernetes Manifests ---")
     k8s_dir = Path("deployment/k8s")
     
-    manifests = list(k8s_dir.glob("*.yaml"))
+    # Glob both .yaml and .tpl files
+    manifests = list(k8s_dir.glob("*.yaml")) + list(k8s_dir.glob("*.tpl"))
+
     temp_dir = Path("deployment/k8s_rendered")
+    if temp_dir.exists(): shutil.rmtree(temp_dir)
     temp_dir.mkdir(exist_ok=True)
 
     for manifest in manifests:
-        if "tpl" in manifest.name: continue # Skip templates
+        # Ignore specific files if they are just base templates not meant for direct use?
+        # No, we assume all .yaml are static and .tpl are templates.
         
         with open(manifest) as f:
             content = f.read()
 
+        # Variable Substitution
         content = content.replace("${PROJECT_ID}", args.project_id)
+        content = content.replace("${MODEL_FAST}", model_fast)
+        content = content.replace("${MODEL_REASONING}", model_reasoning)
+        content = content.replace("${TP_SIZE_FAST}", tp_size_fast)
+        content = content.replace("${TP_SIZE_REASONING}", tp_size_reasoning)
 
-        target_path = temp_dir / manifest.name
+        # Output filename (strip .tpl if present)
+        out_name = manifest.name.replace(".tpl", ".yaml")
+        if not out_name.endswith(".yaml"): out_name += ".yaml" # fallback
+
+        target_path = temp_dir / out_name
         with open(target_path, "w") as f:
             f.write(content)
 

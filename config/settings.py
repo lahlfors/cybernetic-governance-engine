@@ -10,13 +10,13 @@ load_dotenv()
 # Used for: Routing, JSON formatting, Simple Execution
 # Recommended: meta-llama/Llama-3.1-8B-Instruct (Open Weights)
 MODEL_FAST = os.getenv("MODEL_FAST", "meta-llama/Llama-3.1-8B-Instruct")
-VLLM_FAST_API_BASE = os.getenv("VLLM_FAST_API_BASE", "http://localhost:8000/v1")
+VLLM_FAST_API_BASE = os.getenv("VLLM_FAST_API_BASE", "http://vllm-fast-service:8000/v1")
 
 # --- REASONING PATH (Reasoning Plane) ---
 # Used for: Risk Analysis, Strategic Planning, Evaluation (STPA)
 # Recommended: meta-llama/Llama-3.1-70B-Instruct (Open Weights)
 MODEL_REASONING = os.getenv("MODEL_REASONING", "meta-llama/Llama-3.1-70B-Instruct")
-VLLM_REASONING_API_BASE = os.getenv("VLLM_REASONING_API_BASE", "http://localhost:8001/v1") # Default to port 8001 for separate instance
+VLLM_REASONING_API_BASE = os.getenv("VLLM_REASONING_API_BASE", "http://vllm-reasoning-service:8000/v1")
 
 # Consensus Engine: Separate model for multi-agent debate (can use different provider)
 MODEL_CONSENSUS = os.getenv("MODEL_CONSENSUS", MODEL_REASONING)
