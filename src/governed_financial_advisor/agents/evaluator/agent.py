@@ -32,7 +32,7 @@ logger = logging.getLogger("EvaluatorAgent")
 
 async def check_market_status(symbol: str) -> str:
     """
-    Checks real market status via Gateway.
+    Checks real market status via Gateway (MCP).
     """
     try:
         return await gateway_client.execute_tool("check_market_status", {"symbol": symbol})
@@ -42,7 +42,8 @@ async def check_market_status(symbol: str) -> str:
 
 async def verify_policy_opa(action: str, params: str) -> str:
     """
-    Checks Regulatory Policy (OPA) via Gateway in Dry Run mode.
+    Checks Regulatory Policy (OPA) via Gateway (MCP) in Dry Run mode.
+    Note: Requires 'evaluate_policy' tool on MCP Server.
     """
     try:
         # Try to parse params
@@ -57,16 +58,22 @@ async def verify_policy_opa(action: str, params: str) -> str:
         elif isinstance(params, dict):
              params_dict = params
 
-        params_dict['dry_run'] = True
+        # Add generic action field if executing a trade
+        if action == "execute_trade":
+             params_dict['action'] = action
+        else:
+             # If just checking general policy
+             params_dict['action'] = action
 
-        return await gateway_client.execute_tool(action, params_dict)
+        # Call the generic policy tool
+        return await gateway_client.execute_tool("evaluate_policy", params_dict)
     except Exception as e:
         logger.error(f"OPA Check Failed: {e}")
         return f"DENIED: System Error: {e}"
 
 async def verify_semantic_nemo(text: str) -> str:
     """
-    Checks Semantic Safety via Gateway (NeMo Proxy).
+    Checks Semantic Safety via Gateway (MCP).
     """
     try:
         return await gateway_client.execute_tool("verify_content_safety", {"text": text})

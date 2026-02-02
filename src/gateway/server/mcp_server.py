@@ -88,6 +88,35 @@ async def verify_content_safety(text: str) -> str:
     return "SAFE"
 
 @mcp.tool()
+async def evaluate_policy(action: str, description: str = None, dry_run: bool = True, **kwargs) -> str:
+    """
+    Evaluates an action against OPA policy without executing it.
+    Used by Evaluator Agent for pre-flight checks.
+    """
+    logger.info(f"Tool Call: evaluate_policy(action={action})")
+
+    params = kwargs.copy()
+    params['action'] = action
+    params['description'] = description
+    params['dry_run'] = dry_run
+
+    try:
+        # We reuse OPA Client directly
+        decision = await opa_client.evaluate_policy(params)
+
+        if decision == "ALLOW":
+            return "APPROVED: Action matches policy."
+        elif decision == "DENY":
+            return "DENIED: Policy Violation."
+        elif decision == "MANUAL_REVIEW":
+            return "MANUAL_REVIEW: Requires human approval."
+        else:
+            return f"UNKNOWN: {decision}"
+    except Exception as e:
+        logger.error(f"Policy Check Error: {e}")
+        return f"ERROR: {e}"
+
+@mcp.tool()
 async def execute_trade_action(symbol: str, amount: float, currency: str, transaction_id: str = None, trader_id: str = "agent_001", trader_role: str = "junior", dry_run: bool = False) -> str:
     """
     Executes a financial trade under strict governance.
@@ -95,8 +124,6 @@ async def execute_trade_action(symbol: str, amount: float, currency: str, transa
     logger.info(f"Tool Call: execute_trade({symbol}, {amount})")
 
     # Construct Params for Governance
-    # If transaction_id is missing, pydantic model in core/tools will generate it, but we need it for logging?
-    # Actually, let's let the TradeOrder model handle defaults if None
     import uuid
     if not transaction_id:
         transaction_id = str(uuid.uuid4())
