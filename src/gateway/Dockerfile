@@ -20,10 +20,9 @@ RUN uv venv
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Updated dependencies for MCP Refactor
+# Updated dependencies for gRPC Refactor
+# Removed: mcp, sse-starlette
 RUN uv pip install \
-    mcp \
-    sse-starlette \
     grpcio \
     grpcio-tools \
     openai \
@@ -49,10 +48,12 @@ COPY config /app/config
 
 # Environment Variables
 ENV PYTHONUNBUFFERED=1
-ENV PORT=8080
+ENV PORT=50051
+# Fix for imports: Ensure /app is in PYTHONPATH so absolute imports from 'src' work
+ENV PYTHONPATH=/app
 
-# Expose port (MCP SSE uses 8080 in our config)
-EXPOSE 8080
+# Expose port (gRPC standard)
+EXPOSE 50051
 
-# Run the Hybrid Gateway server
-CMD ["python", "src/gateway/server/hybrid_server.py"]
+# Run the gRPC Gateway server
+CMD ["python", "src/gateway/server/main.py"]

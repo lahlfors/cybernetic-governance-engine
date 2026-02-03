@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import time
+import uuid
 from concurrent import futures
 
 import grpc
@@ -26,7 +27,6 @@ from src.governed_financial_advisor.governance.consensus import consensus_engine
 from src.governed_financial_advisor.governance.safety import safety_filter
 
 logger = logging.getLogger("Gateway.Server")
-logger.warning("DEPRECATED: This gRPC server is deprecated. Please migrate to the Hybrid Gateway (hybrid_server.py).")
 
 # Configure JSON Logging for Cloud Run (Stackdriver)
 logHandler = logging.StreamHandler()
@@ -74,6 +74,11 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
             mode = request.mode if request.mode else "chat"
 
             # Extract arguments
+            if not messages:
+                context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+                context.set_details("Messages list cannot be empty")
+                return
+
             prompt_text = messages[-1]['content']
             system_instruction = request.system_instruction
 
@@ -111,7 +116,7 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
         # We need to adapt the OPA check.
         # SKIP OPA for "system" tools like market checks to avoid recursion/blocking
         # unless specifically configured.
-        if tool_name not in ["check_market_status", "verify_content_safety"]:
+        if tool_name not in ["check_market_status", "verify_content_safety", "evaluate_policy"]:
             payload = params.copy()
             payload['action'] = tool_name
             is_dry_run = params.get("dry_run", False)
@@ -144,9 +149,32 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
                  return gateway_pb2.ToolResponse(status="BLOCKED", error="Semantic Safety Violation (Jailbreak Pattern)")
             return gateway_pb2.ToolResponse(status="SUCCESS", output="SAFE")
 
+        # --- POLICY EVALUATION TOOL (OPA Meta-Check) ---
+        elif tool_name == "evaluate_policy":
+             # Used by Evaluator Agent for dry-run checks
+             try:
+                 # Calls OPA Client directly with provided params
+                 # The 'action' key should be in params, or default to generic
+                 decision = await self.opa_client.evaluate_policy(params)
+                 if decision == "ALLOW":
+                      return gateway_pb2.ToolResponse(status="SUCCESS", output="APPROVED: Action matches policy.")
+                 elif decision == "DENY":
+                      return gateway_pb2.ToolResponse(status="BLOCKED", error="DENIED: Policy Violation.")
+                 elif decision == "MANUAL_REVIEW":
+                      return gateway_pb2.ToolResponse(status="BLOCKED", error="MANUAL_REVIEW: Requires human approval.")
+                 else:
+                      return gateway_pb2.ToolResponse(status="ERROR", error=f"UNKNOWN: {decision}")
+             except Exception as e:
+                 logger.error(f"Policy Check Error: {e}")
+                 return gateway_pb2.ToolResponse(status="ERROR", error=str(e))
+
         # --- TRADE EXECUTION TOOL ---
         elif tool_name == "execute_trade":
             try:
+                # Ensure transaction_id exists
+                if "transaction_id" not in params or not params["transaction_id"]:
+                    params["transaction_id"] = str(uuid.uuid4())
+
                 # Validate Schema first
                 try:
                     order = TradeOrder(**params)
