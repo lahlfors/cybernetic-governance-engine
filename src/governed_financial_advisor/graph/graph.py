@@ -28,6 +28,7 @@ from .nodes.adapters import (
 from .nodes.evaluator_node import evaluator_node
 from .nodes.explainer_node import explainer_node
 from .nodes.supervisor_node import supervisor_node
+from .nodes.system_2_simulation_node import system_2_simulation_node
 from .state import AgentState
 
 
@@ -43,6 +44,7 @@ def create_graph(redis_url=None):
     # MACAW Pipeline Nodes
     workflow.add_node("execution_analyst", execution_analyst_node) # Planner (System 4)
     workflow.add_node("evaluator", evaluator_node)                 # Control (System 3)
+    workflow.add_node("system_2_simulation", system_2_simulation_node) # Rational Fallback
     workflow.add_node("governed_trader", governed_trader_node)     # Executor (System 1)
     workflow.add_node("explainer", explainer_node)                 # Monitoring (System 3)
 
@@ -67,10 +69,17 @@ def create_graph(redis_url=None):
     # Planner -> Evaluator (Simulation)
     workflow.add_edge("execution_analyst", "evaluator")
 
-    # Evaluator -> Conditional (Executor OR Back to Planner)
+    # Evaluator -> Conditional (Executor OR Back to Planner OR System 2)
     workflow.add_conditional_edges("evaluator", lambda x: x["next_step"], {
         "governed_trader": "governed_trader",    # Approved
-        "execution_analyst": "execution_analyst" # Rejected (Re-plan)
+        "execution_analyst": "execution_analyst", # Rejected (Re-plan)
+        "system_2_simulation": "system_2_simulation" # Uncertain -> Rational Fallback
+    })
+
+    # System 2 -> Conditional (Executor OR Back to Planner)
+    workflow.add_conditional_edges("system_2_simulation", lambda x: x["next_step"], {
+        "governed_trader": "governed_trader",    # Approved by Causal Engine
+        "execution_analyst": "execution_analyst" # Rejected by Causal Engine
     })
 
     # Executor -> Explainer (Faithfulness)

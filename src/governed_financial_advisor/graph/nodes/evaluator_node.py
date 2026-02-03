@@ -68,6 +68,22 @@ async def evaluator_node(state: AgentState) -> dict[str, Any]:
         latency = (time.time() - start_time) * 1000
         span.set_attribute("simulation.latency_ms", latency)
 
+        # --- SYSTEM 2 INTERCEPTION (Rational Fallback) ---
+        if opa_res == "UNCERTAIN":
+            logger.warning("🤔 Evaluator: OPA UNCERTAIN -> Redirecting to System 2 Causal Simulation")
+            return {
+                "evaluation_result": {
+                    "verdict": "PENDING_SYSTEM_2",
+                    "reasoning": "OPA Policy is Uncertain. Triggering Causal Fallback.",
+                    "simulation_logs": [f"OPA Result: {opa_res}"],
+                    "policy_check": str(opa_res),
+                    "semantic_check": str(nemo_res)
+                },
+                "next_step": "system_2_simulation",
+                "risk_feedback": "Redirecting to Causal Engine for deep verification."
+            }
+        # --------------------------------------------------
+
         # 3. Construct Context for the Agent
         simulation_context = (
             f"Pre-Computed Simulation Results:\n"
