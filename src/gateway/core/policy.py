@@ -92,12 +92,6 @@ class OPAClient:
         if self.cb.check_soft_ceiling(current_latency_ms):
             logger.warning(f"📉 Latency Inflation Warning: {current_latency_ms}ms > 2000ms.")
 
-        # --- SIMULATION TRIGGER FOR SYSTEM 2 TESTING ---
-        if input_data.get("action") == "test_uncertainty":
-            logger.warning("🧪 OPA Simulation Trigger: Returning UNCERTAIN for testing.")
-            return "UNCERTAIN"
-        # -----------------------------------------------
-
         with tracer.start_as_current_span("governance.opa_check") as span:
             start_time = time.time()
             span.set_attribute("iso.control_id", "A.10.1")

@@ -15,6 +15,8 @@
 import pytest
 import asyncio
 from unittest.mock import MagicMock, patch
+import respx
+from httpx import Response
 
 from src.causal.engine import ProductionSCM
 from src.governed_financial_advisor.graph.nodes.system_2_simulation_node import system_2_simulation_node
@@ -74,10 +76,13 @@ def test_system_2_node_allow(mock_scm):
         assert "System 2 Rational Fallback APPROVED" in result["risk_feedback"]
 
 @pytest.mark.asyncio
-async def test_opa_uncertainty_trigger():
+async def test_opa_uncertainty_trigger(respx_mock):
     client = OPAClient()
     # Mock Can Execute
     client.cb.can_execute = MagicMock(return_value=True)
+
+    # Mock HTTP response
+    respx_mock.post(client.url).mock(return_value=Response(200, json={"result": "UNCERTAIN"}))
 
     result = await client.evaluate_policy({"action": "test_uncertainty"})
     assert result == "UNCERTAIN"
