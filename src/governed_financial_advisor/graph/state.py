@@ -13,6 +13,7 @@ class AgentState(TypedDict):
         "data_analyst",
         "execution_analyst",
         "evaluator",
+        "system_2_simulation",
         "governed_trader",
         "explainer",
         "human_review",
