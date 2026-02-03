@@ -1,25 +1,14 @@
 version: '3.8'
 
 services:
-<<<<<<< HEAD
-  # OPA: Standalone Service (Simulating Remote Deployment)
-  opa:
-    image: openpolicyagent/opa:latest-static
-=======
+  # OPA: Policy Engine
   opa:
     image: openpolicyagent/opa:latest-static
     # Run OPA listening on both UDS (for sidecar simulation) and TCP (for debugging/fallback)
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
     command:
       - "run"
       - "--server"
       - "--log-level=info"
-<<<<<<< HEAD
-      - "--addr=:8181" # TCP Only (Remote simulation)
-      - "/policies"
-    volumes:
-      - ./policies:/policies
-=======
       - "--addr=unix:///tmp/opa.sock"
       - "--addr=:8181"
       - "/policies"
@@ -27,7 +16,6 @@ services:
       - ./policies:/policies
       # Shared volume for Unix Domain Socket
       - opa_socket_vol:/tmp
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
     ports:
       - "8181:8181"
     healthcheck:
@@ -36,9 +24,6 @@ services:
       timeout: 3s
       retries: 5
 
-<<<<<<< HEAD
-  # NeMo Guardrails: Retained
-=======
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
@@ -52,7 +37,7 @@ services:
       timeout: 3s
       retries: 5
 
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
+  # NeMo Guardrails: Semantic Safety
   nemo:
     build:
       context: .
@@ -65,10 +50,34 @@ services:
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
     volumes:
       - ./src:/app/src
-<<<<<<< HEAD
-    # Removed Redis dependency
+    depends_on:
+      - redis
 
-  # Main Agent Service (ADK Native)
+  # Optional: Local vLLM for "Fast Path" / Open Weights Control Plane
+  # vllm-fast: ...
+
+  # Gateway (MCP Server)
+  # Replaces gRPC Gateway
+  gateway:
+    build:
+      context: .
+      dockerfile: src/gateway/Dockerfile
+    command: ["python", "src/gateway/server/mcp_server.py"]
+    ports:
+      - "50051:50051"
+    environment:
+      - PORT=50051
+      - OPA_URL=http://opa:8181/v1/data/finance/allow
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./src:/app/src
+      - ./.env:/app/.env
+      - opa_socket_vol:/tmp
+    depends_on:
+      - opa
+      - redis
+
+  # Main Agent Service
   app:
     build: .
     ports:
@@ -76,33 +85,23 @@ services:
     environment:
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
       - GOOGLE_CLOUD_LOCATION=${GOOGLE_CLOUD_LOCATION:-us-central1}
-      # Point to Remote OPA (simulated via Docker network)
+      - REDIS_URL=redis://redis:6379
       - OPA_URL=http://opa:8181/v1/data/finance/allow
       - OPA_AUTH_TOKEN=${OPA_AUTH_TOKEN:-dev-token}
-      - GOOGLE_GENAI_USE_VERTEXAI=true
+      - MODEL_FAST=${MODEL_FAST:-meta-llama/Llama-3.1-8B-Instruct}
+      - MODEL_REASONING=${MODEL_REASONING:-meta-llama/Llama-3.1-70B-Instruct}
+      - VLLM_FAST_API_BASE=http://vllm-fast:8000/v1
+      # Gateway Host updated to point to MCP Gateway
+      - GATEWAY_HOST=gateway
+      - GATEWAY_PORT=50051
     volumes:
       - ./src:/app/src
       - ./.env:/app/.env
+      - opa_socket_vol:/tmp
     depends_on:
-      - opa
-      - nemo
-
-volumes:
-  # Removed redis_data and opa_socket_vol
-=======
-    depends_on:
+      - gateway
       - redis
-
-  # Optional: Application service placeholder (if running fully in docker)
-  # app:
-  #   build: .
-  #   volumes:
-  #     - opa_socket_vol:/tmp
-  #   environment:
-  #     - OPA_URL=http+unix://%2Ftmp%2Fopa.sock/v1/data/finance/decision
-  #     - REDIS_URL=redis://redis:6379
 
 volumes:
   redis_data:
   opa_socket_vol:
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359

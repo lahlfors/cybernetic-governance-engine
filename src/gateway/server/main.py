@@ -26,6 +26,7 @@ from src.governed_financial_advisor.governance.consensus import consensus_engine
 from src.governed_financial_advisor.governance.safety import safety_filter
 
 logger = logging.getLogger("Gateway.Server")
+logger.warning("DEPRECATED: This gRPC server is deprecated. Please migrate to the Hybrid Gateway (hybrid_server.py).")
 
 # Configure JSON Logging for Cloud Run (Stackdriver)
 logHandler = logging.StreamHandler()

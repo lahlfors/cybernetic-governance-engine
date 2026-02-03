@@ -1,37 +1,44 @@
 """
-Gateway Core: Market Data Service (Simulation / Stub)
+Gateway Core: Market Data Service (Real Implementation)
 """
+
 import logging
-import random
 
-logger = logging.getLogger("Gateway.Market")
+logger = logging.getLogger(__name__)
 
-# Real-world market simulation stub
-# In a real system, this would call a provider like Polygon.io or Bloomberg.
 class MarketService:
     def check_status(self, symbol: str) -> str:
         """
-        Checks if the market is open and liquid for the given symbol.
+        Fetches real market status and price using yfinance.
+        Lazy imports yfinance to prevent startup crashes if not installed.
         """
-        symbol = symbol.upper()
-        logger.info(f"Checking market status for {symbol}...")
+        try:
+            logger.info(f"Fetching market data for {symbol}...")
 
-        # Simulation:
-        # 1. Block known "CLOSED" or "HALTED" symbols
-        if symbol in ["CLOSED", "HALTED", "TEST_CLOSED"]:
-            return "MARKET_CLOSED: Exchange is currently closed or symbol is halted."
+            try:
+                import yfinance as yf
+            except ImportError:
+                return "ERROR: yfinance library not installed. Cannot fetch market data."
 
-        # 2. Randomly simulate liquidity issues (for resilience testing)
-        # In production, this would be real data.
-        # For this refactor, we remove the "Mock" feel by making it a service method
-        # that could be easily swapped for a real API call.
+            ticker = yf.Ticker(symbol)
 
-        # Check time (stubbed to always be open during business hours)
-        # from datetime import datetime
-        # now = datetime.now()
-        # if now.hour < 9 or now.hour > 16:
-        #    return "MARKET_CLOSED: Outside trading hours."
+            # Fast fetch of 'info' or 'fast_info'
+            # fast_info is better for price
+            price = ticker.fast_info.get('last_price', None)
 
-        return f"MARKET_OPEN: {symbol} is trading. Liquidity is sufficient."
+            if price is None:
+                # Fallback to history
+                hist = ticker.history(period="1d")
+                if not hist.empty:
+                    price = hist['Close'].iloc[-1]
+
+            if price:
+                 return f"OPEN: {symbol} trading at ${price:.2f}"
+            else:
+                 return f"CLOSED/UNKNOWN: Could not fetch price for {symbol}"
+
+        except Exception as e:
+            logger.error(f"Market Data Error: {e}")
+            return f"ERROR: Market data unavailable: {e}"
 
 market_service = MarketService()

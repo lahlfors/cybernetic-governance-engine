@@ -3,33 +3,29 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # Install system dependencies
-# gcc and python3-dev might be needed for some grpc extensions or other libs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv for dependency management (keeping consistent with repo)
+# Install uv for dependency management
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
 # Copy dependency definition
 COPY pyproject.toml .
-# Copy lock file if it exists, otherwise we generate
-# COPY uv.lock .
 
 # Create virtual env and install dependencies
-# We need grpcio, grpcio-tools, google-genai, openai, httpx, pydantic, opentelemetry-api, python-json-logger, google-auth
-# We can use `uv sync` if we have the full project structure or just install specifically.
-# Since this is a dedicated container, installing specifically is cleaner/smaller.
 RUN uv venv
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 
+# Updated dependencies for MCP Refactor
 RUN uv pip install \
+    mcp \
+    sse-starlette \
     grpcio \
     grpcio-tools \
-    google-genai \
     openai \
     httpx \
     pydantic \
@@ -39,14 +35,14 @@ RUN uv pip install \
     google-cloud-run \
     python-dotenv \
     langchain-google-genai \
-    langchain-google-vertexai \
     langgraph \
     langgraph-checkpoint-redis \
     nemoguardrails \
-    google-cloud-firestore
+    google-cloud-firestore \
+    yfinance \
+    duckduckgo-search
 
 # Copy Source Code
-# We need src/gateway and src/governed_financial_advisor (for shared governance logic imports)
 COPY src/gateway /app/src/gateway
 COPY src/governed_financial_advisor /app/src/governed_financial_advisor
 COPY config /app/config
@@ -55,8 +51,8 @@ COPY config /app/config
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
 
-# Expose port (Cloud Run uses 8080 by default)
+# Expose port (MCP SSE uses 8080 in our config)
 EXPOSE 8080
 
-# Run the server
-CMD ["python", "src/gateway/server/main.py"]
+# Run the Hybrid Gateway server
+CMD ["python", "src/gateway/server/hybrid_server.py"]

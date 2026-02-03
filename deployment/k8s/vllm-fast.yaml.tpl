@@ -1,25 +1,25 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vllm-inference
+  name: vllm-fast
   namespace: governance-stack
   labels:
-    app: vllm-inference
+    app: vllm-fast
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: vllm-inference
+      app: vllm-fast
   template:
     metadata:
       labels:
-        app: vllm-inference
+        app: vllm-fast
     spec:
       volumes:
         - name: dshm
           emptyDir:
             medium: Memory
-            sizeLimit: "16Gi"  # vLLM requires large shared memory
+            sizeLimit: "8Gi"
         - name: model-cache
           emptyDir: {}
       containers:
@@ -28,13 +28,13 @@ spec:
           imagePullPolicy: IfNotPresent
           resources:
             limits:
-              nvidia.com/gpu: "1"
-              memory: "64Gi"
-              cpu: "16"
-            requests:
-              nvidia.com/gpu: "1"
+              nvidia.com/gpu: "${TP_SIZE_FAST}"
               memory: "32Gi"
-              cpu: "12"
+              cpu: "8"
+            requests:
+              nvidia.com/gpu: "${TP_SIZE_FAST}"
+              memory: "16Gi"
+              cpu: "4"
           volumeMounts:
             - mountPath: /dev/shm
               name: dshm
@@ -46,6 +46,8 @@ spec:
                 secretKeyRef:
                   name: hf-token-secret
                   key: token
+            - name: PORT
+              value: "8000"
 
           ports:
             - containerPort: 8000
@@ -54,44 +56,33 @@ spec:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 120
+            initialDelaySeconds: 60
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 300
+            initialDelaySeconds: 120
             periodSeconds: 15
           command:
             - "python3"
             - "-m"
             - "vllm.entrypoints.openai.api_server"
             - "--model"
-<<<<<<< HEAD
-            - "google/gemma-2-9b-it"
+            - "${MODEL_FAST}"
             - "--served-model-name"
-            - "google/gemma-2-9b-it"
+            - "${MODEL_FAST}"
             - "--dtype"
-            - "bfloat16"
-=======
-            - "meta-llama/Llama-3.1-8B-Instruct"
-            - "--served-model-name"
-            - "meta-llama/Llama-3.1-8B-Instruct"
-            - "--dtype"
-            - "float16"
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
+            - "auto"
             - "--enable-prefix-caching"
             - "--max-model-len"
             - "8192"
             - "--enforce-eager"
             - "--tensor-parallel-size"
-            - "1"
+            - "${TP_SIZE_FAST}"
             - "--gpu-memory-utilization"
-            - "0.95"
-<<<<<<< HEAD
-=======
+            - "0.90"
             - "--disable-log-stats"
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
       nodeSelector:
         cloud.google.com/gke-accelerator: "nvidia-l4"
       tolerations:
@@ -99,3 +90,22 @@ spec:
         operator: "Equal"
         value: "true"
         effect: "NoSchedule"
+      - key: "nvidia.com/gpu"
+        operator: "Equal"
+        value: "present"
+        effect: "NoSchedule"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-fast-service
+  namespace: governance-stack
+spec:
+  selector:
+    app: vllm-fast
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  type: ClusterIP
