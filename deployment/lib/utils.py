@@ -23,7 +23,7 @@ def load_dotenv():
     else:
         print(f"⚠️ No .env file found at {env_path}")
 
-def run_command(command, check=True, capture_output=False, env=None):
+def run_command(command, check=True, capture_output=False, env=None, **kwargs):
     """
     Runs a shell command and prints the output.
 
@@ -32,18 +32,21 @@ def run_command(command, check=True, capture_output=False, env=None):
         check (bool): Whether to raise an exception on failure.
         capture_output (bool): Whether to capture stdout/stderr.
         env (dict): Environment variables to pass.
+        **kwargs: Additional arguments passed to subprocess.run.
 
     Returns:
         subprocess.CompletedProcess or subprocess.CalledProcessError
     """
     print(f"🚀 Running: {' '.join(command)}")
     try:
+        final_env = env or os.environ.copy()
         result = subprocess.run(
             command,
             check=check,
             capture_output=capture_output,
             text=True,
-            env=env or os.environ.copy()
+            env=final_env,
+            **kwargs
         )
         if capture_output and result.stdout:
             print(result.stdout.strip())

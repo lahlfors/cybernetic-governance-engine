@@ -20,26 +20,9 @@ RUN uv venv
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Updated dependencies for gRPC Refactor
-# Removed: mcp, sse-starlette
-RUN uv pip install \
-    grpcio \
-    grpcio-tools \
-    openai \
-    httpx \
-    pydantic \
-    opentelemetry-api \
-    python-json-logger \
-    google-auth \
-    google-cloud-run \
-    python-dotenv \
-    langchain-google-genai \
-    langgraph \
-    langgraph-checkpoint-redis \
-    nemoguardrails \
-    google-cloud-firestore \
-    yfinance \
-    duckduckgo-search
+# Install dependencies from pyproject.toml
+RUN uv export --no-emit-project --no-dev --no-hashes --format requirements-txt > requirements.txt && \
+    uv pip install -r requirements.txt
 
 # Copy Source Code
 COPY src/gateway /app/src/gateway

@@ -95,8 +95,8 @@ def create_secret_from_env(secret_name, key, env_var):
 
     print(f"🔒 Creating Secret: {secret_name}")
     # Idempotent creation (delete first to update)
-    run_command(f"kubectl delete secret {secret_name} --ignore-not-found", shell=True)
-    run_command(f"kubectl create secret generic {secret_name} --from-literal={key}={value}", shell=True)
+    run_command(f"kubectl delete secret {secret_name} --ignore-not-found")
+    run_command(f"kubectl create secret generic {secret_name} --from-literal={key}={value}")
 
 def create_configmap_from_file(cm_name, file_path):
     """Creates a ConfigMap from a file."""
@@ -105,8 +105,8 @@ def create_configmap_from_file(cm_name, file_path):
         return
 
     print(f"📄 Creating ConfigMap: {cm_name} from {file_path}")
-    run_command(f"kubectl delete configmap {cm_name} --ignore-not-found", shell=True)
-    run_command(f"kubectl create configmap {cm_name} --from-file={file_path}", shell=True)
+    run_command(f"kubectl delete configmap {cm_name} --ignore-not-found")
+    run_command(f"kubectl create configmap {cm_name} --from-file={file_path}")
 
 # --- Main Logic ---
 
@@ -169,32 +169,23 @@ def main():
     if not args.skip_build:
         print("\n--- 🐳 Building Container Images ---")
         
-        # Build Gateway
-        run_command([
-            "gcloud", "builds", "submit",
-            "--tag", f"gcr.io/{args.project_id}/governance-stack/gateway:latest",
-            "--file", "src/gateway/Dockerfile",
-            "--project", args.project_id,
-            "."
-        ])
+        images = [
+            ("gateway", "src/gateway/Dockerfile"),
+            ("advisor", "Dockerfile"),
+            ("nemo", "Dockerfile.nemo"),
+        ]
 
-        # Build Financial Advisor
-        run_command([
-            "gcloud", "builds", "submit",
-            "--tag", f"gcr.io/{args.project_id}/governance-stack/advisor:latest",
-            "--file", "Dockerfile",
-            "--project", args.project_id,
-            "."
-        ])
-
-        # Build NeMo
-        run_command([
-            "gcloud", "builds", "submit",
-            "--tag", f"gcr.io/{args.project_id}/governance-stack/nemo:latest",
-            "--file", "Dockerfile.nemo",
-            "--project", args.project_id,
-            "."
-        ])
+        for image_name, dockerfile in images:
+            tag = f"gcr.io/{args.project_id}/governance-stack/{image_name}:latest"
+            print(f"Building {image_name} -> {tag} using {dockerfile}")
+            
+            run_command([
+                "gcloud", "builds", "submit",
+                "--config", "cloudbuild.yaml",
+                f"--substitutions=_TAG={tag},_DOCKERFILE={dockerfile}",
+                "--project", args.project_id,
+                "."
+            ])
     else:
          print("\n--- ⏭️ Skipping Image Build ---")
 
@@ -204,7 +195,7 @@ def main():
     create_secret_from_env("hf-token-secret", "token", "HUGGING_FACE_HUB_TOKEN")
     create_secret_from_env("llm-secrets", "openai-api-key", "OPENAI_API_KEY")
     
-    policy_path = "src/governance/policy/finance_policy.rego"
+    policy_path = "src/governed_financial_advisor/governance/policy/finance_policy.rego"
     if not Path(policy_path).exists():
          if Path("deployment/finance_policy.rego").exists():
              policy_path = "deployment/finance_policy.rego"
@@ -237,8 +228,12 @@ def main():
         content = content.replace("${TP_SIZE_REASONING}", tp_size_reasoning)
 
         # Output filename (strip .tpl if present)
-        out_name = manifest.name.replace(".tpl", ".yaml")
-        if not out_name.endswith(".yaml"): out_name += ".yaml" # fallback
+        out_name = manifest.name
+        if out_name.endswith(".tpl"):
+            out_name = out_name[:-4]  # Remove .tpl
+        
+        if not out_name.endswith(".yaml") and not out_name.endswith(".yml"):
+             out_name += ".yaml"
 
         target_path = temp_dir / out_name
         with open(target_path, "w") as f:

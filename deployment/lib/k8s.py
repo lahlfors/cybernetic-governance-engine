@@ -229,6 +229,14 @@ def deploy_k8s_infra(project_id, config, args=None):
     else:
         print(f"⚠️ Redis manifest not found at {redis_manifest}")
 
+    # Deploy vLLM Service
+    vllm_service = k8s_dir / "vllm-service.yaml"
+    if vllm_service.exists():
+        print(f"🚀 Applying vLLM Service: {vllm_service}...")
+        run_command(["kubectl", "apply", "-f", str(vllm_service)])
+    else:
+        print(f"⚠️ vLLM Service manifest not found at {vllm_service}")
+
     generated_dir = Path("deployment/k8s/generated")
     generated_dir.mkdir(parents=True, exist_ok=True)
 
