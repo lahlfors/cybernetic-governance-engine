@@ -38,7 +38,8 @@ def create_requirements():
         "python-json-logger",
         "nest_asyncio",
         "google-adk",
-        "google-cloud-secret-manager"
+        "google-cloud-secret-manager",
+        "nemoguardrails"
     ]
     with open(REQUIREMENTS_FILE, "w") as f:
         f.write("\n".join(requirements))
