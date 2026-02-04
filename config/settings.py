@@ -14,7 +14,7 @@ VLLM_FAST_API_BASE = os.getenv("VLLM_FAST_API_BASE", "http://vllm-fast-service:8
 
 # --- REASONING PATH (Reasoning Plane) ---
 # Used for: Risk Analysis, Strategic Planning, Evaluation (STPA)
-# Recommended: meta-llama/Llama-3.1-70B-Instruct (Open Weights)
+# Recommended: meta-llama/Llama-3.1-70B-Instruct (Open Weights) or gemini-1.5-pro
 MODEL_REASONING = os.getenv("MODEL_REASONING", "meta-llama/Llama-3.1-70B-Instruct")
 VLLM_REASONING_API_BASE = os.getenv("VLLM_REASONING_API_BASE", "http://vllm-reasoning-service:8000/v1")
 
@@ -25,7 +25,7 @@ MODEL_CONSENSUS = os.getenv("MODEL_CONSENSUS", MODEL_REASONING)
 MODEL_NAME = MODEL_FAST
 
 class Config:
-    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "EMPTY") # Default to EMPTY for local vLLM
+    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "EMPTY") # Required for Gemini models
     DEFAULT_MODEL = MODEL_FAST
 
     # Cloud Run / Infrastructure

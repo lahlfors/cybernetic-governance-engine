@@ -14,6 +14,11 @@ from openai import APIConnectionError, APIStatusError, AsyncOpenAI
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
+try:
+    from google import genai
+except ImportError:
+    genai = None
+
 # Import config to access the reasoning endpoint
 from config.settings import Config
 
@@ -53,6 +58,14 @@ class HybridClient:
             api_key=vllm_api_key
         )
 
+        # Gemini Client
+        self.gemini_client = None
+        if genai:
+            if Config.GOOGLE_API_KEY and Config.GOOGLE_API_KEY != "EMPTY":
+                self.gemini_client = genai.Client(api_key=Config.GOOGLE_API_KEY)
+            elif Config.GOOGLE_CLOUD_PROJECT and Config.GOOGLE_CLOUD_LOCATION != "local":
+                self.gemini_client = genai.Client(vertexai=True, project=Config.GOOGLE_CLOUD_PROJECT, location=Config.GOOGLE_CLOUD_LOCATION)
+
     @property
     def vertex_client(self):
         raise NotImplementedError("Vertex AI Client is disabled in Sovereign Mode.")
@@ -74,6 +87,10 @@ class HybridClient:
                 effective_model = self.fast_model
 
         # 2. Determine Backend Client
+        if effective_model and effective_model.lower().startswith("gemini"):
+            # Return Gemini client. Base URL is handled by the client lib.
+            return self.gemini_client, "google_genai", effective_model
+
         if effective_model == self.reasoning_model or is_reasoning_mode:
              return self.reasoning_client, self.reasoning_base_url, effective_model
 
@@ -127,8 +144,45 @@ class HybridClient:
             span.set_attribute("llm.fsm_constraint", str(fsm_constraint))
 
             try:
-                logger.info(f"Generating via vLLM: {backend_url} [Model: {effective_model}, Mode: {mode}, FSM: {fsm_mode}]")
+                logger.info(f"Generating via {backend_url}: [Model: {effective_model}, Mode: {mode}, FSM: {fsm_mode}]")
 
+                # Gemini Handling
+                if backend_url == "google_genai":
+                    if not client:
+                         raise ValueError("Gemini Client not initialized (check GOOGLE_API_KEY).")
+
+                    from google.genai import types
+
+                    config_args = {}
+                    if system_instruction:
+                        config_args["system_instruction"] = system_instruction
+                    if "temperature" in kwargs:
+                        config_args["temperature"] = kwargs["temperature"]
+                    if "top_p" in kwargs:
+                        config_args["top_p"] = kwargs["top_p"]
+                    if "max_tokens" in kwargs:
+                        config_args["max_output_tokens"] = kwargs["max_tokens"]
+                    else:
+                        config_args["max_output_tokens"] = 1024
+
+                    if fsm_mode == "json_schema":
+                         config_args["response_mime_type"] = "application/json"
+
+                    # Execute Gemini Generation
+                    response = await client.aio.models.generate_content(
+                        model=effective_model,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(**config_args)
+                    )
+
+                    full_response = response.text
+                    end_time = time.time()
+                    total_time_ms = (end_time - start_time) * 1000
+                    span.set_attribute("telemetry.total_generation_time_ms", total_time_ms)
+                    span.set_attribute("telemetry.status", "success_gemini")
+                    return full_response
+
+                # vLLM / OpenAI Handling
                 # Merge extra_body if provided
                 if extra_body:
                     if "extra_body" in kwargs:
@@ -174,7 +228,7 @@ class HybridClient:
 
             except (APIConnectionError, APIStatusError, Exception) as e:
                 elapsed = (time.time() - start_time) * 1000
-                logger.error(f"vLLM Generation Failed on {backend_url} ({e!r}).")
+                logger.error(f"Generation Failed on {backend_url} ({e!r}).")
                 span.record_exception(e)
                 span.set_status(Status(StatusCode.ERROR))
                 raise e
