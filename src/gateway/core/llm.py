@@ -167,6 +167,19 @@ class HybridClient:
 
                     if fsm_mode == "json_schema":
                          config_args["response_mime_type"] = "application/json"
+                         # Extract schema if available from guided_json
+                         # Note: guided_json is popped earlier into extra_body['guided_json']
+                         if extra_body and "guided_json" in extra_body:
+                             json_schema = extra_body["guided_json"]
+                             # If it's a Pydantic model (class or instance), get schema
+                             if hasattr(json_schema, "model_json_schema"):
+                                 config_args["response_schema"] = json_schema.model_json_schema()
+                             elif isinstance(json_schema, dict):
+                                 config_args["response_schema"] = json_schema
+
+                    # Reliability Optimization: Enforce temperature 0 for reasoning models if not set
+                    if "temperature" not in config_args and "reasoning" in mode:
+                        config_args["temperature"] = 0.0
 
                     # Execute Gemini Generation
                     response = await client.aio.models.generate_content(
