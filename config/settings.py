@@ -14,8 +14,8 @@ VLLM_FAST_API_BASE = os.getenv("VLLM_FAST_API_BASE", "http://vllm-fast-service:8
 
 # --- REASONING PATH (Reasoning Plane) ---
 # Used for: Risk Analysis, Strategic Planning, Evaluation (STPA)
-# Recommended: meta-llama/Llama-3.1-70B-Instruct (Open Weights) or gemini-1.5-pro
-MODEL_REASONING = os.getenv("MODEL_REASONING", "meta-llama/Llama-3.1-70B-Instruct")
+# Default: gemini-1.5-pro (Reliability/Reasoning)
+MODEL_REASONING = os.getenv("MODEL_REASONING", "gemini-1.5-pro")
 VLLM_REASONING_API_BASE = os.getenv("VLLM_REASONING_API_BASE", "http://vllm-reasoning-service:8000/v1")
 
 # Consensus Engine: Separate model for multi-agent debate (can use different provider)

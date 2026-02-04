@@ -30,7 +30,7 @@ class HybridClient:
         self,
         vllm_base_url: str = "http://localhost:8000/v1",
         vllm_api_key: str = "EMPTY",
-        vllm_model: str = "meta-llama/Llama-3.1-8B-Instruct",
+        vllm_model: str = Config.DEFAULT_MODEL,
         vertex_model: str = None, # Ignored in Sovereign Mode
         vertex_project: str | None = None, # Ignored
         vertex_location: str = None, # Ignored
