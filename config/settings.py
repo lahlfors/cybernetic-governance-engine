@@ -6,16 +6,23 @@ load_dotenv()
 
 # Tiered Model Configuration (from .env)
 
+# --- MODEL FAMILIES (Hardcoded Defaults) ---
+LLAMA_FAST = "meta-llama/Llama-3.1-8B-Instruct"
+LLAMA_REASONING = "meta-llama/Llama-3.1-70B-Instruct"
+
+GEMINI_FAST = "gemini-2.0-flash"
+GEMINI_REASONING = "gemini-1.5-pro"
+
 # --- FAST PATH (Control Plane) ---
 # Used for: Routing, JSON formatting, Simple Execution
-# Recommended: meta-llama/Llama-3.1-8B-Instruct (Open Weights)
-MODEL_FAST = os.getenv("MODEL_FAST", "meta-llama/Llama-3.1-8B-Instruct")
+# Default: Gemini 2.0 Flash (Low Latency)
+MODEL_FAST = os.getenv("MODEL_FAST", GEMINI_FAST)
 VLLM_FAST_API_BASE = os.getenv("VLLM_FAST_API_BASE", "http://vllm-fast-service:8000/v1")
 
 # --- REASONING PATH (Reasoning Plane) ---
 # Used for: Risk Analysis, Strategic Planning, Evaluation (STPA)
-# Default: gemini-1.5-pro (Reliability/Reasoning)
-MODEL_REASONING = os.getenv("MODEL_REASONING", "gemini-1.5-pro")
+# Default: Gemini 1.5 Pro (High Reliability)
+MODEL_REASONING = os.getenv("MODEL_REASONING", GEMINI_REASONING)
 VLLM_REASONING_API_BASE = os.getenv("VLLM_REASONING_API_BASE", "http://vllm-reasoning-service:8000/v1")
 
 # Consensus Engine: Separate model for multi-agent debate (can use different provider)
