@@ -23,9 +23,13 @@ class GatewayClient:
             cls._instance = super(GatewayClient, cls).__new__(cls)
             cls._instance.sse_url = None
             cls._instance.chat_url = None
+            cls._instance.client = None
         return cls._instance
 
     def connect(self, host=None, port=None):
+        if self.client is None:
+            self.client = httpx.AsyncClient(timeout=120.0)
+
         if not host:
             host = os.getenv("GATEWAY_HOST", "localhost")
         if not port:
@@ -103,15 +107,24 @@ class GatewayClient:
         if "guided_choice" in kwargs: payload["guided_choice"] = kwargs["guided_choice"]
 
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                resp = await client.post(self.chat_url, json=payload)
-                resp.raise_for_status()
-                data = resp.json()
-                # OpenAI format: choices[0].message.content
-                return data["choices"][0]["message"]["content"]
+            # Use persistent client
+            if self.client is None:
+                self.client = httpx.AsyncClient(timeout=120.0)
+
+            resp = await self.client.post(self.chat_url, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            # OpenAI format: choices[0].message.content
+            return data["choices"][0]["message"]["content"]
         except Exception as e:
             logger.error(f"Chat Request Failed: {e}")
             raise e
+
+    async def close(self):
+        """Closes the underlying HTTP client."""
+        if self.client:
+            await self.client.aclose()
+            self.client = None
 
 # Singleton instance
 gateway_client = GatewayClient()
