@@ -32,7 +32,7 @@ LangchainInstrumentor().instrument() # Traces Graph nodes (including Agent calls
 async def lifespan(app: FastAPI):
     # Startup: Initialize Graph (and Redis)
     print("🔄 Initializing Agent Graph...")
-    app.state.graph = create_graph(redis_url=Config.REDIS_URL)
+    app.state.graph = create_graph()
     print("✅ Agent Graph Initialized")
     yield
     # Shutdown

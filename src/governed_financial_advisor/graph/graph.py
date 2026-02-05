@@ -31,7 +31,7 @@ from .nodes.supervisor_node import supervisor_node
 from .state import AgentState
 
 
-def create_graph(redis_url=None):
+def create_graph():
     workflow = StateGraph(AgentState)
 
     # 1. Add Nodes
@@ -84,6 +84,6 @@ def create_graph(redis_url=None):
     workflow.add_edge("human_review", "supervisor")
 
     return workflow.compile(
-        checkpointer=get_checkpointer(redis_url),
+        checkpointer=get_checkpointer(),
         interrupt_before=["human_review"]
     )

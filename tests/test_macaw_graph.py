@@ -18,7 +18,8 @@ def test_graph_compilation():
     Verifies that the graph compiles successfully with the new MACAW nodes.
     """
     try:
-        graph = create_graph(redis_url=None)
+        # Refactored: No Redis URL passed
+        graph = create_graph()
         assert graph is not None
         print("Graph compiled successfully")
     except Exception as e:

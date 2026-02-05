@@ -15,17 +15,17 @@ app = FastAPI(title="Financial Advisor Reasoning Engine")
 
 # Initialize Agent
 # We initialize it globally to keep state/connection pooling if applicable
-# In a real scalable setup, we might manage lifecycle differently.
 PROJECT_ID = os.environ.get("PROJECT_ID")
 REGION = os.environ.get("REGION", "us-central1")
-REDIS_HOST = os.environ.get("REDIS_HOST") # Passed via env var in container
-REDIS_URL = f"redis://{REDIS_HOST}:6379" if REDIS_HOST else None
 
 agent_engine = FinancialAdvisorEngine(
     project=PROJECT_ID,
-    location=REGION,
-    redis_url=REDIS_URL
+    location=REGION
 )
+
+# Trigger setup explicitly if running in this standalone service mode
+# Reasoning Engine Runtime might call this automatically, but here we control the lifecycle
+agent_engine.set_up()
 
 class QueryRequest(BaseModel):
     query: str
@@ -48,6 +48,3 @@ async def query_agent(request: QueryRequest):
     except Exception as e:
         logger.error(f"Error processing query: {e}")
         return {"error": str(e)}
-
-# If Vertex AI Reasoning Engine expects specific routes, we can add them.
-# Usually custom container implies we define the contract.

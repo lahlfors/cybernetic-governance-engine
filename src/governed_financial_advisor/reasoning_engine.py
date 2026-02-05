@@ -17,18 +17,16 @@ class FinancialAdvisorEngine:
     Adapter class for deploying the Financial Advisor on Vertex AI Agent Engine.
     """
 
-    def __init__(self, project: str = None, location: str = "us-central1", redis_url: str = None):
+    def __init__(self, project: str = None, location: str = "us-central1"):
         """
         Initializes the Financial Advisor Engine.
 
         Args:
             project: Google Cloud Project ID.
             location: Google Cloud Location.
-            redis_url: URL for Redis State Store. If None, uses ephemeral memory (not recommended for production).
         """
         self.project = project or os.environ.get("GOOGLE_CLOUD_PROJECT")
         self.location = location or os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
-        self.redis_url = redis_url or os.environ.get("REDIS_URL")
         self.app = None
 
     def set_up(self):
@@ -52,8 +50,9 @@ class FinancialAdvisorEngine:
                 logger.warning(f"Failed to load NEMO_SERVICE_URL from Secret Manager: {e}")
 
         # Initialize the graph here to ensure it uses the server environment
-        self.app = create_graph(redis_url=self.redis_url)
-        logger.info(f"FinancialAdvisorEngine initialized (Project: {self.project}, Redis: {self.redis_url})")
+        # Redis removed in favor of MemorySaver / Native Vertex AI Memory
+        self.app = create_graph()
+        logger.info(f"FinancialAdvisorEngine initialized (Project: {self.project})")
 
     def query(self, prompt: str, thread_id: str = None) -> Dict[str, Any]:
         """
@@ -69,10 +68,6 @@ class FinancialAdvisorEngine:
         config = {"configurable": {"thread_id": thread_id or "default_thread"}}
 
         # Invoke the LangGraph workflow
-        # The graph expects a dictionary with "messages" key or similar depending on State definition
-        # Looking at graph.py, it uses AgentState. We assume it takes `messages` key implicitly via adapters.
-        # Let's verify input format. Graph uses AgentState.
-
         inputs = {
             "messages": [HumanMessage(content=prompt)],
             # Initialize other state fields if necessary
@@ -84,13 +79,9 @@ class FinancialAdvisorEngine:
 
         try:
             # We use invoke (blocking) as Reasoning Engine expects a synchronous response return
-            # (even if under the hood it supports async, the default SDK pattern is often sync for `query`).
-            # If the runtime supports async query, we could use ainvoke.
-            # For now, sticking to synchronous invoke to be safe with standard RE templates.
             result = self.app.invoke(inputs, config=config)
 
             # Extract the final response.
-            # The result is the final state. We need to extract the last message content.
             messages = result.get("messages", [])
             last_message = messages[-1].content if messages else "No response generated."
 

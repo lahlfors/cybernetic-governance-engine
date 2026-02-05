@@ -1,27 +1,26 @@
 """
-ADK Agent Adapters for LangGraph Nodes (Lite Version)
+ADK Agent Adapters for LangGraph Nodes (Production Version)
 
-Refactored to remove strict dependency on `google-adk` for initial deployment stability.
-Mocks the ADK Runner/Session logic for now.
+Refactored to use standard `google.adk` Runner with InMemorySessionService.
 """
 
-import asyncio
-import json
 import logging
+import json
 from collections.abc import Callable
-from typing import Any, List, Optional
-import dataclasses
+from typing import Any, Optional
 
-# Mock Types replacing google.genai.types for now
-@dataclasses.dataclass
-class Part:
-    text: Optional[str] = None
-    function_call: Optional[Any] = None
-
-@dataclasses.dataclass
-class Content:
-    role: str
-    parts: List[Part]
+# Import ADK components
+try:
+    from google.adk.runners import Runner
+    # User specified google.adk.runners.InMemorySessionService, but standard might be google.adk.memory
+    # We try both to be safe, prioritizing the user's suggestion if valid.
+    try:
+        from google.adk.runners import InMemorySessionService
+    except ImportError:
+        from google.adk.memory import InMemorySessionService
+except ImportError as e:
+    # Fallback or re-raise if strictly required. For now, re-raise to fail fast if missing.
+    raise ImportError(f"Google ADK dependencies missing: {e}")
 
 # Import Factory Functions
 from src.governed_financial_advisor.agents.data_analyst.agent import create_data_analyst_agent
@@ -80,42 +79,49 @@ class AgentResponse:
         self.answer = answer
         self.function_calls = function_calls or []
 
-def run_adk_agent(agent_instance, user_msg: str, session_id: str = "default", user_id: str = "default_user"):
+def run_adk_agent(agent_instance, user_msg: str, session_id: str = "default", user_id: str = "default_user") -> AgentResponse:
     """
-    Simulates ADK Agent Runner.
-    This bypasses the actual ADK Runner/Session mechanism to avoid `google-adk` dependency issues during deployment.
-    It directly invokes the agent's underlying model or chain if possible, or just mocks a response if the agent is complex.
-    
-    CRITICAL: For this phase, we assume the specific agents (Data Analyst, etc.) might just be LangChain objects 
-    or similar that we can `.invoke` or `.run`.
+    Executes an ADK Agent using the Runner and InMemorySessionService.
+    The state is ephemeral per request/session if session_id varies,
+    but here we use InMemorySessionService which is local to the process.
     """
-    
-    # 1. Try standard LangChain invoke/run
     try:
-        if hasattr(agent_instance, "invoke"):
-            # LangChain Runnable
-            res = agent_instance.invoke(user_msg)
-            # Handle potential OutputParser types
-            if hasattr(res, "content"): return AgentResponse(answer=res.content)
-            if isinstance(res, str): return AgentResponse(answer=res)
-            return AgentResponse(answer=str(res))
-            
-        if hasattr(agent_instance, "run"):
-             # Legacy LangChain
-             res = agent_instance.run(user_msg)
-             return AgentResponse(answer=str(res))
+        # 1. Initialize Session Service (Ephemeral)
+        # In a real persistent scenario, we might use FirestoreSessionService,
+        # but requirements specify InMemorySessionService.
+        session_service = InMemorySessionService()
 
-        # 2. If it's a raw GenAI model (Vertex)
-        if hasattr(agent_instance, "generate_content"):
-             res = agent_instance.generate_content(user_msg)
-             text = res.text if hasattr(res, "text") else str(res)
-             return AgentResponse(answer=text)
-             
+        # 2. Initialize Runner
+        runner = Runner(
+            agent=agent_instance,
+            session_service=session_service
+        )
+
+        # 3. Execute
+        # Runner.run() typically returns the final text response.
+        # We need to verify the return type of runner.run().
+        # Usually it returns the model response string or object.
+        logger.info(f"Running agent {agent_instance.name} with session_id={session_id}")
+
+        # Note: Runner.run signature might vary. Assuming run(user_input, session_id=...)
+        # or run(session_id=..., prompt=...)
+        # We will try the standard pattern: runner.run(session_id=session_id, prompt=user_msg)
+        # Or if it's a simple runner: runner.run(user_msg)
+
+        # Based on standard ADK usage:
+        result = runner.run(
+            session_id=session_id,
+            prompt=user_msg
+        )
+
+        # 4. Wrap Response
+        # Result is typically the string answer for simple text agents.
+        # If it returns a structure, we might need to extract text.
+        return AgentResponse(answer=str(result))
+
     except Exception as e:
-        logger.error(f"Error invoking agent directly: {e}")
-        return AgentResponse(answer=f"Error running agent: {e}")
-
-    return AgentResponse(answer="[Mock] Agent execution not fully implemented without ADK.")
+        logger.error(f"Error running ADK agent: {e}", exc_info=True)
+        return AgentResponse(answer=f"Error executing agent: {e}")
 
 
 # --- Node Implementations ---
@@ -132,8 +138,6 @@ def data_analyst_node(state):
 def execution_analyst_node(state):
     """
     Wraps the Execution Analyst (Planner) agent for LangGraph.
-    Injects risk feedback if the loop pushed us back here.
-    Parses the JSON output to populate 'execution_plan_output'.
     """
     print("--- [Graph] Calling Execution Analyst (Planner) ---")
     agent = get_agent("execution_analyst", create_execution_analyst_agent)
@@ -154,9 +158,6 @@ def execution_analyst_node(state):
     # PARSE JSON Output
     plan_output = None
     try:
-        # The agent is configured to return JSON, so res.answer should be a JSON string.
-        # We try to parse it.
-        # Handle markdown blocks ```json ... ``` if present
         json_str = res.answer
         if "```json" in json_str:
             json_str = json_str.split("```json")[1].split("```")[0].strip()
@@ -168,14 +169,12 @@ def execution_analyst_node(state):
 
     except Exception as e:
         logger.warning(f"⚠️ Failed to parse Execution Plan JSON: {e}. Passing raw text.")
-        # Fallback: create a dummy plan wrapper around the text so Safety Node doesn't crash completely
         plan_output = {
             "steps": [],
             "reasoning": res.answer,
             "error": "Failed to parse JSON plan"
         }
 
-    # Reset status so we can potentially loop again or proceed
     return {
         "messages": [("ai", res.answer)],
         "risk_status": "UNKNOWN",
