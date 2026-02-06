@@ -25,7 +25,7 @@ resource "null_resource" "app_deployment" {
       export PATH=$PATH:/opt/homebrew/bin && \
       source .deploy_venv/bin/activate && \
       pip install --upgrade --quiet --extra-index-url https://pypi.org/simple keyrings.google-artifactregistry-auth && \
-      pip install --upgrade --quiet --extra-index-url https://pypi.org/simple google-cloud-aiplatform google-adk PyYAML langchain langchain-google-vertexai && \
+      pip install --upgrade --quiet --extra-index-url https://pypi.org/simple . && \
       python3 deployment/deploy_sw.py \
         --project-id ${var.project_id} \
         --region ${var.region} \

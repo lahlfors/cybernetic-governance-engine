@@ -48,9 +48,9 @@ from deployment.lib.config import load_config
 try:
     from register_agent import register_agent, list_engines, create_engine
     HAS_DISCOVERY_ENGINE = True
-except ImportError:
+except ImportError as e:
     HAS_DISCOVERY_ENGINE = False
-    print("⚠️ 'google-cloud-discoveryengine' not found. Agent registration will be skipped.")
+    print(f"⚠️ 'google-cloud-discoveryengine' not found. Agent registration will be skipped. Error: {e}")
 
 load_dotenv()
 
@@ -177,13 +177,16 @@ def deploy_agent_engine(project_id, region, staging_bucket, gateway_url):
 
         # Import the root ADK agent creator
         from src.governed_financial_advisor.agents.financial_advisor.agent import create_agent
-    except ImportError:
-        print("❌ Failed to import vertexai SDK or ADK Agent.")
+    except ImportError as e:
+        print(f"❌ Failed to import vertexai SDK or ADK Agent: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
     vertexai.init(project=project_id, location=region, staging_bucket=f"gs://{staging_bucket}")
 
     requirements = [
+        "google-adk>=1.0.0",
         "google-cloud-aiplatform[adk,agent-engines]",
         "langchain-google-vertexai",
         "langchain-google-genai",
@@ -193,8 +196,7 @@ def deploy_agent_engine(project_id, region, staging_bucket, gateway_url):
         "yfinance",
         "pandas",
         "httpx",
-        "nest_asyncio",
-        "google-adk>=1.0.0"
+        "nest_asyncio"
     ]
 
     print("   Initializing Root ADK Agent...")

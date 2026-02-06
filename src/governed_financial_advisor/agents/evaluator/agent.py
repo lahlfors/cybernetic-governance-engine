@@ -70,22 +70,7 @@ async def verify_policy_opa(action: str, params: str) -> str:
         logger.error(f"OPA Check Failed: {e}")
         return f"DENIED: System Error: {e}"
 
-async def verify_consensus(action: str, params: str) -> str:
-    """
-    Checks Consensus for high-value trades.
-    """
-    try:
-        import json
-        data = json.loads(params)
-        amount = float(data.get("amount", 0))
-        symbol = data.get("symbol", "UNKNOWN")
-    except:
-        amount = 0.0
-        symbol = "UNKNOWN"
 
-    result = await consensus_engine.check_consensus(action, amount, symbol)
-    return f"CONSENSUS_RESULT: {result['status']} ({result['reason']})"
->>>>>>> 446d8f4 (Refactor Governance Components for Production Readiness)
 
 async def verify_consensus(action: str, params: str) -> str:
     """

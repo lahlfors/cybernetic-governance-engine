@@ -17,16 +17,18 @@ class FinancialAdvisorEngine:
     Adapter class for deploying the Financial Advisor on Vertex AI Agent Engine.
     """
 
-    def __init__(self, project: str = None, location: str = "us-central1"):
+    def __init__(self, project: str = None, location: str = "us-central1", gateway_url: str = None):
         """
         Initializes the Financial Advisor Engine.
 
         Args:
             project: Google Cloud Project ID.
             location: Google Cloud Location.
+            gateway_url: URL of the Gateway Service.
         """
         self.project = project or os.environ.get("GOOGLE_CLOUD_PROJECT")
         self.location = location or os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+        self.gateway_url = gateway_url
         self.app = None
 
     def set_up(self):
@@ -35,6 +37,10 @@ class FinancialAdvisorEngine:
         Used to pre-warm connections or load heavy resources.
         """
         logger.info("Running set_up for FinancialAdvisorEngine...")
+
+        if self.gateway_url:
+            os.environ["GATEWAY_HOST"] = self.gateway_url
+            logger.info(f"Configured GATEWAY_HOST: {self.gateway_url}")
         
         # PROD: Fetch NeMo URL from Secret Manager if not in Env
         if not os.environ.get("NEMO_SERVICE_URL"):
