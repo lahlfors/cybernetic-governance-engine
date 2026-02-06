@@ -13,8 +13,6 @@ resource "google_project_service" "apis" {
     "run.googleapis.com",
     "secretmanager.googleapis.com",
     "storage.googleapis.com",
-    "telemetry.googleapis.com",
-    "cloudtrace.googleapis.com",
   ])
 
   project = var.project_id

@@ -33,7 +33,6 @@ import subprocess
 import sys
 import tempfile
 import time
-
 from pathlib import Path
 
 # Ensure project root is in sys.path
@@ -168,20 +167,24 @@ def deploy_gateway_service(project_id, region, opa_url):
     return url
 
 def deploy_agent_engine(project_id, region, staging_bucket, gateway_url):
-    """Deploys Vertex AI Reasoning Engine (Backend for Gemini Agents)."""
+    """
+    Deploys Vertex AI Reasoning Engine using AdkApp (Gemini Enterprise Standard).
+    """
     print(f"\n--- 🧠 Deploying Agent Engine (Gemini Enterprise Backend) ---")
     try:
         import vertexai
         from vertexai.preview import reasoning_engines
-        from src.governed_financial_advisor.reasoning_engine import FinancialAdvisorEngine
+
+        # Import the root ADK agent creator
+        from src.governed_financial_advisor.agents.financial_advisor.agent import create_agent
     except ImportError:
-        print("❌ Failed to import vertexai SDK.")
+        print("❌ Failed to import vertexai SDK or ADK Agent.")
         return None
 
     vertexai.init(project=project_id, location=region, staging_bucket=f"gs://{staging_bucket}")
 
     requirements = [
-        "google-cloud-aiplatform[agent-engines]",
+        "google-cloud-aiplatform[adk,agent-engines]",
         "langchain-google-vertexai",
         "langchain-google-genai",
         "langgraph",
@@ -190,22 +193,35 @@ def deploy_agent_engine(project_id, region, staging_bucket, gateway_url):
         "yfinance",
         "pandas",
         "httpx",
-        "nest_asyncio"
+        "nest_asyncio",
+        "google-adk>=1.0.0"
     ]
 
-    print("   Creating Reasoning Engine...")
+    print("   Initializing Root ADK Agent...")
     try:
-        remote_agent = reasoning_engines.ReasoningEngine.create(
-            FinancialAdvisorEngine(project=project_id, location=region, gateway_url=gateway_url),
+        # Create the ADK agent instance locally
+        root_agent = create_agent(model_name="gemini-2.5-pro") # Or load from env
+
+        # Wrap in AdkApp
+        print("   Wrapping in AdkApp...")
+        app = vertexai.preview.reasoning_engines.AdkApp(
+            agent=root_agent
+        )
+
+        print("   Creating Remote Agent Engine...")
+        remote_agent = vertexai.preview.reasoning_engines.ReasoningEngine.create(
+            app,
             requirements=requirements,
             extra_packages=["src", "config"],
             display_name="financial-advisor-engine",
-            description="Governed Financial Advisor (Gemini Enterprise Ready)",
+            description="Governed Financial Advisor (ADK App)",
         )
         print(f"✅ Agent Engine Deployed: {remote_agent.resource_name}")
         return remote_agent
     except Exception as e:
         print(f"❌ Failed to deploy Agent Engine: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 def perform_gemini_registration(project_id, region, reasoning_engine_resource_name):
@@ -215,12 +231,6 @@ def perform_gemini_registration(project_id, region, reasoning_engine_resource_na
         return
 
     print(f"\n--- 💎 Registering with Gemini Enterprise ---")
-
-    # Discovery Engine/Agent Builder location might differ (often 'global' or 'us-central1')
-    # For Agents, usually match the reasoning engine location if supported, or use 'global'.
-    # Defaulting to 'global' for Agent Builder is common, but let's try the region first or default to 'global' if fails?
-    # Actually, usually Agent Builder apps are location-specific (us, eu, or global).
-    # Let's use the provided region.
 
     app_id = "financial-advisor-app"
 
@@ -234,8 +244,7 @@ def perform_gemini_registration(project_id, region, reasoning_engine_resource_na
             try:
                 found_engine = create_engine(project_id, region, "Financial Advisor", app_id)
             except Exception as e:
-                 print(f"   ⚠️ Could not create Engine (might need to use 'global' location?): {e}")
-                 # Fallback logic could go here, but keep simple for now
+                 print(f"   ⚠️ Could not create Engine: {e}")
                  return
         else:
              print(f"   Found existing Agent App: {found_engine.name}")
@@ -250,6 +259,8 @@ def perform_gemini_registration(project_id, region, reasoning_engine_resource_na
 # --- Main ---
 
 def main():
+    import tempfile
+
     parser = argparse.ArgumentParser(description="Deploy Financial Advisor App (Gemini Enterprise)")
     parser.add_argument("--project-id", default=os.environ.get("GOOGLE_CLOUD_PROJECT"), help="GCP Project ID")
     parser.add_argument("--region", default=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"), help="GCP Region")
@@ -281,7 +292,7 @@ def main():
     # 3. Deploy Gateway
     gateway_url = deploy_gateway_service(project_id, region, opa_url)
 
-    # 4. Deploy Agent Engine
+    # 4. Deploy Agent Engine (AdkApp)
     staging_bucket = f"{project_id}-agent-artifacts"
     run_command(["gcloud", "storage", "buckets", "create", f"gs://{staging_bucket}", "--project", project_id, "--location", region], check=False)
 

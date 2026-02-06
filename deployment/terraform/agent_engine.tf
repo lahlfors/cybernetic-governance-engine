@@ -40,22 +40,3 @@ resource "google_vertex_ai_reasoning_engine" "financial_advisor" {
   }
 }
 
-
-resource "null_resource" "patch_telemetry" {
-  triggers = {
-    engine_id = google_vertex_ai_reasoning_engine.financial_advisor.name
-    telemetry = var.enable_telemetry
-    trace     = var.trace_content
-  }
-
-  provisioner "local-exec" {
-    command = <<EOT
-      python3 ../../deployment/patch_env_vars.py \
-        --project-id ${var.project_id} \
-        --region ${var.region} \
-        --engine-id ${google_vertex_ai_reasoning_engine.financial_advisor.name} \
-        --env-vars '{"GOOGLE_CLOUD_AGENT_ENGINE_ENABLE_TELEMETRY": "${var.enable_telemetry}", "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT": "${var.trace_content}"}'
-    EOT
-  }
-  depends_on = [google_vertex_ai_reasoning_engine.financial_advisor]
-}

@@ -37,14 +37,3 @@ variable "machine_type" {
   type        = string
   default     = "g2-standard-8"
 }
-variable "enable_telemetry" {
-  description = "Enable Telemetry"
-  type        = string
-  default     = "true"
-}
-
-variable "trace_content" {
-  description = "Enable Trace Content"
-  type        = string
-  default     = "true"
-}
