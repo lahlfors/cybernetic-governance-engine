@@ -33,6 +33,7 @@ import subprocess
 import sys
 import tempfile
 import time
+
 from pathlib import Path
 
 # Ensure project root is in sys.path
@@ -249,8 +250,6 @@ def perform_gemini_registration(project_id, region, reasoning_engine_resource_na
 # --- Main ---
 
 def main():
-    import tempfile
-
     parser = argparse.ArgumentParser(description="Deploy Financial Advisor App (Gemini Enterprise)")
     parser.add_argument("--project-id", default=os.environ.get("GOOGLE_CLOUD_PROJECT"), help="GCP Project ID")
     parser.add_argument("--region", default=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"), help="GCP Region")
