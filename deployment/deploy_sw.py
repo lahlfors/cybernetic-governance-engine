@@ -14,15 +14,16 @@
 # limitations under the License.
 
 """
-Serverless Deployment Script for Governed Financial Advisor (Refactored)
+Serverless Deployment Script for Governed Financial Advisor (Gemini Enterprise)
 
 Architecture:
-1. Agent Engine (Vertex AI) - Core Logic
+1. Agent Engine (Vertex AI) - Core Logic (Backend for Gemini Agents)
 2. Cloud Run (Gateway) - Interface & Tool Execution
 3. Cloud Run (OPA) - Policy Engine
-4. Cloud Run (UI) - Frontend
 
-Removes GKE and Redis dependencies.
+Prerequisites:
+- Google Cloud Project with Billing Enabled
+- APIs: aiplatform.googleapis.com, run.googleapis.com, cloudbuild.googleapis.com
 """
 
 import argparse
@@ -30,6 +31,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -159,42 +161,9 @@ def deploy_gateway_service(project_id, region, opa_url):
     print(f"✅ Gateway deployed at: {url}")
     return url
 
-def deploy_ui_service(project_id, region, gateway_url, skip_ui=False):
-    """Deploys UI to Cloud Run."""
-    if skip_ui:
-        return None
-
-    service_name = "financial-advisor-ui"
-    print(f"\n--- 🖥️ Deploying UI Service: {service_name} ---")
-
-    ui_dir = Path("ui")
-    image_uri = f"gcr.io/{project_id}/financial-advisor-ui:latest"
-
-    run_command([
-        "gcloud", "builds", "submit",
-        "--tag", image_uri,
-        "--project", project_id,
-        str(ui_dir)
-    ])
-
-    run_command([
-        "gcloud", "run", "deploy", service_name,
-        "--image", image_uri,
-        "--region", region,
-        "--project", project_id,
-        "--platform", "managed",
-        "--allow-unauthenticated",
-        "--set-env-vars", f"BACKEND_URL={gateway_url}", # UI talks to Gateway
-        "--port", "8080"
-    ])
-
-    url = check_service_exists(project_id, region, service_name)
-    print(f"✅ UI deployed at: {url}")
-    return url
-
-def deploy_reasoning_engine(project_id, region, staging_bucket, gateway_url):
-    """Deploys Vertex AI Reasoning Engine."""
-    print(f"\n--- 🧠 Deploying Vertex AI Reasoning Engine ---")
+def deploy_agent_engine(project_id, region, staging_bucket, gateway_url):
+    """Deploys Vertex AI Reasoning Engine (Backend for Gemini Agents)."""
+    print(f"\n--- 🧠 Deploying Agent Engine (Gemini Enterprise Backend) ---")
     try:
         import vertexai
         from vertexai.preview import reasoning_engines
@@ -218,10 +187,6 @@ def deploy_reasoning_engine(project_id, region, staging_bucket, gateway_url):
         "nest_asyncio"
     ]
 
-    # Inject Gateway URL into the remote environment via env vars?
-    # Reasoning Engine doesn't easily support env vars yet in `create`.
-    # We pass it to the constructor.
-
     print("   Creating Reasoning Engine...")
     try:
         remote_agent = reasoning_engines.ReasoningEngine.create(
@@ -229,12 +194,16 @@ def deploy_reasoning_engine(project_id, region, staging_bucket, gateway_url):
             requirements=requirements,
             extra_packages=["src", "config"],
             display_name="financial-advisor-engine",
-            description="Governed Financial Advisor (Serverless)",
+            description="Governed Financial Advisor (Gemini Enterprise Ready)",
         )
-        print(f"✅ Reasoning Engine Deployed: {remote_agent.resource_name}")
+        print(f"✅ Agent Engine Deployed: {remote_agent.resource_name}")
+        print("\nℹ️  NEXT STEPS for Gemini Enterprise:")
+        print("1. Go to Google Cloud Console > Vertex AI > Agents")
+        print("2. Or visit Agent Designer in Gemini Enterprise")
+        print(f"3. Register this Reasoning Engine ({remote_agent.resource_name}) as a new Agent.")
         return remote_agent
     except Exception as e:
-        print(f"❌ Failed to deploy Reasoning Engine: {e}")
+        print(f"❌ Failed to deploy Agent Engine: {e}")
         return None
 
 # --- Main ---
@@ -242,11 +211,10 @@ def deploy_reasoning_engine(project_id, region, staging_bucket, gateway_url):
 def main():
     import tempfile # Needed for OPA build
 
-    parser = argparse.ArgumentParser(description="Deploy Financial Advisor App (Serverless)")
+    parser = argparse.ArgumentParser(description="Deploy Financial Advisor App (Gemini Enterprise)")
     parser.add_argument("--project-id", default=os.environ.get("GOOGLE_CLOUD_PROJECT"), help="GCP Project ID")
     parser.add_argument("--region", default=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"), help="GCP Region")
     parser.add_argument("--skip-build", action="store_true", help="Skip Backend Build")
-    parser.add_argument("--skip-ui", action="store_true", help="Skip UI")
 
     args = parser.parse_args()
     project_id = args.project_id
@@ -273,15 +241,12 @@ def main():
     # 3. Deploy Gateway
     gateway_url = deploy_gateway_service(project_id, region, opa_url)
 
-    # 4. Deploy UI (Optional)
-    deploy_ui_service(project_id, region, gateway_url, skip_ui=args.skip_ui)
-
-    # 5. Deploy Agent Engine
+    # 4. Deploy Agent Engine
     staging_bucket = f"{project_id}-agent-artifacts"
     # Ensure bucket exists
     run_command(["gcloud", "storage", "buckets", "create", f"gs://{staging_bucket}", "--project", project_id, "--location", region], check=False)
 
-    deploy_reasoning_engine(project_id, region, staging_bucket, gateway_url)
+    deploy_agent_engine(project_id, region, staging_bucket, gateway_url)
 
     print("\n✅ Deployment Complete!")
 
