@@ -18,9 +18,7 @@ dependencies = [
     "langchain-google-genai>=2.1.12",
     "langchain-google-vertexai>=2.0.0",
     "google-cloud-firestore>=2.0.0",
-    "redis>=5.0.0",
     "langgraph",
-    "langgraph-checkpoint-redis",
     "opentelemetry-api",
     "opentelemetry-sdk",
     "opentelemetry-exporter-gcp-trace",
@@ -33,11 +31,7 @@ dependencies = [
     "python-json-logger>=2.0.7",
     "uvicorn>=0.29.0",
     "fastapi>=0.110.0",
-    "openai>=1.0.0",
-    "google-genai>=0.3.0",
     "kfp>=2.6.0",
-    "grpcio>=1.76.0",
-    "grpcio-tools>=1.76.0",
 ]
 
 requires-python = ">=3.10,<3.13"

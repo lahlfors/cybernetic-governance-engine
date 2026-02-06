@@ -24,20 +24,28 @@ class Config:
     DEFAULT_MODEL = MODEL_FAST
 
     # Cloud Run / Infrastructure
-    GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "laah-cybernetics")
+    GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT")
     GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
     PORT = int(os.getenv("PORT", 8080))
 
     # Data Stores
     FIRESTORE_DATABASE = os.getenv("FIRESTORE_DATABASE", "(default)")
-    # Build REDIS_URL from host/port for compatibility with K8s deployment
-    REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-    REDIS_PORT = os.getenv("REDIS_PORT", "6379")
-    REDIS_URL = os.getenv("REDIS_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}")
+
+    # Redis (Optional/Deprecated in Serverless mode)
+    # If not set, app should fall back to MemorySaver
+    REDIS_URL = os.getenv("REDIS_URL", None)
+
+    # Observability
+    LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://us.cloud.langfuse.com")
+    LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY")
+    LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY")
 
     # Governance
+    # OPA URL: If running in Cloud Run, this will be the URL of the OPA service
     OPA_URL = os.getenv("OPA_URL", "http://localhost:8181/v1/data/finance/decision")
     OPA_AUTH_TOKEN = os.getenv("OPA_AUTH_TOKEN")
+
+    # NeMo Guardrails (Optional - currently using internal checks or sidecar)
     NEMO_URL = os.getenv("NEMO_URL", "http://nemo:8000/v1/guardrails/check")
 
     # Runtime Configuration Override (for Agent Engine)

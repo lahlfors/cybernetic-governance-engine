@@ -1,16 +1,16 @@
 """
-Gateway Client Wrapper (Async)
+Gateway Client Wrapper (HTTP/REST)
+Refactored to use httpx instead of gRPC.
 """
-import grpc.aio
 import json
 import logging
 import os
+import httpx
+from typing import Optional, Any, Dict, List
+
 import google.auth
 from google.auth.transport.requests import Request as AuthRequest
 from google.oauth2 import id_token
-
-from src.gateway.protos import gateway_pb2
-from src.gateway.protos import gateway_pb2_grpc
 
 logger = logging.getLogger("GatewayClient")
 
@@ -20,128 +20,127 @@ class GatewayClient:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(GatewayClient, cls).__new__(cls)
-            cls._instance.channel = None
-            cls._instance.stub = None
-            cls._instance.target_url = None
+            cls._instance.client: Optional[httpx.AsyncClient] = None
+            cls._instance.base_url: Optional[str] = None
         return cls._instance
 
-    def _get_auth_metadata(self):
+    def _get_auth_token(self) -> Optional[str]:
         """
         Fetches OIDC Token for Cloud Run Service-to-Service authentication.
-        Only runs if target_url is set (implies remote Cloud Run).
         """
-        if not self.target_url or "localhost" in self.target_url or "127.0.0.1" in self.target_url:
+        if not self.base_url or "localhost" in self.base_url or "127.0.0.1" in self.base_url:
             return None
 
         try:
-            # Use google.auth to check connectivity/creds
-            # When calling Cloud Run, the audience is the Service URL
             auth_req = AuthRequest()
-            # Verify if target_url has protocol, if not add https:// for audience generation if needed,
-            # but usually fetch_id_token expects the exact audience string of the service.
-            audience = self.target_url
+            audience = self.base_url
             if not audience.startswith("http"):
                 audience = f"https://{audience}"
 
+            # Use the base URL (service root) as audience usually
+            # If base_url has path, strip it? Cloud Run audience is usually the base URL.
             token = id_token.fetch_id_token(auth_req, audience)
-            return (("authorization", f"Bearer {token}"),)
+            return token
         except Exception as e:
-            logger.warning(f"Failed to fetch OIDC token for Gateway: {e}")
+            logger.debug(f"Could not fetch OIDC token (might be local or no creds): {e}")
             return None
 
     def connect(self, host=None, port=None):
+        """
+        Initializes the HTTP client.
+        """
         if not host:
             host = os.getenv("GATEWAY_HOST", "localhost")
         if not port:
-            port = os.getenv("GATEWAY_PORT", "50051")
+            port = os.getenv("GATEWAY_PORT", "8080")
 
-        if not self.channel:
-            # Detect if running on Cloud Run (using HTTPS usually)
-            if host != "localhost" and host != "127.0.0.1":
-                # Assume secure channel for Cloud Run if port is 443 or https protocol specified
-                if "https://" in host or port == "443":
-                    target = host.replace("https://", "")
-                    # Strip port if 443 to avoid SNI issues if needed, or keep it.
-                    # GRPC secure channel usually wants host:port or just host.
-                    if ":443" in target:
-                        target = target # keep as is
-
-                    creds = grpc.ssl_channel_credentials()
-                    self.channel = grpc.aio.secure_channel(target, creds)
-                    self.target_url = host # Set full URL for Audience derivation
-                else:
-                    # Fallback or internal IP (e.g. PSC IP)
-                    target = f"{host}:{port}"
-                    self.channel = grpc.aio.insecure_channel(target)
-                    # If using PSC with IP, we might still need Auth if the service requires it.
-                    # But usually PSC endpoints are accessed via HTTP/2 cleartext (h2c) inside VPC?
-                    # Let's assume if it's not localhost, we might need auth unless configured otherwise.
-                    # For now, treat non-https as insecure/no-auth unless overridden.
-                    self.target_url = None
+        if not self.client:
+            if host.startswith("http"):
+                self.base_url = host
+            elif "localhost" in host or "127.0.0.1" in host:
+                self.base_url = f"http://{host}:{port}"
             else:
-                target = f"{host}:{port}"
-                self.channel = grpc.aio.insecure_channel(target)
-                self.target_url = None
+                 # Assume HTTPS for remote
+                self.base_url = f"https://{host}"
 
-            self.stub = gateway_pb2_grpc.GatewayStub(self.channel)
-            logger.info(f"Connected to Gateway at {target} (Auth: {self.target_url is not None})")
+            logger.info(f"Gateway Client connecting to: {self.base_url}")
+
+            # Configure timeouts (LLM calls can be long)
+            self.client = httpx.AsyncClient(
+                base_url=self.base_url,
+                timeout=120.0
+            )
 
     async def execute_tool(self, tool_name: str, params: dict) -> str:
-        if not self.stub:
+        if not self.client:
             self.connect()
 
-        metadata = self._get_auth_metadata()
+        headers = {}
+        token = self._get_auth_token()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
 
-        req = gateway_pb2.ToolRequest(
-            tool_name=tool_name,
-            params_json=json.dumps(params)
-        )
+        payload = {
+            "tool_name": tool_name,
+            "params": params
+        }
 
         try:
-            resp = await self.stub.ExecuteTool(req, metadata=metadata)
-            if resp.status == "SUCCESS":
-                return resp.output
+            response = await self.client.post("/tools/execute", json=payload, headers=headers)
+            response.raise_for_status()
+
+            data = response.json()
+            if data["status"] == "SUCCESS":
+                return data["output"]
             else:
-                return f"BLOCKED/ERROR: {resp.error}"
-        except grpc.aio.AioRpcError as e:
-            logger.error(f"RPC Failed: {e}")
-            return f"SYSTEM ERROR: Could not reach Gateway. {e.details()}"
+                return f"BLOCKED/ERROR: {data.get('error', 'Unknown Error')}"
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP Error executing tool: {e.response.text}")
+            return f"SYSTEM ERROR: Gateway returned {e.response.status_code}"
+        except httpx.RequestError as e:
+            logger.error(f"Request Error executing tool: {e}")
+            return f"SYSTEM ERROR: Could not reach Gateway. {e}"
 
     async def chat(self, prompt: str, system_instruction: str = None, mode: str = "chat", **kwargs) -> str:
-        if not self.stub:
+        if not self.client:
             self.connect()
 
-        metadata = self._get_auth_metadata()
+        headers = {}
+        token = self._get_auth_token()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
 
-        msgs = []
-        msgs.append(gateway_pb2.Message(role="user", content=prompt))
+        payload = {
+            "messages": [{"role": "user", "content": prompt}],
+            "model": "default",
+            "temperature": kwargs.get("temperature", 0.0),
+            "system_instruction": system_instruction,
+            "mode": mode,
+            # Pass guided_json as dict directly
+            "guided_json": kwargs.get("guided_json"),
+            "guided_regex": kwargs.get("guided_regex"),
+            "guided_choice": kwargs.get("guided_choice")
+        }
 
-        temperature = kwargs.get("temperature", 0.0)
-        guided_json = None
-        if "guided_json" in kwargs:
-             guided_json = json.dumps(kwargs["guided_json"])
-
-        req = gateway_pb2.ChatRequest(
-            model="default",
-            messages=msgs,
-            temperature=temperature,
-            system_instruction=system_instruction,
-            mode=mode,
-            guided_json=guided_json,
-            guided_regex=kwargs.get("guided_regex"),
-            guided_choice=str(kwargs.get("guided_choice")) if kwargs.get("guided_choice") else None
-        )
-
-        full_text = []
         try:
-            call = self.stub.Chat(req, metadata=metadata)
-            async for resp in call:
-                full_text.append(resp.content)
+            response = await self.client.post("/chat", json=payload, headers=headers)
+            response.raise_for_status()
 
-            return "".join(full_text)
-        except grpc.aio.AioRpcError as e:
-            logger.error(f"Chat RPC Failed: {e}")
-            raise e
+            data = response.json()
+            return data["content"]
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP Error in chat: {e.response.text}")
+            raise RuntimeError(f"Gateway Chat Error: {e.response.status_code} - {e.response.text}")
+        except httpx.RequestError as e:
+            logger.error(f"Request Error in chat: {e}")
+            raise RuntimeError(f"Gateway Connection Error: {e}")
+
+    async def close(self):
+        if self.client:
+            await self.client.aclose()
+            self.client = None
 
 # Singleton instance
 gateway_client = GatewayClient()

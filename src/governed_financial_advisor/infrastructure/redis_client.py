@@ -1,7 +1,6 @@
 import logging
 import os
-
-import redis
+from typing import Dict, Optional
 
 from src.governed_financial_advisor.utils.telemetry import get_tracer
 
@@ -9,69 +8,38 @@ logger = logging.getLogger("Infrastructure.Redis")
 
 class RedisWrapper:
     """
-    Production-ready Redis wrapper.
-    Connects to Google Cloud Memorystore via REDIS_HOST.
-    Falls back to local memory ONLY if connection fails (for CI/Sandbox safety).
+    Ephemeral State Wrapper.
+    Replaces Redis with in-memory storage as requested.
+    NOTE: State is not shared across instances/restarts.
     """
     def __init__(self):
-        self.host = os.environ.get("REDIS_HOST", "localhost")
-        self.port = int(os.environ.get("REDIS_PORT", 6379))
-        self.port = int(os.environ.get("REDIS_PORT", 6379))
-        self.client = None
-        self._local_cache = {}
+        self._local_cache: Dict[str, str] = {}
         self.tracer = get_tracer()
+        logger.info("✅ Redis removed. Using In-Memory Ephemeral Storage.")
 
-        try:
-            # Socket timeout is critical for fail-fast in sidecar architectures
-            self.client = redis.Redis(
-                host=self.host,
-                port=self.port,
-                decode_responses=True,
-                socket_connect_timeout=1.0,
-                socket_timeout=1.0
-            )
-            self.client.ping()
-            logger.info(f"✅ Connected to Redis at {self.host}:{self.port}")
-        except Exception as e:
-            logger.warning(f"⚠️ Redis connection failed: {e}. Running in ephemeral mode.")
-            self.client = None
-
-    def get(self, key: str) -> str | None:
+    def get(self, key: str) -> Optional[str]:
         if self.tracer:
-            with self.tracer.start_as_current_span("redis.get") as span:
-                span.set_attribute("redis.key", key)
-                return self._do_get(key)
-        return self._do_get(key)
-
-    def _do_get(self, key: str) -> str | None:
-        try:
-            if self.client:
-                return self.client.get(key)
-        except Exception as e:
-            logger.error(f"Redis read error: {e}")
+            with self.tracer.start_as_current_span("state.get") as span:
+                span.set_attribute("state.key", key)
+                return self._local_cache.get(key)
         return self._local_cache.get(key)
 
     def set(self, key: str, value: str):
         if self.tracer:
-            with self.tracer.start_as_current_span("redis.set") as span:
-                span.set_attribute("redis.key", key)
-                self._do_set(key, value)
+            with self.tracer.start_as_current_span("state.set") as span:
+                span.set_attribute("state.key", key)
+                self._local_cache[key] = value
         else:
-             self._do_set(key, value)
-
-    def _do_set(self, key: str, value: str):
-        try:
-            if self.client:
-                self.client.set(key, value)
-        except Exception as e:
-            logger.error(f"Redis write error: {e}")
-        self._local_cache[key] = value
+             self._local_cache[key] = value
 
     def get_float(self, key: str, default: float = 0.0) -> float:
         val = self.get(key)
         if val is None:
             return default
-        return float(val)
+        try:
+            return float(val)
+        except ValueError:
+            return default
 
 # Global singleton
 redis_client = RedisWrapper()
