@@ -23,15 +23,13 @@ The system is deployed as a **single Cloud Run Service** that follows the multi-
 *   Google Cloud Project with billing enabled.
 *   `gcloud` CLI installed and authenticated.
 *   Permissions to manage Cloud Run, Secret Manager, and Artifact Registry/Cloud Build.
-*   **Optional:** [Serverless VPC Access](https://cloud.google.com/run/docs/configuring/vpc-connectors) connector (Required for Redis/Memorystore connectivity).
 
 ## Deployment Script
 
 The `deploy_all.py` script is the central entry point for deploying the entire Cybernetic Governance Engine stack. It orchestrates the provisioning and configuration of:
 
-1.  **Redis**: Provisions or verifies a Redis instance (for session state persistence).
-2.  **Secrets & Config**: Updates Secret Manager (OPA policies, auth tokens).
-3.  **Cloud Run Services**: Builds and deploys the Backend (`governed-financial-advisor`) and UI (`financial-advisor-ui`) services.
+1.  **Secrets & Config**: Updates Secret Manager (OPA policies, auth tokens).
+2.  **Cloud Run Services**: Builds and deploys the Backend (`governed-financial-advisor`) and UI (`financial-advisor-ui`) services.
 
 ### Usage
 
@@ -74,10 +72,6 @@ python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID \
 # Skip specific services
 python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --skip-build  # Skip container build
 python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --skip-ui     # Skip UI deployment
-python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --skip-redis  # Skip Redis provisioning
-
-# Use existing Redis
-python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --redis-host "10.0.0.5"
 ```
 
 ### UI Deployment
@@ -93,19 +87,6 @@ The script automatically deploys the Streamlit UI as a separate Cloud Run servic
 *   **Fail-Closed:** The application fails securely if the OPA sidecar is unreachable.
 *   **Startup Boost:** Uses Cloud Run CPU Boost to minimize cold start latency, ensuring the sidecar is ready before the app serves traffic.
 *   **Startup Dependency:** Uses the `dependsOn` configuration to ensure the application container waits for the OPA sidecar's health check to pass before starting, preventing startup race conditions.
-
-## Redis Connectivity
-
-For session state persistence, Cloud Run requires a **Serverless VPC Access connector** to reach Cloud Memorystore (Redis).
-
-If a VPC connector is not configured:
-*   The application will timeout connecting to Redis
-*   The system will fallback to **Ephemeral Mode** (in-memory state only)
-*   Session state will NOT persist across container restarts
-
-To configure VPC connectivity:
-1.  Create a [Serverless VPC Access connector](https://cloud.google.com/run/docs/configuring/vpc-connectors)
-2.  Add `--vpc-connector YOUR_CONNECTOR` to the Cloud Run deploy command
 
 ## Post-Deployment Verification
 
@@ -169,4 +150,3 @@ cd deployment/terraform
 terraform init
 terraform apply -var="project_id=YOUR_PROJECT_ID"
 ```
-
