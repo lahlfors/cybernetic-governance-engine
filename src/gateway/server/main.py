@@ -15,20 +15,20 @@ sys.path.append(".")
 
 from src.gateway.protos import gateway_pb2
 from src.gateway.protos import gateway_pb2_grpc
+from src.gateway.protos import nemo_pb2
+from src.gateway.protos import nemo_pb2_grpc
+
 from src.gateway.core.llm import HybridClient
 from src.gateway.core.policy import OPAClient
 from src.gateway.core.tools import execute_trade, TradeOrder
 from src.gateway.core.market import market_service
 
-# Import Governance Logic (Assuming these remain as shared libraries for now)
-# In a true microservice split, these would be moved to gateway/core completely.
 from src.governed_financial_advisor.governance.consensus import consensus_engine
 from src.governed_financial_advisor.governance.safety import safety_filter
 
 logger = logging.getLogger("Gateway.Server")
-logger.warning("DEPRECATED: This gRPC server is deprecated. Please migrate to the Hybrid Gateway (hybrid_server.py).")
 
-# Configure JSON Logging for Cloud Run (Stackdriver)
+# Configure JSON Logging
 logHandler = logging.StreamHandler()
 formatter = jsonlogger.JsonFormatter('%(timestamp)s %(severity)s %(name)s %(message)s')
 logHandler.setFormatter(formatter)
@@ -41,6 +41,17 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
         logger.info("Initializing Gateway Service Components...")
         self.llm_client = HybridClient()
         self.opa_client = OPAClient()
+
+        # Connect to NeMo gRPC
+        nemo_url = os.getenv("NEMO_URL", "nemo-service:8000")
+        # Ensure we strip http:// if present for gRPC
+        if nemo_url.startswith("http://"):
+            nemo_url = nemo_url.replace("http://", "")
+
+        logger.info(f"Connecting to NeMo Guardrails at {nemo_url}...")
+        self.nemo_channel = grpc.aio.insecure_channel(nemo_url)
+        self.nemo_stub = nemo_pb2_grpc.NeMoGuardrailsStub(self.nemo_channel)
+
         logger.info("Gateway Service Ready.")
 
     async def Chat(self, request, context):
@@ -107,58 +118,52 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
             context.set_details(f"Invalid JSON params: {e}")
             return gateway_pb2.ToolResponse(status="ERROR", error="Invalid JSON")
 
-        # 1. Governance Tax (OPA)
-        # We need to adapt the OPA check.
-        # SKIP OPA for "system" tools like market checks to avoid recursion/blocking
-        # unless specifically configured.
+        # 1. Governance Tax (OPA) - REST
         if tool_name not in ["check_market_status", "verify_content_safety"]:
             payload = params.copy()
             payload['action'] = tool_name
-            is_dry_run = params.get("dry_run", False)
 
             decision = await self.opa_client.evaluate_policy(payload)
 
             if decision == "DENY":
                 return gateway_pb2.ToolResponse(status="BLOCKED", error="OPA Policy Violation")
-
             if decision == "MANUAL_REVIEW":
-                 # Production readiness: Log alert instead of just error string
-                 logger.critical(f"MANUAL REVIEW REQUIRED for {tool_name} | Params: {params}")
-                 return gateway_pb2.ToolResponse(status="BLOCKED", error="Manual Review Triggered - Admin Notified.")
+                 return gateway_pb2.ToolResponse(status="BLOCKED", error="Manual Review Required")
 
         # 2. Safety & Consensus
 
-        # --- MARKET CHECK TOOL ---
         if tool_name == "check_market_status":
             symbol = params.get("symbol", "UNKNOWN")
             status = market_service.check_status(symbol)
             return gateway_pb2.ToolResponse(status="SUCCESS", output=status)
 
-        # --- SEMANTIC SAFETY TOOL (NeMo Proxy) ---
+        # --- SEMANTIC SAFETY TOOL (NeMo gRPC) ---
         elif tool_name == "verify_content_safety":
             text = params.get("text", "")
-            # In a real deployment, this calls the NeMo Guardrails Service (Layer 0)
-            # or uses a local Guardrails instance.
-            # For now, we implement a basic robust check to replace the mock.
-            if "jailbreak" in text.lower() or "ignore previous" in text.lower():
-                 return gateway_pb2.ToolResponse(status="BLOCKED", error="Semantic Safety Violation (Jailbreak Pattern)")
-            return gateway_pb2.ToolResponse(status="SUCCESS", output="SAFE")
+            try:
+                nemo_req = nemo_pb2.VerifyRequest(input=text)
+                nemo_resp = await self.nemo_stub.Verify(nemo_req)
 
-        # --- TRADE EXECUTION TOOL ---
+                if nemo_resp.status == "SUCCESS":
+                    return gateway_pb2.ToolResponse(status="SUCCESS", output="SAFE")
+                else:
+                    return gateway_pb2.ToolResponse(status="BLOCKED", error=f"NeMo Blocked: {nemo_resp.response}")
+            except grpc.RpcError as e:
+                logger.error(f"NeMo gRPC Failed: {e}")
+                # Fail Closed
+                return gateway_pb2.ToolResponse(status="BLOCKED", error="Safety Service Unavailable")
+
         elif tool_name == "execute_trade":
             try:
-                # Validate Schema first
                 try:
                     order = TradeOrder(**params)
                 except Exception as e:
                     return gateway_pb2.ToolResponse(status="ERROR", error=f"Schema Validation Failed: {e}")
 
-                # CBF Check
                 cbf_result = safety_filter.verify_action(tool_name, params)
                 if cbf_result.startswith("UNSAFE"):
                      return gateway_pb2.ToolResponse(status="BLOCKED", error=f"Safety Filter: {cbf_result}")
 
-                # Consensus Check
                 amount = params.get("amount", 0)
                 symbol = params.get("symbol", "UNKNOWN")
                 consensus = await consensus_engine.check_consensus(tool_name, amount, symbol)
@@ -166,19 +171,11 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
                 if consensus["status"] == "REJECT":
                      return gateway_pb2.ToolResponse(status="BLOCKED", error=f"Consensus Rejected: {consensus['reason']}")
 
-                if consensus["status"] == "ESCALATE":
-                     return gateway_pb2.ToolResponse(status="BLOCKED", error=f"Consensus Escalation: {consensus['reason']}")
-
-                # DRY RUN CHECK (Moved here to cover Safety/Consensus too)
                 is_dry_run = params.get("dry_run", False)
                 if is_dry_run:
-                    logger.info(f"DRY RUN (System 3 Check): {tool_name} APPROVED by all gates.")
-                    return gateway_pb2.ToolResponse(status="SUCCESS", output="DRY_RUN: APPROVED by OPA, Safety, and Consensus.")
+                    return gateway_pb2.ToolResponse(status="SUCCESS", output="DRY_RUN: APPROVED")
 
-                # Update State
                 safety_filter.update_state(amount)
-
-                # 3. Execution (The "Act" phase)
                 result = await execute_trade(order)
                 return gateway_pb2.ToolResponse(status="SUCCESS", output=result)
 
@@ -194,9 +191,8 @@ async def serve():
     server = grpc.aio.server(futures.ThreadPoolExecutor(max_workers=10))
     gateway_pb2_grpc.add_GatewayServicer_to_server(GatewayService(), server)
 
-    # Cloud Run expects us to listen on $PORT
     server.add_insecure_port(f'[::]:{port}')
-    logger.info(f"🚀 Gateway Server starting on port {port}...")
+    logger.info(f"🚀 Gateway Server (gRPC) starting on port {port}...")
 
     await server.start()
     await server.wait_for_termination()

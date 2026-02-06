@@ -18,20 +18,20 @@ spec:
       serviceAccountName: default # In prod, use Workload Identity
       containers:
       - name: gateway
-        image: gcr.io/${PROJECT_ID}/governance-stack/gateway:latest # Placeholder
+        image: gcr.io/${PROJECT_ID}/governance-stack/gateway:latest
         imagePullPolicy: Always
         ports:
-        - containerPort: 8080
+        - containerPort: 50051
           name: grpc
         env:
         - name: PORT
-          value: "8080"
+          value: "50051"
         - name: VLLM_SERVICE_URL
           value: "http://vllm-service:8000/v1"
         - name: OPA_URL
           value: "http://opa-service:8181/v1/data/finance/allow"
         - name: NEMO_URL
-          value: "http://nemo-service:8000/v1/chat/completions"
+          value: "nemo-service:8000"
         resources:
           requests:
             cpu: "500m"
@@ -49,8 +49,8 @@ spec:
   selector:
     app: gateway
   ports:
-  - port: 8080
-    targetPort: 8080
+  - port: 50051
+    targetPort: 50051
     protocol: TCP
     name: grpc
   type: ClusterIP
