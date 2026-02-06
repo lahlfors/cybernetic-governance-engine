@@ -1,3 +1,16 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 """
 Vertex AI Reasoning Engine Adapter for the Governed Financial Advisor.
@@ -6,8 +19,10 @@ This file defines the class structure required by the Vertex AI Reasoning Engine
 
 from typing import Dict, Any, List, Optional
 from src.governed_financial_advisor.graph.graph import create_graph
+from src.governed_financial_advisor.utils.nemo_manager import create_nemo_manager, validate_with_nemo
 import os
 import logging
+import asyncio
 from langchain_core.messages import HumanMessage
 
 logger = logging.getLogger(__name__)
@@ -15,6 +30,8 @@ logger = logging.getLogger(__name__)
 class FinancialAdvisorEngine:
     """
     Adapter class for deploying the Financial Advisor on Vertex AI Agent Engine.
+    Implements Option 1: The 'Library Wrapper' Pattern, where NeMo Guardrails
+    run in-process to validate inputs before they reach the Agent Graph.
     """
 
     def __init__(self, project: str = None, location: str = "us-central1"):
@@ -28,6 +45,7 @@ class FinancialAdvisorEngine:
         self.project = project or os.environ.get("GOOGLE_CLOUD_PROJECT")
         self.location = location or os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
         self.app = None
+        self.rails = None
 
     def set_up(self):
         """
@@ -36,18 +54,22 @@ class FinancialAdvisorEngine:
         """
         logger.info("Running set_up for FinancialAdvisorEngine...")
         
-        # PROD: Fetch NeMo URL from Secret Manager if not in Env
-        if not os.environ.get("NEMO_SERVICE_URL"):
-            try:
-                from google.cloud import secretmanager
-                client = secretmanager.SecretManagerServiceClient()
-                name = f"projects/{self.project}/secrets/nemo-service-url/versions/latest"
-                response = client.access_secret_version(request={"name": name})
-                nemo_url = response.payload.data.decode("UTF-8").strip()
-                os.environ["NEMO_SERVICE_URL"] = nemo_url
-                logger.info(f"Loaded NEMO_SERVICE_URL from Secret Manager: {nemo_url}")
-            except Exception as e:
-                logger.warning(f"Failed to load NEMO_SERVICE_URL from Secret Manager: {e}")
+        # Option 1 (Library Wrapper): Ensure we run LOCALLY.
+        # We explicitly do NOT fetch NEMO_SERVICE_URL from Secret Manager.
+        # If the environment has it set, we unset it to force local mode,
+        # unless explicitly overridden by a "FORCE_REMOTE" flag (optional, but let's keep it simple).
+        if os.environ.get("NEMO_SERVICE_URL"):
+            logger.warning("NEMO_SERVICE_URL is set in environment. Clearing it to force Local Mode (Library Wrapper).")
+            del os.environ["NEMO_SERVICE_URL"]
+
+        # Initialize NeMo Guardrails (Local Mode)
+        # Assuming 'config/rails' is bundled in the deployment package at root or relative.
+        logger.info("Initializing NeMo Guardrails (Local Mode)...")
+        self.rails = create_nemo_manager("config/rails")
+        if not self.rails:
+             logger.error("Failed to initialize NeMo Guardrails locally.")
+             # We might want to raise an error here to fail deployment if rails are critical.
+             # raise RuntimeError("NeMo Guardrails initialization failed")
 
         # Initialize the graph here to ensure it uses the server environment
         # Redis removed in favor of MemorySaver / Native Vertex AI Memory
@@ -65,12 +87,39 @@ class FinancialAdvisorEngine:
         Returns:
             A dictionary containing the agent's response and execution details.
         """
+
+        # 1. NeMo Security Check (Input Rail) - Option 1: Library Wrapper
+        if self.rails:
+            try:
+                # Handle Async Loop for validate_with_nemo
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+
+                # Use loop to run async validation
+                # Note: create_nemo_manager applies nest_asyncio, so re-entrant loops should work.
+                is_safe, msg = loop.run_until_complete(validate_with_nemo(prompt, self.rails))
+
+                if not is_safe:
+                    logger.warning(f"Governance Input Rail BLOCKED: {prompt[:50]}...")
+                    return {
+                        "response": msg,
+                        "blocked": True,
+                        "state_snapshot": {}
+                    }
+            except Exception as e:
+                logger.error(f"Governance Check failed: {e}")
+                # Fail Closed
+                return {"response": f"System Error during Governance Check: {e}", "error": str(e)}
+
+        # 2. Agent Execution
         config = {"configurable": {"thread_id": thread_id or "default_thread"}}
 
         # Invoke the LangGraph workflow
         inputs = {
             "messages": [HumanMessage(content=prompt)],
-            # Initialize other state fields if necessary
             "plan": [],
             "feedback": "",
             "execution_result": {},
