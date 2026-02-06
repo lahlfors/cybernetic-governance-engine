@@ -32,6 +32,7 @@ dependencies = [
     "uvicorn>=0.29.0",
     "fastapi>=0.110.0",
     "kfp>=2.6.0",
+    "google-cloud-discoveryengine>=0.11.0",
 ]
 
 requires-python = ">=3.10,<3.13"

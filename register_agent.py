@@ -56,7 +56,16 @@ def register_agent(project_id, location, engine_id, reasoning_engine_id, agent_d
     agent = discoveryengine.Agent()
     agent.display_name = agent_display_name
     agent.description = "A Governed Financial Advisor agent that provides investment advice with risk checks."
-    agent.engine = f"projects/{project_id}/locations/{location}/reasoningEngines/{reasoning_engine_id}"
+
+    # IMPORTANT: The engine field must be the Full Resource Name of the Vertex AI Reasoning Engine
+    # Format: projects/{project}/locations/{location}/reasoningEngines/{id}
+    # reasoning_engine_id passed here is usually just the ID, so construct full path if needed,
+    # OR if it is already full path, use it.
+
+    if "projects/" in reasoning_engine_id:
+        agent.engine = reasoning_engine_id
+    else:
+        agent.engine = f"projects/{project_id}/locations/{location}/reasoningEngines/{reasoning_engine_id}"
     
     print(f"Registering Agent '{agent_display_name}' to Engine '{engine_id}'...")
     print(f"Linking Reasoning Engine: {agent.engine}")
@@ -89,17 +98,21 @@ def main():
     
     # 1. Ensure we have an App (Engine)
     app_id = "financial-advisor-app"
-    engines = list_engines(project_id, location)
-    found_engine = next((e for e in engines if e.name.endswith(f"/engines/{app_id}")), None)
-    
-    if not found_engine:
-        print(f"App '{app_id}' not found. Creating...")
-        found_engine = create_engine(project_id, location, "Financial Advisor App", app_id)
-    else:
-        print(f"Found existing App: {found_engine.name}")
+    try:
+        engines = list_engines(project_id, location)
+        found_engine = next((e for e in engines if e.name.endswith(f"/engines/{app_id}")), None)
+
+        if not found_engine:
+            print(f"App '{app_id}' not found. Creating...")
+            found_engine = create_engine(project_id, location, "Financial Advisor App", app_id)
+        else:
+            print(f"Found existing App: {found_engine.name}")
+
+        # 2. Register Agent
+        register_agent(project_id, location, app_id, reasoning_engine_id, "Financial Advisor")
         
-    # 2. Register Agent
-    register_agent(project_id, location, app_id, reasoning_engine_id, "Financial Advisor")
+    except ImportError:
+         print("❌ google-cloud-discoveryengine not installed. Skipping registration.")
 
 if __name__ == "__main__":
     main()

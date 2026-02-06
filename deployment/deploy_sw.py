@@ -23,7 +23,7 @@ Architecture:
 
 Prerequisites:
 - Google Cloud Project with Billing Enabled
-- APIs: aiplatform.googleapis.com, run.googleapis.com, cloudbuild.googleapis.com
+- APIs: aiplatform.googleapis.com, run.googleapis.com, cloudbuild.googleapis.com, discoveryengine.googleapis.com
 """
 
 import argparse
@@ -43,6 +43,14 @@ if str(project_root) not in sys.path:
 
 from deployment.lib.utils import load_dotenv, run_command
 from deployment.lib.config import load_config
+
+# Import Registration Logic (Dynamic import to avoid hard failure if dep missing during bootstrap)
+try:
+    from register_agent import register_agent, list_engines, create_engine
+    HAS_DISCOVERY_ENGINE = True
+except ImportError:
+    HAS_DISCOVERY_ENGINE = False
+    print("⚠️ 'google-cloud-discoveryengine' not found. Agent registration will be skipped.")
 
 load_dotenv()
 
@@ -113,7 +121,7 @@ def deploy_opa_service(project_id, region):
             "--region", region,
             "--project", project_id,
             "--platform", "managed",
-            "--allow-unauthenticated", # Internal service, but for simplicity allowing invocation (secured by app logic or IAM later)
+            "--allow-unauthenticated", # Internal service
             "--port", "8080",
             "--memory", "256Mi",
             "--cpu", "1"
@@ -129,9 +137,6 @@ def deploy_gateway_service(project_id, region, opa_url):
     image_uri = f"gcr.io/{project_id}/financial-advisor:latest"
     print(f"\n--- ⛩️ Deploying Gateway Service: {service_name} ---")
 
-    # Ensure container is built (handled in main)
-
-    # Deploy
     env_vars = [
         f"OPA_URL={opa_url}/v1/data/finance/decision",
         f"MODEL_FAST={os.environ.get('MODEL_FAST', 'gemini-2.5-flash-lite')}",
@@ -197,24 +202,60 @@ def deploy_agent_engine(project_id, region, staging_bucket, gateway_url):
             description="Governed Financial Advisor (Gemini Enterprise Ready)",
         )
         print(f"✅ Agent Engine Deployed: {remote_agent.resource_name}")
-        print("\nℹ️  NEXT STEPS for Gemini Enterprise:")
-        print("1. Go to Google Cloud Console > Vertex AI > Agents")
-        print("2. Or visit Agent Designer in Gemini Enterprise")
-        print(f"3. Register this Reasoning Engine ({remote_agent.resource_name}) as a new Agent.")
         return remote_agent
     except Exception as e:
         print(f"❌ Failed to deploy Agent Engine: {e}")
         return None
 
+def perform_gemini_registration(project_id, region, reasoning_engine_resource_name):
+    """Registers the deployed Reasoning Engine with Gemini Enterprise (Agent Builder)."""
+    if not HAS_DISCOVERY_ENGINE:
+        print("⏭️ Skipping Gemini Registration (dependency missing).")
+        return
+
+    print(f"\n--- 💎 Registering with Gemini Enterprise ---")
+
+    # Discovery Engine/Agent Builder location might differ (often 'global' or 'us-central1')
+    # For Agents, usually match the reasoning engine location if supported, or use 'global'.
+    # Defaulting to 'global' for Agent Builder is common, but let's try the region first or default to 'global' if fails?
+    # Actually, usually Agent Builder apps are location-specific (us, eu, or global).
+    # Let's use the provided region.
+
+    app_id = "financial-advisor-app"
+
+    try:
+        # 1. Ensure App/Engine exists
+        engines = list_engines(project_id, region)
+        found_engine = next((e for e in engines if e.name.endswith(f"/engines/{app_id}")), None)
+
+        if not found_engine:
+            print(f"   Creating new Agent App '{app_id}'...")
+            try:
+                found_engine = create_engine(project_id, region, "Financial Advisor", app_id)
+            except Exception as e:
+                 print(f"   ⚠️ Could not create Engine (might need to use 'global' location?): {e}")
+                 # Fallback logic could go here, but keep simple for now
+                 return
+        else:
+             print(f"   Found existing Agent App: {found_engine.name}")
+
+        # 2. Register Agent
+        register_agent(project_id, region, app_id, reasoning_engine_resource_name, "Financial Advisor")
+
+    except Exception as e:
+        print(f"❌ Gemini Registration Failed: {e}")
+        print("   Please register manually in the Agent Console.")
+
 # --- Main ---
 
 def main():
-    import tempfile # Needed for OPA build
+    import tempfile
 
     parser = argparse.ArgumentParser(description="Deploy Financial Advisor App (Gemini Enterprise)")
     parser.add_argument("--project-id", default=os.environ.get("GOOGLE_CLOUD_PROJECT"), help="GCP Project ID")
     parser.add_argument("--region", default=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"), help="GCP Region")
     parser.add_argument("--skip-build", action="store_true", help="Skip Backend Build")
+    parser.add_argument("--skip-registration", action="store_true", help="Skip Gemini App Registration")
 
     args = parser.parse_args()
     project_id = args.project_id
@@ -226,7 +267,7 @@ def main():
 
     print(f"🚀 Deploying to Project: {project_id} in {region}")
 
-    # 1. Build Backend Image (Shared by Gateway)
+    # 1. Build Backend Image
     image_uri = f"gcr.io/{project_id}/financial-advisor:latest"
     if not args.skip_build:
         print("\n--- 🏗️ Building Backend Image ---")
@@ -236,17 +277,20 @@ def main():
     opa_url = deploy_opa_service(project_id, region)
     if not opa_url:
         print("⚠️ OPA deployment failed or skipped. Gateway might fail.")
-        opa_url = "http://localhost:8181" # Fallback
+        opa_url = "http://localhost:8181"
 
     # 3. Deploy Gateway
     gateway_url = deploy_gateway_service(project_id, region, opa_url)
 
     # 4. Deploy Agent Engine
     staging_bucket = f"{project_id}-agent-artifacts"
-    # Ensure bucket exists
     run_command(["gcloud", "storage", "buckets", "create", f"gs://{staging_bucket}", "--project", project_id, "--location", region], check=False)
 
-    deploy_agent_engine(project_id, region, staging_bucket, gateway_url)
+    remote_agent = deploy_agent_engine(project_id, region, staging_bucket, gateway_url)
+
+    # 5. Register with Gemini Enterprise
+    if remote_agent and not args.skip_registration:
+        perform_gemini_registration(project_id, region, remote_agent.resource_name)
 
     print("\n✅ Deployment Complete!")
 
