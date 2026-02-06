@@ -63,11 +63,3 @@ deployment/terraform/tfplan
 deployment/backend_service.yaml
 deployment/nemo_service.yaml
 manual_gateway_build.yaml
-
-# Deployment artifacts
-.build_venv/
-.manual_deploy_venv/
-deployment/artifacts/
-.temp_download/
-deploy_log.txt
-deploy_agent_log.txt

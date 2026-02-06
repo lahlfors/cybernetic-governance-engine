@@ -8,13 +8,3 @@ resource "google_service_account_iam_member" "workload_identity_user" {
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:${var.project_id}.svc.id.goog[governance-stack/financial-advisor-sa]"
 }
-
-resource "google_service_account" "gateway_sa" {
-  account_id   = "gateway-sa"
-  display_name = "Gateway Service Account"
-}
-
-resource "google_service_account" "agent_sa" {
-  account_id   = "agent-sa"
-  display_name = "Agent Service Account"
-}
