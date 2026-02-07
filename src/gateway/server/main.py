@@ -22,6 +22,7 @@ from src.gateway.core.llm import HybridClient
 from src.gateway.core.policy import OPAClient
 from src.gateway.core.tools import execute_trade, TradeOrder
 from src.gateway.core.market import market_service
+from src.gateway.governance import SymbolicGovernor, GovernanceError
 
 from src.governed_financial_advisor.governance.consensus import consensus_engine
 from src.governed_financial_advisor.governance.safety import safety_filter
@@ -41,6 +42,13 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
         logger.info("Initializing Gateway Service Components...")
         self.llm_client = HybridClient()
         self.opa_client = OPAClient()
+
+        # Initialize Neuro-Symbolic Governor
+        self.symbolic_governor = SymbolicGovernor(
+            opa_client=self.opa_client,
+            safety_filter=safety_filter,
+            consensus_engine=consensus_engine
+        )
 
         # Connect to NeMo gRPC
         nemo_url = os.getenv("NEMO_URL", "nemo-service:8000")
@@ -106,7 +114,7 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
 
     async def ExecuteTool(self, request, context):
         """
-        Executes a tool with strict governance.
+        Executes a tool with strict governance via SymbolicGovernor.
         """
         tool_name = request.tool_name
         logger.info(f"Received Tool Request: {tool_name}")
@@ -118,19 +126,21 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
             context.set_details(f"Invalid JSON params: {e}")
             return gateway_pb2.ToolResponse(status="ERROR", error="Invalid JSON")
 
-        # 1. Governance Tax (OPA) - REST
+        # 1. Neuro-Symbolic Governance Layer
+        # Enforces SR 11-7 (Rules) and ISO 42001 (Policy/Process)
+        # We skip read-only/benign tools from heavy governance if needed,
+        # but for maximum safety, we could govern everything.
+        # Here we maintain the logic of skipping 'check_market_status' and 'verify_content_safety'
+        # from OPA/Consensus, as they are low-risk or have their own logic.
+
         if tool_name not in ["check_market_status", "verify_content_safety"]:
-            payload = params.copy()
-            payload['action'] = tool_name
+            try:
+                await self.symbolic_governor.govern(tool_name, params)
+            except GovernanceError as e:
+                logger.warning(f"🛡️ Symbolic Governor BLOCKED {tool_name}: {e}")
+                return gateway_pb2.ToolResponse(status="BLOCKED", error=str(e))
 
-            decision = await self.opa_client.evaluate_policy(payload)
-
-            if decision == "DENY":
-                return gateway_pb2.ToolResponse(status="BLOCKED", error="OPA Policy Violation")
-            if decision == "MANUAL_REVIEW":
-                 return gateway_pb2.ToolResponse(status="BLOCKED", error="Manual Review Required")
-
-        # 2. Safety & Consensus
+        # 2. Tool Execution Logic
 
         if tool_name == "check_market_status":
             symbol = params.get("symbol", "UNKNOWN")
@@ -154,33 +164,29 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
                 return gateway_pb2.ToolResponse(status="BLOCKED", error="Safety Service Unavailable")
 
         elif tool_name == "execute_trade":
+            # Validation (Pydantic)
             try:
-                try:
-                    order = TradeOrder(**params)
-                except Exception as e:
-                    return gateway_pb2.ToolResponse(status="ERROR", error=f"Schema Validation Failed: {e}")
+                order = TradeOrder(**params)
+            except Exception as e:
+                return gateway_pb2.ToolResponse(status="ERROR", error=f"Schema Validation Failed: {e}")
 
-                cbf_result = safety_filter.verify_action(tool_name, params)
-                if cbf_result.startswith("UNSAFE"):
-                     return gateway_pb2.ToolResponse(status="BLOCKED", error=f"Safety Filter: {cbf_result}")
+            is_dry_run = params.get("dry_run", False)
+            if is_dry_run:
+                return gateway_pb2.ToolResponse(status="SUCCESS", output="DRY_RUN: APPROVED")
 
-                amount = params.get("amount", 0)
-                symbol = params.get("symbol", "UNKNOWN")
-                consensus = await consensus_engine.check_consensus(tool_name, amount, symbol)
+            # State Update (Commit) - only if Governor approved
+            # The Governor *verified* the state transition, now we *commit* it.
+            amount = params.get("amount", 0)
+            safety_filter.update_state(amount)
 
-                if consensus["status"] == "REJECT":
-                     return gateway_pb2.ToolResponse(status="BLOCKED", error=f"Consensus Rejected: {consensus['reason']}")
-
-                is_dry_run = params.get("dry_run", False)
-                if is_dry_run:
-                    return gateway_pb2.ToolResponse(status="SUCCESS", output="DRY_RUN: APPROVED")
-
-                safety_filter.update_state(amount)
+            # Execute
+            try:
                 result = await execute_trade(order)
                 return gateway_pb2.ToolResponse(status="SUCCESS", output=result)
-
             except Exception as e:
                 logger.error(f"Tool Execution Error: {e}")
+                # Rollback state since trade failed
+                safety_filter.rollback_state(amount)
                 return gateway_pb2.ToolResponse(status="ERROR", error=str(e))
 
         else:

@@ -21,11 +21,19 @@ class TradeOrder(BaseModel):
     symbol: str = Field(..., description="Ticker symbol of the asset")
     amount: float = Field(..., description="Amount to trade")
     currency: str = Field(..., description="Currency code (e.g. USD, EUR)")
+    confidence: float = Field(..., description="Confidence score (0.0-1.0) of the agent proposing the trade. MUST be >= 0.95 for execution.")
 
     # System-generated fields with defaults
     transaction_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique UUID for the transaction")
     trader_id: str = Field(default="agent_001", description="ID of the trader initiating the request (e.g. 'trader_001')")
     trader_role: str = Field(default="junior", description="Role of the trader: 'junior' or 'senior'")
+
+    @field_validator('confidence')
+    @classmethod
+    def validate_confidence(cls, v):
+        if not (0.0 <= v <= 1.0):
+            raise ValueError("Confidence must be between 0.0 and 1.0")
+        return v
 
     @field_validator('amount')
     @classmethod
@@ -73,7 +81,7 @@ async def execute_trade(order: TradeOrder) -> str:
     Executes a trade via the Agentic Gateway.
     The Gateway enforces all Policy (OPA), Safety, and Consensus checks.
     """
-    logger.info(f"Delegating trade execution to Gateway: {order.transaction_id}")
+    logger.info(f"Delegating trade execution to Gateway: {order.transaction_id} (Confidence: {order.confidence})")
 
     # Serialize params
     params = order.model_dump()

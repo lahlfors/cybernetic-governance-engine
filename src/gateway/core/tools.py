@@ -4,7 +4,7 @@ Gateway Core: Real Trade Execution Logic
 
 import logging
 import asyncio
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,7 @@ class TradeOrder(BaseModel):
     transaction_id: str
     trader_id: str
     trader_role: str
+    confidence: float = Field(default=0.0, description="Confidence score (0.0-1.0) of the agent proposing the trade.")
 
 async def execute_trade(order: TradeOrder) -> str:
     """
@@ -36,7 +37,7 @@ async def execute_trade(order: TradeOrder) -> str:
         logger.error(error_msg)
         raise RuntimeError(error_msg)
 
-    logger.info(f"Executing Trade {order.transaction_id} on {base_url}...")
+    logger.info(f"Executing Trade {order.transaction_id} on {base_url} (Confidence: {order.confidence})...")
 
     # Example using requests (simulating client lib usage for generality)
     import requests
