@@ -1,12 +1,9 @@
-from typing import Annotated, Any, Literal, TypedDict
-
+from typing import Any, Literal, TypedDict, List
 from langchain_core.messages import BaseMessage
-from langgraph.graph.message import add_messages
-
 
 class AgentState(TypedDict):
     # The shared conversation history
-    messages: Annotated[list[BaseMessage], add_messages]
+    messages: List[BaseMessage]
 
     # Routing Control
     next_step: Literal[

@@ -5,7 +5,7 @@ This file defines the class structure required by the Vertex AI Reasoning Engine
 """
 
 from typing import Dict, Any, List, Optional
-from src.governed_financial_advisor.graph.graph import create_graph
+
 import os
 import logging
 from langchain_core.messages import HumanMessage
@@ -55,9 +55,9 @@ class FinancialAdvisorEngine:
             except Exception as e:
                 logger.warning(f"Failed to load NEMO_SERVICE_URL from Secret Manager: {e}")
 
-        # Initialize the graph here to ensure it uses the server environment
-        # Redis removed in favor of MemorySaver / Native Vertex AI Memory
-        self.app = create_graph()
+        # Initialize Orchestrator
+        from src.governed_financial_advisor.orchestrator import FinancialAdvisorOrchestrator
+        self.orchestrator = FinancialAdvisorOrchestrator()
         logger.info(f"FinancialAdvisorEngine initialized (Project: {self.project})")
 
     def query(self, prompt: str, thread_id: str = None) -> Dict[str, Any]:
@@ -73,30 +73,24 @@ class FinancialAdvisorEngine:
         """
         config = {"configurable": {"thread_id": thread_id or "default_thread"}}
 
-        # Invoke the LangGraph workflow
-        inputs = {
-            "messages": [HumanMessage(content=prompt)],
-            # Initialize other state fields if necessary
-            "plan": [],
-            "feedback": "",
-            "execution_result": {},
-            "evaluation_result": {}
-        }
-
         try:
-            # We use invoke (blocking) as Reasoning Engine expects a synchronous response return
-            result = self.app.invoke(inputs, config=config)
+            # Execute Orchestrator
+            final_state = self.orchestrator.run(
+                prompt=prompt,
+                thread_id=thread_id
+            )
 
-            # Extract the final response.
-            messages = result.get("messages", [])
+            # Extract response
+            messages = final_state.get("messages", [])
             last_message = messages[-1].content if messages else "No response generated."
 
             return {
                 "response": last_message,
                 "state_snapshot": {
-                    "plan": result.get("plan"),
-                    "execution_result": str(result.get("execution_result")),
-                    "evaluation_result": str(result.get("evaluation_result"))
+                    "plan": [], # Plan structure might differ in new state, check if plan_output exists
+                    "execution_plan_output": str(final_state.get("execution_plan_output")),
+                    "execution_result": str(final_state.get("execution_result")),
+                    "evaluation_result": str(final_state.get("evaluation_result"))
                 }
             }
         except Exception as e:

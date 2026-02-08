@@ -27,9 +27,7 @@ def create_requirements():
         "google-cloud-aiplatform[agent-engines]",
         "langchain-google-vertexai",
         "langchain-google-genai",
-        "langgraph",
-        "langgraph-checkpoint-redis",
-        "redis",
+
         "pydantic",
         "google-auth",
         "yfinance",

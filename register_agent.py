@@ -3,7 +3,7 @@ import os
 import argparse
 import time
 from google.api_core.client_options import ClientOptions
-from google.cloud import discoveryengine_v1alpha as discoveryengine
+from google.cloud import discoveryengine_v1beta as discoveryengine
 
 def get_client_options(location):
     api_endpoint = f"{location}-discoveryengine.googleapis.com" if location != "global" else "discoveryengine.googleapis.com"
@@ -44,46 +44,47 @@ def create_engine(project_id, location, display_name, engine_id):
     print(f"Engine created: {response.name}")
     return response
 
-def register_agent(project_id, location, engine_id, reasoning_engine_id, agent_display_name):
+def create_data_store(project_id, location, data_store_id, display_name):
     client_options = get_client_options(location)
-    client = discoveryengine.AgentServiceClient(client_options=client_options)
-    
-    parent = f"projects/{project_id}/locations/{location}/collections/default_collection/engines/{engine_id}"
-    
-    # Check if agent already exists? (List agents)
-    # But we want to Create a NEW one or specific one.
-    
-    agent = discoveryengine.Agent()
-    agent.display_name = agent_display_name
-    agent.description = "A Governed Financial Advisor agent that provides investment advice with risk checks."
+    client = discoveryengine.DataStoreServiceClient(client_options=client_options)
+    parent = f"projects/{project_id}/locations/{location}/collections/default_collection"
 
-    # IMPORTANT: The engine field must be the Full Resource Name of the Vertex AI Reasoning Engine
-    # Format: projects/{project}/locations/{location}/reasoningEngines/{id}
-    # reasoning_engine_id passed here is usually just the ID, so construct full path if needed,
-    # OR if it is already full path, use it.
-
-    if "projects/" in reasoning_engine_id:
-        agent.engine = reasoning_engine_id
-    else:
-        agent.engine = f"projects/{project_id}/locations/{location}/reasoningEngines/{reasoning_engine_id}"
-    
-    print(f"Registering Agent '{agent_display_name}' to Engine '{engine_id}'...")
-    print(f"Linking Reasoning Engine: {agent.engine}")
-    
+    # Check existence
     try:
-        # Create Agent
-        request = discoveryengine.CreateAgentRequest(
-            parent=parent,
-            agent=agent,
-            agent_id="financial-advisor-agent" # Explicit ID
+        request = discoveryengine.GetDataStoreRequest(
+            name=f"{parent}/dataStores/{data_store_id}"
         )
-        response = client.create_agent(request=request)
-        print(f"✅ Agent registered successfully: {response.name}")
-        return response
-    except Exception as e:
-        print(f"❌ Error registering agent: {e}")
-        # Try listing to see if it exists
-        return None
+        return client.get_data_store(request=request)
+    except Exception:
+        pass # Create new
+
+    data_store = discoveryengine.DataStore()
+    data_store.display_name = display_name
+    data_store.industry_vertical = discoveryengine.IndustryVertical.GENERIC
+    data_store.solution_types = [discoveryengine.SolutionType.SOLUTION_TYPE_CHAT]
+    data_store.content_config = discoveryengine.DataStore.ContentConfig.NO_CONTENT # Placeholder
+
+    print(f"Creating Data Store {data_store_id}...")
+    operation = client.create_data_store(
+        parent=parent,
+        data_store=data_store,
+        data_store_id=data_store_id
+    )
+    response = operation.result()
+    print(f"Data Store created: {response.name}")
+    return response
+
+def register_agent(project_id, location, engine_id, reasoning_engine_id, agent_display_name):
+    print(f"\n--- ⚠️ Automatic Registration Not Supported in this SDK Version ---")
+    print(f"Please register the agent manually in the Google Cloud Console:")
+    print(f"1. Go to: https://console.cloud.google.com/gen-app-builder/engines?project={project_id}")
+    print(f"2. Select the App: '{engine_id}'")
+    print(f"3. Go to 'Agent' section and click 'Register Agent'")
+    print(f"4. Select 'Vertex AI Reasoning Engine' as the source.")
+    print(f"5. Enter the Reasoning Engine ID: {reasoning_engine_id}")
+    print(f"6. Click 'Register'")
+    print(f"------------------------------------------------------------------\n")
+    return None
 
 def main():
     parser = argparse.ArgumentParser(description="Register Agent with Gemini Enterprise")
@@ -103,8 +104,43 @@ def main():
         found_engine = next((e for e in engines if e.name.endswith(f"/engines/{app_id}")), None)
 
         if not found_engine:
-            print(f"App '{app_id}' not found. Creating...")
-            found_engine = create_engine(project_id, location, "Financial Advisor App", app_id)
+            print(f"App '{app_id}' not found.")
+            
+            # 1.1 Create Data Store first (Required for App creation)
+            ds_id = "financial-knowledge-base"
+            data_store = create_data_store(project_id, location, ds_id, "Financial Knowledge Base")
+            
+            # 1.2 Create App with Data Store linked
+            print(f"Creating App '{app_id}'...")
+            
+            client_options = get_client_options(location)
+            client = discoveryengine.EngineServiceClient(client_options=client_options)
+            parent = f"projects/{project_id}/locations/{location}/collections/default_collection"
+            
+            engine = discoveryengine.Engine()
+            engine.display_name = "Financial Advisor App"
+            engine.solution_type = discoveryengine.SolutionType.SOLUTION_TYPE_CHAT
+            engine.data_store_ids = [ds_id] # Link Data Store
+            
+            # Configure Chat Engine (Language matches Data Store content usually, default en)
+            engine.chat_engine_config = discoveryengine.Engine.ChatEngineConfig(
+                agent_creation_config=discoveryengine.Engine.ChatEngineConfig.AgentCreationConfig(
+                    default_language_code="en",
+                    time_zone="America/Los_Angeles"
+                )
+            )
+            
+            engine.common_config = discoveryengine.Engine.CommonConfig(
+                company_name="Cybernetic Governance"
+            )
+            
+            operation = client.create_engine(
+                parent=parent,
+                engine=engine,
+                engine_id=app_id
+            )
+            found_engine = operation.result()
+            print(f"App created: {found_engine.name}")
         else:
             print(f"Found existing App: {found_engine.name}")
 

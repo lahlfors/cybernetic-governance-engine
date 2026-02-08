@@ -1,21 +1,22 @@
+# Serverless Deployment Trigger
+# This deploys the application using deploy_sw.py after infrastructure is ready.
+# Uses Agent Engine (Vertex AI) + Cloud Run architecture (no GKE/Redis needed).
+
 resource "null_resource" "app_deployment" {
   triggers = {
-    # Trigger on any change to the deployment script or backend templates
+    # Trigger on any change to the deployment script
     script_sha = sha256(file("../../deployment/deploy_sw.py"))
-    tpl_sha    = sha256(file("../../deployment/k8s/backend-deployment.yaml.tpl"))
-
-    # Also trigger if infra changes (e.g. redis IP changes)
-    redis_host = google_redis_instance.cache.host
-    cluster    = google_container_cluster.primary.endpoint
+    # Trigger on gateway image change
+    gateway_image = var.gateway_image
   }
 
   depends_on = [
-    google_container_node_pool.general_pool,
-    google_container_node_pool.gpu_pool,
-    google_redis_instance.cache,
+    google_cloud_run_v2_service.gateway,
     google_secret_manager_secret_version.system_authz_version,
     google_secret_manager_secret_version.finance_policy_version,
-    google_secret_manager_secret_version.opa_config_version
+    google_secret_manager_secret_version.opa_config_version,
+    google_storage_bucket.agent_artifacts,
+    google_artifact_registry_repository.repo
   ]
 
   provisioner "local-exec" {
@@ -28,15 +29,7 @@ resource "null_resource" "app_deployment" {
       pip install --upgrade --quiet --extra-index-url https://pypi.org/simple . && \
       python3 deployment/deploy_sw.py \
         --project-id ${var.project_id} \
-        --region ${var.region} \
-        --zone ${var.zone} \
-        --redis-host ${google_redis_instance.cache.host} \
-        --redis-port ${google_redis_instance.cache.port} \
-        --cluster-name ${google_container_cluster.primary.name} \
-        --deploy-agent-engine \
-        --agent-engine-name ${google_vertex_ai_reasoning_engine.financial_advisor.name} \
-        --skip-build \
-        --tf-managed
+        --region ${var.region}
     EOT
   }
 }

@@ -175,8 +175,8 @@ def deploy_agent_engine(project_id, region, staging_bucket, gateway_url):
         import vertexai
         from vertexai.preview import reasoning_engines
 
-        # Import the root ADK agent creator
-        from src.governed_financial_advisor.agents.financial_advisor.agent import create_agent
+        # Import the root ADK agent (pre-configured instance)
+        from src.governed_financial_advisor.agents.financial_advisor.agent import root_agent
     except ImportError as e:
         print(f"❌ Failed to import vertexai SDK or ADK Agent: {e}")
         import traceback
@@ -196,14 +196,12 @@ def deploy_agent_engine(project_id, region, staging_bucket, gateway_url):
         "yfinance",
         "pandas",
         "httpx",
-        "nest_asyncio"
+        "nest_asyncio",
+        "python-json-logger",  # Required for JSON logging in Agent Engine
     ]
 
-    print("   Initializing Root ADK Agent...")
+    print("   Using pre-configured Root ADK Agent...")
     try:
-        # Create the ADK agent instance locally
-        root_agent = create_agent(model_name="gemini-2.5-pro") # Or load from env
-
         # Wrap in AdkApp
         print("   Wrapping in AdkApp...")
         app = vertexai.preview.reasoning_engines.AdkApp(
