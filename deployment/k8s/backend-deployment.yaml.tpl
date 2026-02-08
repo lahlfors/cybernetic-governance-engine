@@ -54,6 +54,11 @@ spec:
               value: "${OTEL_EXPORTER_OTLP_ENDPOINT}"
             - name: OTEL_EXPORTER_OTLP_HEADERS
               value: "${OTEL_EXPORTER_OTLP_HEADERS}"
+            # Redis for State Persistence
+            - name: REDIS_HOST
+              value: "${REDIS_HOST}"
+            - name: REDIS_PORT
+              value: "${REDIS_PORT}"
           resources:
             requests:
               cpu: "500m"

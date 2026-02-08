@@ -13,6 +13,8 @@ env.bak/
 venv.bak/
 .deploy_venv/
 .new_venv/
+.build_venv/
+.manual_deploy_venv/
 source/
 
 # IDEs
@@ -24,6 +26,8 @@ source/
 # Logs
 *.log
 agents_log/
+deploy_log.txt
+deploy_agent_log.txt
 
 # Project Specific
 opa
@@ -62,4 +66,5 @@ terraform.rc
 deployment/terraform/tfplan
 deployment/backend_service.yaml
 deployment/nemo_service.yaml
+deployment/artifacts/
 manual_gateway_build.yaml

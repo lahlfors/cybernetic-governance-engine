@@ -176,7 +176,15 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
     4. Deploys UI Service (GKE).
     """
     accelerator = config.get("args", {}).get("accelerator", "gpu")
-    print(f"\n--- 🚀 Starting Application Deployment [Accelerator: {accelerator}] ---")
+    print(f"\n--- 🚀 Starting Application Deployment [Accelerator: accelerator] ---")
+
+    # Clean previous generated manifests to avoid applying stale/invalid configs
+    generated_dir = Path("deployment/k8s/generated")
+    if generated_dir.exists():
+        print(f"🧹 Cleaning generated manifests in {generated_dir}")
+        for item in generated_dir.iterdir():
+            if item.is_file():
+                item.unlink()
 
     # 1. Deploy vLLM / K8s Base Infra
     # This ensures the cluster is configured and vLLM is running
@@ -241,6 +249,7 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
     timestamp = str(int(time.time()))
     manifest_content = manifest_content.replace("${IMAGE_URI}", image_uri)
     manifest_content = manifest_content.replace("${REDIS_HOST}", redis_host)
+    manifest_content = manifest_content.replace("${REDIS_PORT}", redis_port)
     manifest_content = manifest_content.replace("${PROJECT_ID}", project_id)
     manifest_content = manifest_content.replace("${REGION}", region)
     vertex_ai_flag = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "1")
@@ -249,7 +258,8 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
     manifest_content = manifest_content.replace("${MODEL_REASONING}", os.environ.get("MODEL_REASONING", "gemini-2.5-pro"))
     manifest_content = manifest_content.replace("${DEPLOY_TIMESTAMP}", timestamp)
     manifest_content = manifest_content.replace("${OTEL_EXPORTER_OTLP_ENDPOINT}", os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", ""))
-    manifest_content = manifest_content.replace("${OTEL_EXPORTER_OTLP_HEADERS}", os.environ.get("OTEL_EXPORTER_OTLP_HEADERS", ""))
+    otel_headers = os.environ.get("OTEL_EXPORTER_OTLP_HEADERS", "")
+    manifest_content = manifest_content.replace("${OTEL_EXPORTER_OTLP_HEADERS}", otel_headers)
 
     # Write Generated Manifest
     generated_dir = Path("deployment/k8s/generated")
