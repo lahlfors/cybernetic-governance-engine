@@ -2,7 +2,7 @@ import httpx
 import pytest
 import respx
 
-from src.governance.client import OPAClient
+from src.gateway.core.policy import OPAClient
 
 
 @pytest.fixture
@@ -16,6 +16,7 @@ async def test_opa_allow(opa_client):
 
         result = await opa_client.evaluate_policy({"action": "test"})
         assert result == "ALLOW"
+    await opa_client.close()
 
 @pytest.mark.asyncio
 async def test_opa_deny(opa_client):
@@ -24,6 +25,7 @@ async def test_opa_deny(opa_client):
 
         result = await opa_client.evaluate_policy({"action": "test"})
         assert result == "DENY"
+    await opa_client.close()
 
 @pytest.mark.asyncio
 async def test_circuit_breaker(opa_client):
@@ -41,11 +43,9 @@ async def test_circuit_breaker(opa_client):
 
         # Now CB should be OPEN
         assert opa_client.cb.state == "OPEN"
+    await opa_client.close()
 
-        # Next call should fail fast (no request)
-        # We can verify by ensuring mock is NOT called if we clear it, or just checking result
-        # But respx mocks are persistent in context.
-        # If we use side_effect to raise exception, we can distinguish.
-
-        # But logic says if CB OPEN, return DENY and log warning.
-        # We checked state is OPEN.
+@pytest.mark.asyncio
+async def test_opa_close(opa_client):
+    await opa_client.close()
+    assert opa_client.client.is_closed
