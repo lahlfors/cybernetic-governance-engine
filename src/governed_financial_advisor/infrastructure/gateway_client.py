@@ -1,17 +1,16 @@
 """
-Gateway Client Wrapper (Hybrid: MCP + REST)
-Uses mcp.client.sse for Tools and httpx for Chat.
+Gateway Client Wrapper (gRPC)
+Replaces Hybrid/REST Client with efficient gRPC stubs.
 """
 import logging
 import os
 import json
 import asyncio
-import httpx
-from contextlib import asynccontextmanager
+import grpc
+from typing import AsyncGenerator
 
-from mcp import ClientSession
-from mcp.client.sse import sse_client
-from mcp.types import CallToolRequest, Tool
+from src.gateway.protos import gateway_pb2
+from src.gateway.protos import gateway_pb2_grpc
 
 logger = logging.getLogger("GatewayClient")
 
@@ -20,97 +19,97 @@ class GatewayClient:
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(GatewayClient, cls).__new__(cls)
-            cls._instance.sse_url = None
-            cls._instance.chat_url = None
+            cls._instance = super().__new__(cls)
+            cls._instance.channel = None
+            cls._instance.stub = None
         return cls._instance
 
+    async def close(self):
+        """Closes the gRPC channel."""
+        if self.channel:
+            await self.channel.close()
+            logger.info("GatewayClient gRPC channel closed.")
+
     def connect(self, host=None, port=None):
+        if self.channel:
+            return
+
         if not host:
             host = os.getenv("GATEWAY_HOST", "localhost")
         if not port:
-            port = os.getenv("GATEWAY_PORT", "8080")
+            port = os.getenv("GATEWAY_PORT", "50051")
 
-        # Build Base URL
-        protocol = "http"
-        if "https" in host:
-            protocol = "https"
-            host = host.replace("https://", "")
+        target = f"{host}:{port}"
+        logger.info(f"Connecting to Gateway (gRPC) at {target}...")
 
-        base_url = f"{protocol}://{host}:{port}"
-        self.sse_url = f"{base_url}/mcp/sse"
-        self.chat_url = f"{base_url}/v1/chat/completions"
-        logger.info(f"Configured Gateway Client: SSE={self.sse_url}, Chat={self.chat_url}")
+        # Insecure for internal cluster traffic (efficient)
+        self.channel = grpc.aio.insecure_channel(target)
+        self.stub = gateway_pb2_grpc.GatewayStub(self.channel)
+        logger.info("GatewayClient Connected.")
 
     async def execute_tool(self, tool_name: str, params: dict) -> str:
         """
-        Calls an MCP Tool on the Gateway Server.
+        Calls ExecuteTool via gRPC.
         """
-        if not self.sse_url:
+        if not self.stub:
             self.connect()
 
         try:
-            # MCP Client Session Context Manager
-            async with sse_client(self.sse_url) as (read, write):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
+            request = gateway_pb2.ToolRequest(
+                tool_name=tool_name,
+                params_json=json.dumps(params)
+            )
+            response = await self.stub.ExecuteTool(request)
 
-                    # Map 'execute_trade' -> 'execute_trade_action' if needed
-                    target_tool = tool_name
-                    if tool_name == "execute_trade":
-                        target_tool = "execute_trade_action"
+            if response.status == "SUCCESS":
+                return response.output
+            elif response.status == "BLOCKED":
+                 return f"BLOCKED: {response.error}"
+            else:
+                 return f"ERROR: {response.error}"
 
-                    # Call Tool
-                    result = await session.call_tool(target_tool, arguments=params)
+        except grpc.RpcError as e:
+            logger.error(f"gRPC Tool Execution Failed: {e.details()}")
+            return f"SYSTEM ERROR: {e.details()}"
 
-                    output_text = []
-                    for content in result.content:
-                        if content.type == "text":
-                            output_text.append(content.text)
-
-                    full_output = "\n".join(output_text)
-
-                    if full_output.startswith("BLOCKED") or full_output.startswith("ERROR"):
-                         return f"{full_output}"
-
-                    return full_output
-
-        except Exception as e:
-            logger.error(f"MCP Tool Call Failed: {e}")
-            return f"SYSTEM ERROR: Could not call MCP Gateway. {e}"
-
-    async def chat(self, prompt: str, system_instruction: str = None, mode: str = "chat", **kwargs) -> str:
+    async def chat(self, prompt: str, system_instruction: str | None = None, mode: str = "chat", **kwargs) -> str:
         """
-        Invokes LLM via Gateway REST Endpoint.
+        Invokes LLM via gRPC Chat Endpoint.
         """
-        if not self.chat_url:
+        if not self.stub:
             self.connect()
 
-        payload = {
-            "model": kwargs.get("model", "default"),
-            "messages": [],
-            "temperature": kwargs.get("temperature", 0.0),
-            "stream": False
-        }
-
+        # Build Message List
+        messages = []
+        # Add system instruction if provided (though proto has separate field, consistency helps)
         if system_instruction:
-            payload["messages"].append({"role": "system", "content": system_instruction})
-        payload["messages"].append({"role": "user", "content": prompt})
+            messages.append(gateway_pb2.Message(role="system", content=system_instruction))
 
-        # Forward guided generation params
-        if "guided_json" in kwargs: payload["guided_json"] = kwargs["guided_json"]
-        if "guided_regex" in kwargs: payload["guided_regex"] = kwargs["guided_regex"]
-        if "guided_choice" in kwargs: payload["guided_choice"] = kwargs["guided_choice"]
+        # Add user prompt
+        messages.append(gateway_pb2.Message(role="user", content=prompt))
+
+        # Build Request
+        request = gateway_pb2.ChatRequest(
+            model=kwargs.get("model", "default"),
+            messages=messages,
+            temperature=kwargs.get("temperature", 0.0),
+            system_instruction=system_instruction or "",
+            mode=mode,
+            guided_json=json.dumps(kwargs.get("guided_json")) if "guided_json" in kwargs else "",
+            guided_regex=kwargs.get("guided_regex", ""),
+            guided_choice=json.dumps(kwargs.get("guided_choice")) if "guided_choice" in kwargs else ""
+        )
 
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                resp = await client.post(self.chat_url, json=payload)
-                resp.raise_for_status()
-                data = resp.json()
-                # OpenAI format: choices[0].message.content
-                return data["choices"][0]["message"]["content"]
-        except Exception as e:
-            logger.error(f"Chat Request Failed: {e}")
+            full_content = []
+            # Stream response
+            async for response in self.stub.Chat(request):
+                full_content.append(response.content)
+
+            return "".join(full_content)
+
+        except grpc.RpcError as e:
+            logger.error(f"gRPC Chat Failed: {e.details()}")
             raise e
 
 # Singleton instance

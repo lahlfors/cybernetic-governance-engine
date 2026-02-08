@@ -33,11 +33,6 @@ spec:
           env:
             - name: PORT
               value: "8080"
-            # Agent Session Management (K8s Redis for GKE, Memorystore for Cloud Run)
-            - name: REDIS_HOST
-              value: "${REDIS_HOST}" # Set by deploy script: redis-master for GKE, Memorystore IP for Cloud Run
-            - name: REDIS_PORT
-              value: "6379"
             - name: GOOGLE_CLOUD_PROJECT
               value: "${PROJECT_ID}"
             - name: GOOGLE_CLOUD_LOCATION
@@ -59,6 +54,11 @@ spec:
               value: "${OTEL_EXPORTER_OTLP_ENDPOINT}"
             - name: OTEL_EXPORTER_OTLP_HEADERS
               value: "${OTEL_EXPORTER_OTLP_HEADERS}"
+            # Redis for State Persistence
+            - name: REDIS_HOST
+              value: "${REDIS_HOST}"
+            - name: REDIS_PORT
+              value: "${REDIS_PORT}"
           resources:
             requests:
               cpu: "500m"

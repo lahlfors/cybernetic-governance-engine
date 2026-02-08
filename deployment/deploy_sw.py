@@ -14,15 +14,14 @@
 # limitations under the License.
 
 """
-Cloud Run & Kubernetes Deployment Script for Governed Financial Advisor
+GKE Deployment Script for Governed Financial Advisor
 
 Handles:
 1. Google Cloud API enablement.
-2. Redis (Memorystore) provisioning/verification.
-3. Secret Manager configuration (tokens, OPA policies).
-4. Kubernetes Infrastructure (vLLM on GKE).
-5. Cloud Run Service Deployment (Main App + Sidecar).
-6. UI Service Deployment.
+2. Secret Manager configuration (tokens, OPA policies).
+3. Kubernetes Infrastructure (vLLM on GKE).
+4. Gateway & Backend Service Deployment (GKE).
+5. UI Service Deployment (GKE).
 
 Configuration is read from .env file as the single source of truth.
 """
@@ -60,21 +59,6 @@ load_dotenv()
 
 # --- Service Deployment ---
 
-# --- Service Deployment ---
-
-def check_service_exists(project_id, region, service_name):
-    """Checks if a Cloud Run service exists."""
-    cmd = [
-        "gcloud", "run", "services", "describe", service_name,
-        "--region", region,
-        "--project", project_id,
-        "--format", "value(status.url)"
-    ]
-    result = run_command(cmd, check=False, capture_output=True)
-    if result.returncode == 0 and result.stdout.strip():
-        return result.stdout.strip()
-    return None
-
 def build_gateway_image(project_id):
     """Builds the Gateway container image."""
     gateway_image_uri = f"gcr.io/{project_id}/gateway:latest"
@@ -110,11 +94,9 @@ images:
 
     return gateway_image_uri
 
-def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=False, target_gke=True):
+def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=False):
     """
-    Deploys UI service.
-    If target_gke=True, deploys to GKE.
-    If target_gke=False, deploys to Cloud Run.
+    Deploys UI service to GKE.
     """
     print(f"\n--- 🖥️ Deploying UI Service: {ui_service_name} ---")
 
@@ -138,77 +120,49 @@ def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=
         str(ui_dir)
     ])
 
-    if target_gke:
-        print(f"\n--- ☸️ Deploying UI to GKE ---")
-        deployment_tpl = Path("deployment/k8s/frontend-deployment.yaml.tpl")
-        if not deployment_tpl.exists():
-            print(f"❌ Frontend manifest template not found at {deployment_tpl}")
-            return None
-
-        with open(deployment_tpl) as f:
-            manifest_content = f.read()
-
-        manifest_content = manifest_content.replace("${UI_IMAGE_URI}", ui_image_uri)
-        # BACKEND_URL in K8s is internal service DNS usually, but here we can rely on template default
-        # or override if we passed an external URL (though for GKE-to-GKE, internal DNS is better)
-        # The template defaults to http://governed-financial-advisor.governance-stack.svc.cluster.local:80
-        # If we wanted to support both, we'd substitute BACKEND_URL too.
-        # Let's assume the template has the correct internal DNS for now or we substitute it if variable exists.
-        
-        # Write Generated Manifest
-        generated_dir = Path("deployment/k8s/generated")
-        generated_dir.mkdir(parents=True, exist_ok=True)
-        generated_file = generated_dir / "frontend-deployment.yaml"
-        
-        with open(generated_file, 'w') as f:
-            f.write(manifest_content)
-            
-        print(f"📄 Generated manifest: {generated_file}")
-        run_command(["kubectl", "apply", "-f", str(generated_file)])
-        print("✅ UI manifest applied.")
-        
-        # Wait for LoadBalancer IP
-        print("\n--- ⏳ Waiting for UI IP ---")
-        for _ in range(30):
-            result = run_command(
-                ["kubectl", "get", "service", "financial-advisor-ui", "-n", "governance-stack", "-o", "jsonpath='{.status.loadBalancer.ingress[0].ip}'"],
-                check=False, capture_output=True
-            )
-            ip = result.stdout.strip("'")
-            if ip:
-                url = f"http://{ip}"
-                print(f"✅ Found UI IP: {ip}")
-                return url
-            print("   Waiting for LoadBalancer IP...")
-            time.sleep(10)
+    print(f"\n--- ☸️ Deploying UI to GKE ---")
+    deployment_tpl = Path("deployment/k8s/frontend-deployment.yaml.tpl")
+    if not deployment_tpl.exists():
+        print(f"❌ Frontend manifest template not found at {deployment_tpl}")
         return None
 
-    else:
-        # Cloud Run Deployment
-        print("\n🚀 Deploying UI service to Cloud Run...")
-        run_command([
-            "gcloud", "run", "deploy", ui_service_name,
-            "--image", ui_image_uri,
-            "--region", region,
-            "--project", project_id,
-            "--platform", "managed",
-            "--allow-unauthenticated",
-            "--set-env-vars", f"BACKEND_URL={backend_url}",
-            "--port", "8080",
-            "--memory", "512Mi",
-            "--cpu", "1"
-        ])
+    with open(deployment_tpl) as f:
+        manifest_content = f.read()
 
-        deployed_url = check_service_exists(project_id, region, ui_service_name)
-        if deployed_url:
-            print(f"✅ UI service deployed at: {deployed_url}")
-            return deployed_url
+    manifest_content = manifest_content.replace("${UI_IMAGE_URI}", ui_image_uri)
+    # BACKEND_URL in K8s is internal service DNS usually, but here we can rely on template default
+    # or override if we passed an external URL (though for GKE-to-GKE, internal DNS is better)
+    # The template defaults to http://governed-financial-advisor.governance-stack.svc.cluster.local:80
+    # If we wanted to support both, we'd substitute BACKEND_URL too.
+    # Let's assume the template has the correct internal DNS for now or we substitute it if variable exists.
 
-        print("⚠️ UI deployment completed but could not retrieve URL.")
-        return None
+    # Write Generated Manifest
+    generated_dir = Path("deployment/k8s/generated")
+    generated_dir.mkdir(parents=True, exist_ok=True)
+    generated_file = generated_dir / "frontend-deployment.yaml"
 
+    with open(generated_file, 'w') as f:
+        f.write(manifest_content)
 
-# --- Hybrid Deployment Logic ---
+    print(f"📄 Generated manifest: {generated_file}")
+    run_command(["kubectl", "apply", "-f", str(generated_file)])
+    print("✅ UI manifest applied.")
+
+    # Wait for LoadBalancer IP
+    print("\n--- ⏳ Waiting for UI IP ---")
+    for _ in range(30):
+        result = run_command(
+            ["kubectl", "get", "service", "financial-advisor-ui", "-n", "governance-stack", "-o", "jsonpath='{.status.loadBalancer.ingress[0].ip}'"],
+            check=False, capture_output=True
+        )
+        ip = result.stdout.strip("'")
+        if ip:
+            url = f"http://{ip}"
+            print(f"✅ Found UI IP: {ip}")
+            return url
+        print("   Waiting for LoadBalancer IP...")
+        time.sleep(10)
+    return None
 
 
 # --- Application Deployment Logic ---
@@ -219,23 +173,27 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
     1. Deploys/Updates vLLM Inference Engine (GKE).
     2. Mirrors Secrets from Secret Manager/Env to K8s.
     3. Deploys Backend Service (GKE).
-    4. Deploys UI Service (Cloud Run).
+    4. Deploys UI Service (GKE).
     """
     accelerator = config.get("args", {}).get("accelerator", "gpu")
-    print(f"\n--- 🚀 Starting Application Deployment [Accelerator: {accelerator}] ---")
+    print(f"\n--- 🚀 Starting Application Deployment [Accelerator: accelerator] ---")
+
+    # Clean previous generated manifests to avoid applying stale/invalid configs
+    generated_dir = Path("deployment/k8s/generated")
+    if generated_dir.exists():
+        print(f"🧹 Cleaning generated manifests in {generated_dir}")
+        for item in generated_dir.iterdir():
+            if item.is_file():
+                item.unlink()
 
     # 1. Deploy vLLM / K8s Base Infra
     # This ensures the cluster is configured and vLLM is running
     deploy_k8s_infra(project_id, config)
 
-    # 2. Redis Configuration
-    # We rely on the Redis Host provided by Terraform (Cloud Memorystore)
-    # If not provided, we warn/fail rather than trying to provision a toy Redis in K8s (legacy behavior removed)
+    # 2. Redis Configuration - Ephemeral Check
     if not redis_host:
-         print("⚠️ Warning: No Redis Host provided. Application will use ephemeral memory.")
-         redis_host = "localhost" # Fallback/Error state
-
-    print(f"ℹ️ Using Redis Host: {redis_host}:{redis_port}")
+         print("ℹ️ No Redis Host provided. Application will use ephemeral memory (MemorySaver).")
+         redis_host = "" # Ensure it's empty string for template substitution if needed, or ignored
 
     # 3. Mirror Secrets to K8s
     # We grab secrets that Terraform (or manual setup) put into Secret Manager/Env and ensure K8s has them.
@@ -291,6 +249,7 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
     timestamp = str(int(time.time()))
     manifest_content = manifest_content.replace("${IMAGE_URI}", image_uri)
     manifest_content = manifest_content.replace("${REDIS_HOST}", redis_host)
+    manifest_content = manifest_content.replace("${REDIS_PORT}", redis_port)
     manifest_content = manifest_content.replace("${PROJECT_ID}", project_id)
     manifest_content = manifest_content.replace("${REGION}", region)
     vertex_ai_flag = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "1")
@@ -299,7 +258,8 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
     manifest_content = manifest_content.replace("${MODEL_REASONING}", os.environ.get("MODEL_REASONING", "gemini-2.5-pro"))
     manifest_content = manifest_content.replace("${DEPLOY_TIMESTAMP}", timestamp)
     manifest_content = manifest_content.replace("${OTEL_EXPORTER_OTLP_ENDPOINT}", os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", ""))
-    manifest_content = manifest_content.replace("${OTEL_EXPORTER_OTLP_HEADERS}", os.environ.get("OTEL_EXPORTER_OTLP_HEADERS", ""))
+    otel_headers = os.environ.get("OTEL_EXPORTER_OTLP_HEADERS", "")
+    manifest_content = manifest_content.replace("${OTEL_EXPORTER_OTLP_HEADERS}", otel_headers)
 
     # Write Generated Manifest
     generated_dir = Path("deployment/k8s/generated")
@@ -330,17 +290,15 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         time.sleep(10)
 
     if not backend_url:
-        print("⚠️ Failed to retrieve Backend IP via kubectl. Cloud Run UI deployment may fail to connect.")
+        print("⚠️ Failed to retrieve Backend IP via kubectl. UI deployment might default to internal DNS.")
 
-    # 6. Deploy UI
-    if True: # Always attempt if not skipped (logic inside function)
-        # For GKE, backend_url might not be needed if using internal DNS, but passing it anyway
-        deploy_ui_service(project_id, region, "financial-advisor-ui", backend_url, skip_ui=skip_ui, target_gke=True)
+    # 6. Deploy UI (GKE Only)
+    deploy_ui_service(project_id, region, "financial-advisor-ui", backend_url, skip_ui=skip_ui)
 
 # --- Main Execution ---
 
 def main():
-    parser = argparse.ArgumentParser(description="Deploy Financial Advisor App (TF Managed Infra)")
+    parser = argparse.ArgumentParser(description="Deploy Financial Advisor App (GKE Only)")
 
     # Env Defaults
     default_project = os.environ.get("GOOGLE_CLOUD_PROJECT")
@@ -353,7 +311,7 @@ def main():
     parser.add_argument("--zone", default=default_zone, help="GCP Zone")
 
     # Infrastructure Inputs (Passed from Terraform)
-    parser.add_argument("--redis-host", help="Redis Host IP")
+    parser.add_argument("--redis-host", help="Redis Host IP (Optional, defaults to MemorySaver)")
     parser.add_argument("--redis-port", default="6379", help="Redis Port")
     parser.add_argument("--cluster-name", help="GKE Cluster Name")
 

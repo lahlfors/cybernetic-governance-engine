@@ -17,9 +17,10 @@ def load_dotenv():
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
                     key, _, value = line.partition("=")
-                    # Don't override existing env vars (allow CLI overrides)
-                    if key.strip() not in os.environ:
-                        os.environ[key.strip()] = value.strip()
+                    # Override existing env vars to ensure .env is source of truth
+                    if key.strip() in os.environ:
+                        print(f"⚠️ Overriding env var {key.strip()} from .env")
+                    os.environ[key.strip()] = value.strip()
     else:
         print(f"⚠️ No .env file found at {env_path}")
 

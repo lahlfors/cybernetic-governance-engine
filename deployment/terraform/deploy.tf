@@ -4,15 +4,13 @@ resource "null_resource" "app_deployment" {
     script_sha = sha256(file("../../deployment/deploy_sw.py"))
     tpl_sha    = sha256(file("../../deployment/k8s/backend-deployment.yaml.tpl"))
 
-    # Also trigger if infra changes (e.g. redis IP changes)
-    redis_host = google_redis_instance.cache.host
+    # Also trigger if infra changes
     cluster    = google_container_cluster.primary.endpoint
   }
 
   depends_on = [
     google_container_node_pool.general_pool,
     google_container_node_pool.gpu_pool,
-    google_redis_instance.cache,
     google_secret_manager_secret_version.system_authz_version,
     google_secret_manager_secret_version.finance_policy_version,
     google_secret_manager_secret_version.opa_config_version
@@ -25,8 +23,6 @@ resource "null_resource" "app_deployment" {
         --project-id ${var.project_id} \
         --region ${var.region} \
         --zone ${var.zone} \
-        --redis-host ${google_redis_instance.cache.host} \
-        --redis-port ${google_redis_instance.cache.port} \
         --cluster-name ${google_container_cluster.primary.name} \
         --tf-managed \
         --skip-build

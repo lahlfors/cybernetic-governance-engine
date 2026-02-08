@@ -3,9 +3,9 @@
 import grpc
 import warnings
 
-from . import gateway_pb2 as gateway__pb2
+from src.gateway.protos import gateway_pb2 as src_dot_gateway_dot_protos_dot_gateway__pb2
 
-GRPC_GENERATED_VERSION = '1.76.0'
+GRPC_GENERATED_VERSION = '1.78.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -18,7 +18,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + ' but the generated code in gateway_pb2_grpc.py depends on'
+        + ' but the generated code in src/gateway/protos/gateway_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -36,13 +36,13 @@ class GatewayStub(object):
         """
         self.Chat = channel.unary_stream(
                 '/gateway.Gateway/Chat',
-                request_serializer=gateway__pb2.ChatRequest.SerializeToString,
-                response_deserializer=gateway__pb2.ChatResponse.FromString,
+                request_serializer=src_dot_gateway_dot_protos_dot_gateway__pb2.ChatRequest.SerializeToString,
+                response_deserializer=src_dot_gateway_dot_protos_dot_gateway__pb2.ChatResponse.FromString,
                 _registered_method=True)
         self.ExecuteTool = channel.unary_unary(
                 '/gateway.Gateway/ExecuteTool',
-                request_serializer=gateway__pb2.ToolRequest.SerializeToString,
-                response_deserializer=gateway__pb2.ToolResponse.FromString,
+                request_serializer=src_dot_gateway_dot_protos_dot_gateway__pb2.ToolRequest.SerializeToString,
+                response_deserializer=src_dot_gateway_dot_protos_dot_gateway__pb2.ToolResponse.FromString,
                 _registered_method=True)
 
 
@@ -73,13 +73,13 @@ def add_GatewayServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'Chat': grpc.unary_stream_rpc_method_handler(
                     servicer.Chat,
-                    request_deserializer=gateway__pb2.ChatRequest.FromString,
-                    response_serializer=gateway__pb2.ChatResponse.SerializeToString,
+                    request_deserializer=src_dot_gateway_dot_protos_dot_gateway__pb2.ChatRequest.FromString,
+                    response_serializer=src_dot_gateway_dot_protos_dot_gateway__pb2.ChatResponse.SerializeToString,
             ),
             'ExecuteTool': grpc.unary_unary_rpc_method_handler(
                     servicer.ExecuteTool,
-                    request_deserializer=gateway__pb2.ToolRequest.FromString,
-                    response_serializer=gateway__pb2.ToolResponse.SerializeToString,
+                    request_deserializer=src_dot_gateway_dot_protos_dot_gateway__pb2.ToolRequest.FromString,
+                    response_serializer=src_dot_gateway_dot_protos_dot_gateway__pb2.ToolResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -107,8 +107,8 @@ class Gateway(object):
             request,
             target,
             '/gateway.Gateway/Chat',
-            gateway__pb2.ChatRequest.SerializeToString,
-            gateway__pb2.ChatResponse.FromString,
+            src_dot_gateway_dot_protos_dot_gateway__pb2.ChatRequest.SerializeToString,
+            src_dot_gateway_dot_protos_dot_gateway__pb2.ChatResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -134,8 +134,8 @@ class Gateway(object):
             request,
             target,
             '/gateway.Gateway/ExecuteTool',
-            gateway__pb2.ToolRequest.SerializeToString,
-            gateway__pb2.ToolResponse.FromString,
+            src_dot_gateway_dot_protos_dot_gateway__pb2.ToolRequest.SerializeToString,
+            src_dot_gateway_dot_protos_dot_gateway__pb2.ToolResponse.FromString,
             options,
             channel_credentials,
             insecure,

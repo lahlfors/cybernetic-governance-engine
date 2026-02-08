@@ -10,7 +10,7 @@ cluster:
   spot: false
 
   accelerator:
-    type: nvidia-tesla-t4
+    type: nvidia-l4
     count: 1
     drivers_version: default
 

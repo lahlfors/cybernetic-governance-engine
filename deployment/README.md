@@ -1,168 +1,78 @@
-# Governed Financial Advisor Deployment
+# Governed Financial Advisor Deployment (GKE)
 
-This directory contains the configuration and scripts to deploy the Financial Advisor agent to Google Cloud Run with a secure Open Policy Agent (OPA) sidecar.
+This directory contains the configuration and scripts to deploy the Financial Advisor agent to **Google Kubernetes Engine (GKE)**.
 
 ## Architecture
 
-The system is deployed as a **single Cloud Run Service** that follows the multi-container sidecar pattern:
+The system is deployed as a distributed microservices architecture on GKE:
 
-1.  **Ingress Container (Financial Advisor):**
-    *   Hosts the monolithic Agent application (`src.agents.financial_advisor.agent.root_agent`).
-    *   Includes the root `financial_coordinator` and all sub-agents (`data_analyst`, `execution_analyst`, `governed_trader`, `risk_analyst`) running in the same process.
-    *   Exposes the HTTP API on port 8080.
-    *   Enforces governance by calling the local OPA sidecar before executing sensitive tools.
+1.  **Gateway Service (`gateway-service`)**:
+    *   gRPC service (Port 50051).
+    *   Acts as the central router and "Physical Layer" for the agent.
+    *   Handles Tool Execution and LLM Routing.
+    *   Connects to OPA and NeMo Guardrails.
 
-2.  **Sidecar Container (Open Policy Agent):**
-    *   Runs OPA as a server on `localhost:8181`.
-    *   Enforces policies defined in Rego (e.g., `deployment/system_authz.rego`, `src/governance/policy/finance_policy.rego`).
-    *   Protected by Bearer Token authentication (token shared via Secret Manager).
-    *   Pinned to version `0.68.0-static` for stability.
+2.  **Financial Advisor Agent (`governed-financial-advisor`)**:
+    *   FastAPI backend (Port 8080).
+    *   Hosts the LangGraph control plane and ADK agents.
+    *   Connects to the Gateway via internal DNS.
+
+3.  **Inference Services**:
+    *   `vllm-fast-service`: Hosted vLLM instance for the "Fast Path" (Control Plane/Format Enforcer).
+    *   `vllm-reasoning-service`: (Optional) Hosted vLLM instance for the "Reasoning Plane" (if not using Vertex AI).
+
+4.  **Governance Sidecars/Services**:
+    *   `opa-service`: Open Policy Agent server.
+    *   `nemo-service`: NeMo Guardrails server.
 
 ## Prerequisites
 
 *   Google Cloud Project with billing enabled.
 *   `gcloud` CLI installed and authenticated.
-*   Permissions to manage Cloud Run, Secret Manager, and Artifact Registry/Cloud Build.
-*   **Optional:** [Serverless VPC Access](https://cloud.google.com/run/docs/configuring/vpc-connectors) connector (Required for Redis/Memorystore connectivity).
+*   `kubectl` installed (or installed via script).
+*   Permissions to manage GKE, Secret Manager, and Artifact Registry.
 
 ## Deployment Script
 
-The `deploy_all.py` script is the central entry point for deploying the entire Cybernetic Governance Engine stack. It orchestrates the provisioning and configuration of:
-
-1.  **Redis**: Provisions or verifies a Redis instance (for session state persistence).
-2.  **Secrets & Config**: Updates Secret Manager (OPA policies, auth tokens).
-3.  **Cloud Run Services**: Builds and deploys the Backend (`governed-financial-advisor`) and UI (`financial-advisor-ui`) services.
+The `deploy_sw.py` script is the central entry point for deploying the entire Cybernetic Governance Engine stack to GKE.
 
 ### Usage
 
-The deployment script enforces "Golden Path" configurations to ensure reliability and performance. Ad-hoc model configuration (e.g., custom quantization) is disabled.
-
-**Supported Configurations:**
-
-| Family | Default Model | Accelerator | Optimization |
-| :--- | :--- | :--- | :--- |
-| **Llama** | `meta-llama/Llama-3.1-8B-Instruct` | **GPU** (T4, L4, A100) | `gptq`, `float16` |
-| **Gemma** | `google/gemma-3-27b-it` | **GPU** (L4, A100) | `bfloat16` (Text Only) |
-| **Gemma** | `google/gemma-3-27b-it` | **TPU** (v5e) | `bfloat16` |
-
-> **Note:** Gemma models are **blocked** on T4 GPUs due to lack of native bfloat16 support.
+**1. Standard Deployment (GKE)**
+This will provision a GKE cluster (if missing), build containers, and deploy all services.
 
 ```bash
-# 1. Llama 3.1 8B (Default Golden Path)
-# Target: NVIDIA T4 (Low Cost)
-python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID
+# Deploy to GKE (Standard with GPU Nodes)
+python3 deployment/deploy_sw.py --project-id YOUR_PROJECT_ID --region us-central1
+```
 
-# 2. Gemma 3 27B on GPU
-# Target: NVIDIA L4 or A100 (Required for bfloat16)
-python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID \
-    --model-family gemma \
-    --accelerator-type l4  # or a100
-
-# 3. Gemma 3 27B on TPU
-# Target: TPU v5e
-python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID \
-    --model-family gemma \
-    --accelerator tpu \
+**2. Customizing Region/Zone**
+```bash
+python3 deployment/deploy_sw.py \
+    --project-id YOUR_PROJECT_ID \
+    --region us-east1 \
     --zone us-east1-c
-
-# 4. Custom Model ID (Must match Family Golden Path)
-# Example: Deploying a fine-tuned Llama 8B
-python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID \
-    --model-family llama \
-    --model-id "my-org/my-finetuned-llama-8b"
-
-# Skip specific services
-python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --skip-build  # Skip container build
-python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --skip-ui     # Skip UI deployment
-python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --skip-redis  # Skip Redis provisioning
-
-# Use existing Redis
-python3 deployment/deploy_all.py --project-id YOUR_PROJECT_ID --redis-host "10.0.0.5"
 ```
 
-### UI Deployment
-
-The script automatically deploys the Streamlit UI as a separate Cloud Run service (`financial-advisor-ui`).
-*   **Build:** Submits `ui/` to Cloud Build.
-*   **Configuration:** Automatically injects the `BACKEND_URL` of the deployed backend service.
-*   **Access:** The UI is deployed with `--allow-unauthenticated` for easy access (since it handles its own auth headers to the backend).
-
-## Security Features
-
-*   **Identity:** Uses Bearer Token authentication between the App and Sidecar to prevent unauthorized access to the policy engine (Defense in Depth).
-*   **Fail-Closed:** The application fails securely if the OPA sidecar is unreachable.
-*   **Startup Boost:** Uses Cloud Run CPU Boost to minimize cold start latency, ensuring the sidecar is ready before the app serves traffic.
-*   **Startup Dependency:** Uses the `dependsOn` configuration to ensure the application container waits for the OPA sidecar's health check to pass before starting, preventing startup race conditions.
-
-## Redis Connectivity
-
-For session state persistence, Cloud Run requires a **Serverless VPC Access connector** to reach Cloud Memorystore (Redis).
-
-If a VPC connector is not configured:
-*   The application will timeout connecting to Redis
-*   The system will fallback to **Ephemeral Mode** (in-memory state only)
-*   Session state will NOT persist across container restarts
-
-To configure VPC connectivity:
-1.  Create a [Serverless VPC Access connector](https://cloud.google.com/run/docs/configuring/vpc-connectors)
-2.  Add `--vpc-connector YOUR_CONNECTOR` to the Cloud Run deploy command
-
-## Post-Deployment Verification
-
-### 1. Check Service Health
-
+**3. Skipping Build (Fast Redeploy)**
+If images are already built and you only modified manifests:
 ```bash
-# Get service URL
-gcloud run services describe governed-financial-advisor \
-  --project YOUR_PROJECT_ID \
-  --region us-central1 \
-  --format "value(status.url)"
+python3 deployment/deploy_sw.py --project-id YOUR_PROJECT_ID --skip-build
 ```
 
-### 2. Access Services (Authenticated Deployments)
+### Configuration
 
-If your services are not publicly accessible, use **Cloud Run Proxy** to tunnel requests:
+Configuration is managed via `deployment/config.yaml` (default settings) and `.env` (secrets/overrides).
 
-```bash
-# Terminal 1: Backend proxy
-gcloud run services proxy governed-financial-advisor \
-  --project YOUR_PROJECT_ID \
-  --region us-central1 \
-  --port 8081
+**Key Environment Variables:**
+*   `MODEL_FAST`: Model ID for the fast path (e.g., `meta-llama/Llama-3.1-8B-Instruct`).
+*   `MODEL_REASONING`: Model ID for the reasoning path.
+*   `HUGGING_FACE_HUB_TOKEN`: Required for vLLM to download gated models.
+*   `OPENAI_API_KEY`: Required if using OpenAI models via NeMo.
 
-# Terminal 2: UI proxy  
-gcloud run services proxy financial-advisor-ui \
-  --project YOUR_PROJECT_ID \
-  --region us-central1 \
-  --port 8080
-```
+## Terraform (Infrastructure as Code)
 
-Then open `http://localhost:8080` in your browser.
-
-### 3. Test Backend API
-
-```bash
-# Health check
-curl localhost:8081/health
-
-# Query the agent
-curl -X POST localhost:8081/agent/query \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Hello"}'
-```
-
-### 4. View Logs
-
-```bash
-gcloud logging read 'resource.type="cloud_run_revision"' \
-  --project YOUR_PROJECT_ID \
-  --limit 50 \
-  --format "value(textPayload)"
-```
-
-# Terraform Deployment (Hybrid Cloud)
-
-For a hybrid deployment (GKE + Cloud Run), use the `deployment/terraform` directory.
+For managing the GKE cluster and underlying VPC via Terraform:
 
 ```bash
 cd deployment/terraform
@@ -170,3 +80,43 @@ terraform init
 terraform apply -var="project_id=YOUR_PROJECT_ID"
 ```
 
+The Terraform state tracks the GKE cluster, Node Pools, and Secret Manager resources. The `deploy_sw.py` script respects existing infrastructure.
+
+## Post-Deployment Verification
+
+### 1. Check Pod Status
+
+```bash
+kubectl get pods -n governance-stack
+```
+
+Expected output should show `Running` status for:
+*   `gateway-service-*`
+*   `governed-financial-advisor-*`
+*   `vllm-fast-*` (if enabled)
+*   `financial-advisor-ui-*`
+
+### 2. Access the UI
+
+The deployment script will output the LoadBalancer IP for the UI. You can also find it via:
+
+```bash
+kubectl get service financial-advisor-ui -n governance-stack
+```
+
+Open `http://<EXTERNAL-IP>` in your browser.
+
+### 3. Test Backend API
+
+Use `kubectl port-forward` to access the backend locally:
+
+```bash
+kubectl port-forward svc/governed-financial-advisor 8080:80 -n governance-stack
+```
+
+Then query the agent:
+```bash
+curl -X POST localhost:8080/agent/query \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Hello"}'
+```

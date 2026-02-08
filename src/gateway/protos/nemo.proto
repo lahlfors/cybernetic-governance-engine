@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package governance;
+
+service NeMoGuardrails {
+    // Validates input or output text against configured rails
+    rpc Verify (VerifyRequest) returns (VerifyResponse) {}
+}
+
+message VerifyRequest {
+    string input = 1;
+    string context_json = 2; // Optional context dictionary
+}
+
+message VerifyResponse {
+    string response = 1; // The sanitized response or original input
+    string status = 2; // SUCCESS, BLOCKED
+}
