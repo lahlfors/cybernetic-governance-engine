@@ -1,0 +1,13 @@
+steps:
+- name: 'python:3.10'
+  entrypoint: 'bash'
+  args:
+  - '-c'
+  - |
+    pip install -r requirements-build.txt
+    PYTHONPATH=. python build_agent.py
+
+artifacts:
+  objects:
+    location: 'gs://${PROJECT_ID}-agent-artifacts/reasoning_engine_build'
+    paths: ['deployment/artifacts/*']

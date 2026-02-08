@@ -1,3 +1,17 @@
+# Copyright 2025 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Symbolic Governor (Neuro-Symbolic Governance Layer)
 
@@ -15,8 +29,7 @@ import logging
 from typing import Any, Dict
 
 from src.gateway.core.policy import OPAClient
-from src.governed_financial_advisor.governance.safety import ControlBarrierFunction
-from src.governed_financial_advisor.governance.consensus import ConsensusEngine
+from src.gateway.governance.contracts import SafetyFilter, ConsensusProvider
 
 logger = logging.getLogger("SymbolicGovernor")
 
@@ -28,8 +41,8 @@ class SymbolicGovernor:
     def __init__(
         self,
         opa_client: OPAClient,
-        safety_filter: ControlBarrierFunction,
-        consensus_engine: ConsensusEngine
+        safety_filter: SafetyFilter,
+        consensus_engine: ConsensusProvider
     ):
         self.opa_client = opa_client
         self.safety_filter = safety_filter

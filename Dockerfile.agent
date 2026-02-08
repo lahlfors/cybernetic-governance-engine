@@ -1,0 +1,51 @@
+# Dockerfile.agent
+# Custom Container for Vertex AI Reasoning Engine with NeMo Guardrails support
+
+FROM python:3.11-slim
+
+# 1. Install System Dependencies
+# nemoguardrails often needs build-essential, and potentially others.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 2. Copy Project Files
+COPY pyproject.toml .
+# COPY README.md . # If needed by pyproject.toml
+COPY src/ src/
+COPY config/ config/
+# COPY deployment/artifacts/requirements.txt requirements.txt # Optional if we use pyproject.toml
+
+# 3. Install Python Dependencies
+# We accept the overhead of installing everything to ensure NeMo works.
+ENV PIP_DEFAULT_TIMEOUT=100
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir \
+    "google-cloud-aiplatform[agent-engines]" \
+    "langchain-google-vertexai" \
+    "langchain-google-genai" \
+    "langgraph" \
+    "langgraph-checkpoint-redis" \
+    "redis" \
+    "pydantic" \
+    "google-adk" \
+    "nemoguardrails" \
+    "uvicorn" \
+    "fastapi" \
+    "yfinance" \
+    "pandas" \
+    "httpx" \
+    "python-json-logger" \
+    "nest_asyncio"
+
+# 4. Expose Port (Vertex AI expects 8080 by default for custom containers usually)
+ENV PORT=8080
+EXPOSE 8080
+
+# 5. Entrypoint
+# We need an adapter to expose the agent via HTTP.
+# We will create src/governed_financial_advisor/reasoning_engine_service.py
+CMD ["uvicorn", "src.governed_financial_advisor.reasoning_engine_service:app", "--host", "0.0.0.0", "--port", "8080"]

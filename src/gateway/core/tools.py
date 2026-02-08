@@ -5,19 +5,9 @@ Gateway Core: Real Trade Execution Logic
 import logging
 import asyncio
 from pydantic import BaseModel, Field
+from src.gateway.core.structs import TradeOrder
 
 logger = logging.getLogger(__name__)
-
-# Re-export TradeOrder from tools/trades.py logic
-class TradeOrder(BaseModel):
-    # Minimal fields for execution
-    symbol: str
-    amount: float
-    currency: str
-    transaction_id: str
-    trader_id: str
-    trader_role: str
-    confidence: float = Field(default=0.0, description="Confidence score (0.0-1.0) of the agent proposing the trade.")
 
 async def execute_trade(order: TradeOrder) -> str:
     """

@@ -1,7 +1,15 @@
 import logging
 from typing import Any
 
+<<<<<<< HEAD
 from nemoguardrails.streaming import StreamingHandler
+=======
+try:
+    from nemoguardrails.streaming import StreamingHandler
+except ImportError:
+    # Fallback for environments where NeMo is not installed (e.g. Agent)
+    StreamingHandler = object
+>>>>>>> ecc8ba9
 from opentelemetry import trace
 
 logger = logging.getLogger("NeMoOTelExporter")

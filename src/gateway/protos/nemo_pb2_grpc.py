@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-import nemo_pb2 as nemo__pb2
+from src.gateway.protos import nemo_pb2 as src_dot_gateway_dot_protos_dot_nemo__pb2
 
 GRPC_GENERATED_VERSION = '1.78.0'
 GRPC_VERSION = grpc.__version__
@@ -18,7 +18,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + ' but the generated code in nemo_pb2_grpc.py depends on'
+        + ' but the generated code in src/gateway/protos/nemo_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -36,8 +36,8 @@ class NeMoGuardrailsStub(object):
         """
         self.Verify = channel.unary_unary(
                 '/governance.NeMoGuardrails/Verify',
-                request_serializer=nemo__pb2.VerifyRequest.SerializeToString,
-                response_deserializer=nemo__pb2.VerifyResponse.FromString,
+                request_serializer=src_dot_gateway_dot_protos_dot_nemo__pb2.VerifyRequest.SerializeToString,
+                response_deserializer=src_dot_gateway_dot_protos_dot_nemo__pb2.VerifyResponse.FromString,
                 _registered_method=True)
 
 
@@ -56,8 +56,8 @@ def add_NeMoGuardrailsServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'Verify': grpc.unary_unary_rpc_method_handler(
                     servicer.Verify,
-                    request_deserializer=nemo__pb2.VerifyRequest.FromString,
-                    response_serializer=nemo__pb2.VerifyResponse.SerializeToString,
+                    request_deserializer=src_dot_gateway_dot_protos_dot_nemo__pb2.VerifyRequest.FromString,
+                    response_serializer=src_dot_gateway_dot_protos_dot_nemo__pb2.VerifyResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -85,8 +85,8 @@ class NeMoGuardrails(object):
             request,
             target,
             '/governance.NeMoGuardrails/Verify',
-            nemo__pb2.VerifyRequest.SerializeToString,
-            nemo__pb2.VerifyResponse.FromString,
+            src_dot_gateway_dot_protos_dot_nemo__pb2.VerifyRequest.SerializeToString,
+            src_dot_gateway_dot_protos_dot_nemo__pb2.VerifyResponse.FromString,
             options,
             channel_credentials,
             insecure,
