@@ -1,6 +1,6 @@
 import unittest
 
-from src.governance.nemo_actions import check_approval_token, check_latency
+from src.governed_financial_advisor.governance.nemo_actions import check_approval_token, check_latency
 
 
 class TestNeMoActions(unittest.TestCase):

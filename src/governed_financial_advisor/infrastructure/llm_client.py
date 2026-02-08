@@ -1,6 +1,9 @@
 """
 HybridClient: Refactored to be a Client Stub for the Agentic Gateway.
 Delegates all calls to the gRPC Gateway Service.
+
+DEPRECATED: New code should use `src.governed_financial_advisor.infrastructure.gateway_client` directly.
+This stub is maintained for backward compatibility during the refactor.
 """
 
 import logging

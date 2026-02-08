@@ -3,6 +3,7 @@
 This document describes the **Cybernetic Governance Architecture** of the Financial Advisor system, aligned with **ISO/IEC 42001** and Capital One's **MACAW** framework.
 
 For a detailed guide on the architectural refactoring, see [MACAW_REFACTOR_GUIDE.md](docs/MACAW_REFACTOR_GUIDE.md).
+For details on the Gateway Sidecar infrastructure, see [GATEWAY_ARCHITECTURE.md](docs/GATEWAY_ARCHITECTURE.md).
 
 ## 1. The Cybernetic Model (Viable System Model)
 
@@ -67,7 +68,7 @@ To balance User Experience (Latency) with Corporate Safety, we use a hybrid stra
 The system employs a **Hybrid Inference Stack** to balance reasoning capability with latency and data sovereignty.
 
 ### 3.1. The Hybrid Client
-The `HybridClient` (`src/governed_financial_advisor/infrastructure/llm_client.py`) routes traffic between two paths:
+The `HybridClient` (Logic moved to `src/gateway/core/llm.py`, Agent uses gRPC Stub) routes traffic between two paths:
 
 1.  **Reliable Path (Vertex AI Gemini):**
     *   **Use Case:** High-order reasoning, Planning (System 4), and Evaluation (System 3).

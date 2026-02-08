@@ -2,8 +2,8 @@ from unittest.mock import patch
 
 import pytest
 
-from src.agents.risk_analyst.agent import ConstraintLogic, ProposedUCA
-from src.governance.transpiler import PolicyTranspiler
+from src.governed_financial_advisor.governance.structs import ConstraintLogic, ProposedUCA
+from src.governed_financial_advisor.governance.transpiler import PolicyTranspiler
 
 
 @pytest.fixture
@@ -21,13 +21,13 @@ def mock_uca():
     )
 
 def test_transpiler_initialization_llm_flag():
-    with patch("src.governance.transpiler.ChatGoogleGenerativeAI") as MockLLM:
+    with patch("src.governed_financial_advisor.governance.transpiler.ChatGoogleGenerativeAI") as MockLLM:
         transpiler = PolicyTranspiler()
         assert transpiler.use_llm is True
         MockLLM.assert_called_once()
 
 def test_generate_nemo_action_calls_llm(mock_uca):
-    with patch("src.governance.transpiler.ChatGoogleGenerativeAI") as MockLLM:
+    with patch("src.governed_financial_advisor.governance.transpiler.ChatGoogleGenerativeAI") as MockLLM:
         mock_instance = MockLLM.return_value
         mock_instance.invoke.return_value.content = "def check_test(): return True"
 
@@ -43,7 +43,7 @@ def test_generate_nemo_action_calls_llm(mock_uca):
         assert "order_size" in prompt
 
 def test_generate_rego_policy_calls_llm(mock_uca):
-    with patch("src.governance.transpiler.ChatGoogleGenerativeAI") as MockLLM:
+    with patch("src.governed_financial_advisor.governance.transpiler.ChatGoogleGenerativeAI") as MockLLM:
         mock_instance = MockLLM.return_value
         mock_instance.invoke.return_value.content = "decision = \"DENY\""
 
