@@ -26,6 +26,25 @@ CACHE_TTL = 5.0  # Seconds
 
 # --- CORE/EXISTING ACTIONS ---
 
+"""
+NOTE: Governance Enforcement Strategy
+-------------------------------------
+These NeMo actions (check_slippage_risk, check_data_latency, etc.) are currently
+NOT enforced by the Agentic Gateway for 'execute_trade' calls.
+The Gateway (src/gateway/server/main.py) uses the SymbolicGovernor which enforces:
+1. OPA Policies (RBAC, Limits) - src/gateway/core/policy.py
+2. Control Barrier Functions (Safety/Cash) - src/governed_financial_advisor/governance/safety.py
+3. Consensus Engine (Human Oversight) - src/governed_financial_advisor/governance/consensus.py
+
+These actions may be used for:
+- Agent-side "Self-Correction" (if wired into the Agent's internal rails)
+- Demo Simulation (e.g. check_data_latency injects simulated latency)
+- Future "Defense in Depth" layers
+
+If these checks are intended to be strictly enforced, they should be migrated to OPA Rego policies
+or the Gateway should be updated to invoke NeMo for tool execution.
+"""
+
 def check_approval_token(context: dict[str, Any] = {}, event: dict[str, Any] = {}) -> bool:
     """
     NeMo Action: SC-1 Authorization Check with Cryptographic Mandate (AP2 Mock).
