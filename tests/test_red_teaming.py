@@ -4,8 +4,8 @@ from unittest import mock
 
 import pytest
 
-from src.governance import nemo_actions
-from src.governance.nemo_actions import check_drawdown_limit
+from src.governed_financial_advisor.governance import nemo_actions
+from src.governed_financial_advisor.governance.nemo_actions import check_drawdown_limit
 
 # Configure logging to capture output
 logging.basicConfig(level=logging.INFO)
@@ -20,7 +20,7 @@ def mock_params_file(tmp_path):
     p = tmp_path / "safety_params.json"
 
     # Patch the constant in the module
-    with mock.patch("src.governance.nemo_actions.SAFETY_PARAMS_FILE", str(p)):
+    with mock.patch("src.governed_financial_advisor.governance.nemo_actions.SAFETY_PARAMS_FILE", str(p)):
         # Also reset cache to ensure clean state for each test
         nemo_actions._safety_params_cache = {}
         nemo_actions._last_check_time = 0.0

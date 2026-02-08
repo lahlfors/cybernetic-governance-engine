@@ -68,3 +68,6 @@ deployment/backend_service.yaml
 deployment/nemo_service.yaml
 deployment/artifacts/
 manual_gateway_build.yaml
+agent.pkl
+green_stack_pipeline.json
+dependencies.tar.gz

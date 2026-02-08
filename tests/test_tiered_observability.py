@@ -6,11 +6,11 @@ import pandas as pd
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 
-from src.infrastructure.telemetry.exporters.parquet_exporter import ParquetSpanExporter
-from src.infrastructure.telemetry.processors.genai_cost_optimizer import (
+from src.governed_financial_advisor.infrastructure.telemetry.exporters.parquet_exporter import ParquetSpanExporter
+from src.governed_financial_advisor.infrastructure.telemetry.processors.genai_cost_optimizer import (
     GenAICostOptimizerProcessor,
 )
-from src.utils.telemetry import smart_sampling
+from src.governed_financial_advisor.utils.telemetry import smart_sampling
 
 # Setup
 COLD_TIER_DIR = "tests/temp_cold_tier"
@@ -26,7 +26,7 @@ def setup_telemetry():
     hot_exporter = MagicMock()
     hot_processor = SimpleSpanProcessor(hot_exporter)
 
-    parquet_exporter = ParquetSpanExporter(output_path=COLD_TIER_DIR)
+    parquet_exporter = ParquetSpanExporter(local_fallback_path=COLD_TIER_DIR)
     cold_processor = SimpleSpanProcessor(parquet_exporter)
 
     # Optimizer
@@ -46,7 +46,7 @@ def test_read_sampling():
     tracer = provider.get_tracer("test")
 
     # Force random to return 0.0 (sample)
-    with patch("src.utils.telemetry.random.random", return_value=0.0):
+    with patch("src.governed_financial_advisor.utils.telemetry.random.random", return_value=0.0):
         with tracer.start_as_current_span("chat_completion") as span:
             span.set_attribute("gen_ai.content.prompt", "Hello")
             span.set_attribute("gen_ai.content.completion", "Hi there")
@@ -76,7 +76,7 @@ def test_write_sampling():
     tracer = provider.get_tracer("test")
 
     # Force random to return 0.99 (no sample by default)
-    with patch("src.utils.telemetry.random.random", return_value=0.99):
+    with patch("src.governed_financial_advisor.utils.telemetry.random.random", return_value=0.99):
         with tracer.start_as_current_span("execute_trade") as span:
             span.set_attribute("gen_ai.tool.name", "trade_tool")
             span.set_attribute("gen_ai.content.prompt", "Buy AAPL")
@@ -94,7 +94,7 @@ def test_risky_sampling():
     provider, hot_exporter, optimizer = setup_telemetry()
     tracer = provider.get_tracer("test")
 
-    with patch("src.utils.telemetry.random.random", return_value=0.99):
+    with patch("src.governed_financial_advisor.utils.telemetry.random.random", return_value=0.99):
         with tracer.start_as_current_span("jailbreak_attempt") as span:
             span.set_attribute("guardrail.outcome", "BLOCKED")
             span.set_attribute("gen_ai.content.prompt", "Bad prompt")

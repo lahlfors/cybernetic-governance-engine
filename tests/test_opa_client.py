@@ -2,7 +2,7 @@ import httpx
 import pytest
 import respx
 
-from src.governance.client import OPAClient
+from src.gateway.core.policy import OPAClient
 
 
 @pytest.fixture

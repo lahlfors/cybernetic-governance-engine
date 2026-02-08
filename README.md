@@ -12,7 +12,7 @@ Use this authentic reference implementation to understand how to build **high-re
 
 This implementation adheres to the **Agentic DevOps** philosophy, reframing the infrastructure as a deterministic supervisor.
 
-👉 **See [docs/AGENTIC_DEVOPS_FEASIBILITY.md](docs/AGENTIC_DEVOPS_FEASIBILITY.md) for the full architectural analysis.**
+👉 **See [ARCHITECTURE.md](ARCHITECTURE.md) for the full architectural analysis.**
 
 *   **The Advisor (LLM):** The "Brain" that reasons about financial strategy.
 *   **The Policy Governor:** The "Sentry" that enforces absolute boundaries ("The Wall"). Uses an **OPA Sidecar** for policy and **In-Process NeMo Guardrails** for semantic safety.
@@ -58,7 +58,7 @@ This system implements a **Hybrid Manager-Worker Architecture** that separates c
 
 This implementation adheres to the **Sovereign Stack** architecture, ensuring cloud independence and portability.
 
-👉 **See [docs/SOVEREIGN_STACK.md](docs/SOVEREIGN_STACK.md) for full architecture details.**
+👉 **See [ARCHITECTURE.md](ARCHITECTURE.md) for full architecture details.**
 
 *   **Cloud Agnostic:** Runs on local Docker, AWS, Azure, or On-Prem.
 *   **Local Governance:** Policy (OPA) and Semantic Guardrails (NeMo) run as **Sidecars**.
@@ -69,7 +69,7 @@ This implementation adheres to the **Sovereign Stack** architecture, ensuring cl
 
 This repository implements the advanced **Green Stack Governance Architecture**, separating cognition from control to satisfy ISO 42001 and STPA requirements.
 
-👉 **Architecture Guide: [docs/GREEN_STACK_ARCHITECTURE.md](docs/GREEN_STACK_ARCHITECTURE.md)**
+👉 **Architecture Guide: [ARCHITECTURE.md](ARCHITECTURE.md)**
 
 ### The 4-Layer Safety Loop
 1.  **Define (Risk Agent):** An offline "A2 Discovery" agent continuously scans for financial risks (e.g., Slippage, Drawdown) and defines Unsafe Control Actions (UCAs).
@@ -201,13 +201,13 @@ This repository supports deploying the high-performance inference stack to Googl
 
 ### Deployment Options
 
-The `deploy_all.py` script automates the entire process, including provisioning infrastructure, building containers, and deploying manifests.
+The `deploy_sw.py` script automates the entire process, including provisioning infrastructure, building containers, and deploying manifests.
 
 #### NVIDIA GPU (Default)
 Optimized for ultra-low latency using **Speculative Decoding**. Best for user-facing applications requiring strict SLAs (<200ms TTFT).
 
 ```bash
-python3 deployment/deploy_all.py \
+python3 deployment/deploy_sw.py \
     --project-id <YOUR_PROJECT_ID> \
     --region us-central1 \
     --accelerator-type l4
@@ -237,7 +237,7 @@ The suite tests for:
 ### Compliance (ISO 42001)
 
 The system is designed to meet **ISO/IEC 42001** standards for AI Management Systems.
-👉 **See [ISO_42001_COMPLIANCE.md](ISO_42001_COMPLIANCE.md) for the Telemetry Audit Map.**
+👉 **See [docs/ISO_42001_COMPLIANCE.md](docs/ISO_42001_COMPLIANCE.md) for the Telemetry Audit Map.**
 
 ## Architecture Diagram
 
