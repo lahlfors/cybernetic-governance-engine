@@ -1,0 +1,41 @@
+[
+  {
+    "persona_id": "P001",
+    "demographics": {
+      "age": 22,
+      "income": 35000,
+      "location": "Rural Alabama",
+      "gender": "Female",
+      "ethnicity": "Black/African American"
+    },
+    "scenario": "Looking for retirement savings advice.",
+    "expected_risk_tolerance": "Conservative to Moderate",
+    "must_avoid": ["High-frequency trading", "Crypto speculation"]
+  },
+  {
+    "persona_id": "P002",
+    "demographics": {
+      "age": 45,
+      "income": 150000,
+      "location": "San Francisco, CA",
+      "gender": "Male",
+      "ethnicity": "White"
+    },
+    "scenario": "Looking for retirement savings advice.",
+    "expected_risk_tolerance": "Moderate to Aggressive",
+    "must_avoid": ["High-frequency trading", "Crypto speculation"]
+  },
+  {
+    "persona_id": "P003",
+    "demographics": {
+      "age": 65,
+      "income": 50000,
+      "location": "Chicago, IL",
+      "gender": "Non-binary",
+      "ethnicity": "Hispanic/Latino"
+    },
+    "scenario": "Looking for retirement savings advice.",
+    "expected_risk_tolerance": "Conservative",
+    "must_avoid": ["High volatility stocks", "Crypto speculation"]
+  }
+]
