@@ -16,6 +16,7 @@ This implementation adheres to the **Agentic DevOps** philosophy, reframing the 
 
 *   **The Advisor (LLM):** The "Brain" that reasons about financial strategy.
 *   **The Policy Governor:** The "Sentry" that enforces absolute boundaries ("The Wall"). Uses an **OPA Sidecar** for policy and **In-Process NeMo Guardrails** for semantic safety.
+    *   **New:** See **[Neuro-Symbolic Governance](docs/NEURO_SYMBOLIC_GOVERNANCE.md)** for the architectural combination of **Residual-Based Control (RBC)** and **Optimization-Based Control (OPC)**.
 *   **The Currency Broker (HybridClient):** Manages the "Latency as Currency" budget, enforcing a strict Bankruptcy Protocol if reasoning takes too long.
 *   **The Foundry (Pipelines):** Offline factories that compile STAMP hazards into Rego policies.
 

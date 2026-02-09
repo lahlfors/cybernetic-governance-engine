@@ -75,7 +75,7 @@ async def test_symbolic_governor_cbf_fail():
     with pytest.raises(GovernanceError) as excinfo:
         await governor.govern("execute_trade", params)
 
-    assert "Safety Violation (CBF)" in str(excinfo.value)
+    assert "Safety Violation (RBC/CBF)" in str(excinfo.value)
 
 @pytest.mark.asyncio
 async def test_symbolic_governor_consensus_fail():

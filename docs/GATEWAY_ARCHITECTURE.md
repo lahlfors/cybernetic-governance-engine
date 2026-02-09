@@ -14,6 +14,7 @@ The **Gateway** (`src/gateway/`) is a dedicated gRPC service that acts as the ph
     1.  **LLM Proxy:** Routes all generation requests to the appropriate provider (vLLM vs Vertex). Handles Token Counting, Cost Tracking, and Data Loss Prevention (DLP).
     2.  **Execution Proxy:** The *only* component authorized to execute "Effectful Tools" (e.g., `execute_trade`).
     3.  **Policy Enforcement:** Centralizes OPA, Circuit Breaker, and Safety Filter logic.
+        *   See **[Neuro-Symbolic Governance](NEURO_SYMBOLIC_GOVERNANCE.md)** for details on the RBC (Safety) and OPC (Policy) architecture.
 
 ### 1.2. The Stateless Agent (Reasoning Engine)
 The **Agent** (`src/governed_financial_advisor/`) is now a "Pure Reasoner".
