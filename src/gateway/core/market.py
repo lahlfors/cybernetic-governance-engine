@@ -3,10 +3,18 @@ Gateway Core: Market Data Service (Real Implementation)
 """
 
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
 class MarketService:
+    async def check_status_async(self, symbol: str) -> str:
+        """
+        Asynchronously fetches real market status and price.
+        Offloads the blocking yfinance call to a thread.
+        """
+        return await asyncio.to_thread(self.check_status, symbol)
+
     def check_status(self, symbol: str) -> str:
         """
         Fetches real market status and price using yfinance.

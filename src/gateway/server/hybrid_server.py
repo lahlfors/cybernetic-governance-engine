@@ -76,7 +76,7 @@ async def enforce_governance(tool_name: str, params: dict):
 async def check_market_status(symbol: str) -> str:
     """Checks the current market status and price for a given ticker symbol."""
     logger.info(f"Tool Call: check_market_status({symbol})")
-    return market_service.check_status(symbol)
+    return await market_service.check_status_async(symbol)
 
 @mcp.tool()
 async def verify_content_safety(text: str) -> str:

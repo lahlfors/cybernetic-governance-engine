@@ -144,7 +144,7 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
 
         if tool_name == "check_market_status":
             symbol = params.get("symbol", "UNKNOWN")
-            status = market_service.check_status(symbol)
+            status = await market_service.check_status_async(symbol)
             return gateway_pb2.ToolResponse(status="SUCCESS", output=status)
 
         # --- SEMANTIC SAFETY TOOL (NeMo gRPC) ---
