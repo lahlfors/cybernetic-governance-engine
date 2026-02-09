@@ -22,6 +22,7 @@ from google.adk.tools import FunctionTool
 
 from config.settings import MODEL_FAST
 from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
+from src.governed_financial_advisor.utils.telemetry import genai_span, get_tracer
 
 logger = logging.getLogger(__name__)
 
@@ -62,26 +63,43 @@ def perform_market_search(query: str) -> str:
     """
     Search for market data using DuckDuckGo (Open Source / No API Key).
     """
+    tracer = get_tracer()
+
+    # Trace the retrieval operation (Module 4: RAG Tracing)
     try:
         from duckduckgo_search import DDGS
 
-        logger.info(f"Searching DuckDuckGo for: {query}")
-        results_text = []
+        # OpenTelemetry Span for External Retrieval
+        with genai_span("data.retrieval.duckduckgo", prompt=query) as span:
+            if span:
+                span.set_attribute("db.system", "duckduckgo")
+                span.set_attribute("db.operation", "search")
+                span.set_attribute("db.statement", query)
 
-        with DDGS() as ddgs:
-            # Fetch up to 5 results
-            results = list(ddgs.text(query, max_results=5))
+            logger.info(f"Searching DuckDuckGo for: {query}")
+            results_text = []
 
-            if not results:
-                return "No results found."
+            with DDGS() as ddgs:
+                # Fetch up to 5 results
+                results = list(ddgs.text(query, max_results=5))
 
-            for i, r in enumerate(results):
-                title = r.get("title", "No Title")
-                body = r.get("body", "")
-                href = r.get("href", "")
-                results_text.append(f"Source {i+1}: {title}\nURL: {href}\nSummary: {body}\n")
+                if not results:
+                    if span:
+                         span.set_attribute("db.row_count", 0)
+                    return "No results found."
 
-        return "\n".join(results_text)
+                for i, r in enumerate(results):
+                    title = r.get("title", "No Title")
+                    body = r.get("body", "")
+                    href = r.get("href", "")
+                    results_text.append(f"Source {i+1}: {title}\nURL: {href}\nSummary: {body}\n")
+
+                if span:
+                    span.set_attribute("db.row_count", len(results))
+                    # Capture snippet of result for debugging (careful with PII)
+                    span.set_attribute("db.result_preview", str(results_text[:1]))
+
+            return "\n".join(results_text)
 
     except ImportError:
         return "Error: duckduckgo-search not installed. Please install it to use open search."
