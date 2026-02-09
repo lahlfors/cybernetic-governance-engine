@@ -22,7 +22,10 @@ neural networks.
 Responsibilities:
 1. SR 11-7 Compliance: Enforce hard constraints (e.g., Confidence >= 0.95, CBF Safety).
 2. ISO 42001 Compliance: Ensure process transparency, logging, and human oversight (Consensus).
-3. Cybernetic Stability: Prevent actions that violate safety boundaries.
+3. Cybernetic Stability: Prevent actions that violate safety boundaries using Control Barrier Functions (CBF).
+
+See `docs/NEURO_SYMBOLIC_GOVERNANCE.md` for detailed architecture combining
+Residual-Based Control (RBC) and Optimization-Based Control (OPC).
 """
 
 import logging
@@ -65,15 +68,16 @@ class SymbolicGovernor:
                     f"SR 11-7 Violation: Model Confidence {confidence} < 0.95. Action Rejected."
                 )
 
-            # 2. SR 11-7 / Cybernetic Stability: Control Barrier Function (Safety)
+            # 2. Residual-Based Control (RBC) / Cybernetic Stability: Control Barrier Function (Safety)
             # Checks if the action violates safety boundaries (e.g. bankruptcy).
+            # This is a fast, local check (CBF).
             cbf_result = self.safety_filter.verify_action(tool_name, params)
             if cbf_result.startswith("UNSAFE"):
-                raise GovernanceError(f"Safety Violation (CBF): {cbf_result}")
+                raise GovernanceError(f"Safety Violation (RBC/CBF): {cbf_result}")
 
-        # 3. ISO 42001: Policy Compliance (OPA)
+        # 3. Optimization-Based Control (OPC) / ISO 42001: Policy Compliance (OPA)
         # Checks organizational policies (e.g. "No trading in restricted regions").
-        # This is a "Process" check.
+        # This is a "Process" check using global policy rules.
         # We construct the payload for OPA.
         opa_payload = params.copy()
         opa_payload["action"] = tool_name
