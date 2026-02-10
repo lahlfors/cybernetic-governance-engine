@@ -69,10 +69,12 @@ Your role is to **EXECUTE** the plan provided to you. You are a "Dumb Executor" 
 def get_executor_instruction() -> str:
     return EXECUTOR_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
 
+from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
+
 def create_governed_trader_agent(model_name: str = MODEL_FAST) -> Agent:
     """Factory to create the Dumb Executor agent."""
     return Agent(
-        model=model_name,
+        model=get_adk_model(model_name),
         name="governed_trader_agent",
         instruction=get_executor_instruction(),
         output_key="execution_result",

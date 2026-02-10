@@ -7,7 +7,7 @@ BASE_IMAGE = "python:3.11"
 
 @dsl.component(
     base_image=BASE_IMAGE,
-    packages_to_install=["google-adk", "pydantic", "langchain-google-genai", "python-dotenv"]
+    packages_to_install=["google-adk", "pydantic", "langchain-google-genai", "python-dotenv", "litellm"]
 )
 def risk_discovery_op(
     trading_strategy: str,
@@ -32,11 +32,6 @@ def risk_discovery_op(
         text: str | None = None
     class Content(BaseModel):
         parts: list[Part]
-    class PromptData(BaseModel):
-        model: str
-        contents: list[Content]
-    class Prompt(BaseModel):
-        prompt_data: PromptData
 
     # From src.agents.risk_analyst.agent
     class ConstraintLogic(BaseModel):
@@ -56,7 +51,24 @@ def risk_discovery_op(
         identified_ucas: list[ProposedUCA] = Field(description="List of specific Financial UCAs identified")
         analysis_text: str = Field(description="Detailed textual analysis of risks")
 
-    MODEL_REASONING = "gemini-2.5-pro" # Hardcoded for safety in pipeline
+    import os
+    from google.adk.models.lite_llm import LiteLlm
+
+    # Default to localhost for local testing, or service name in cluster
+    VLLM_BASE_URL = os.environ.get("VLLM_BASE_URL", "http://vllm-service:8000/v1") 
+    VLLM_API_KEY = os.environ.get("VLLM_API_KEY", "EMPTY")
+    MODEL_REASONING = os.environ.get("GUARDRAILS_MODEL_NAME", "openai/meta-llama/Meta-Llama-3.1-8B-Instruct")
+
+    # Initialize Model
+    # Ensure model name implies OpenAI compatibility if needed
+    if not MODEL_REASONING.startswith("openai/") and "gpt" not in MODEL_REASONING:
+         MODEL_REASONING = f"openai/{MODEL_REASONING}"
+
+    adk_model = LiteLlm(
+        model=MODEL_REASONING,
+        api_base=VLLM_BASE_URL,
+        api_key=VLLM_API_KEY
+    )
 
     RISK_ANALYST_PROMPT_TEXT = """
 Role: You are the 'Risk Discovery Agent' (A2 System).
@@ -96,7 +108,7 @@ Return a structured JSON object (RiskAssessment) containing the list of identifi
 
     # Initialize Agent
     risk_analyst_agent = Agent(
-        model=MODEL_REASONING,
+        model=adk_model,
         name="risk_analyst_agent",
         instruction=RISK_ANALYST_PROMPT_TEXT,
         output_key="risk_assessment_output",

@@ -64,9 +64,11 @@ After generating the response, call `transfer_to_agent("supervisor")` or end the
 def get_explainer_instruction() -> str:
     return EXPLAINER_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
 
+from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
+
 def create_explainer_agent(model_name: str = MODEL_FAST) -> Agent:
     return Agent(
-        model=model_name,
+        model=get_adk_model(model_name),
         name="explainer_agent",
         instruction=get_explainer_instruction(),
         tools=[transfer_to_agent],

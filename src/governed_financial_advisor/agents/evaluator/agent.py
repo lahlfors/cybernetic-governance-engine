@@ -133,9 +133,11 @@ You are the "Digital Immune System". Act fast to neutralize threats.
 def get_evaluator_instruction() -> str:
     return EVALUATOR_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
 
+from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
+
 def create_evaluator_agent(model_name: str = MODEL_REASONING) -> Agent:
     return Agent(
-        model=model_name,
+        model=get_adk_model(model_name),
         name="evaluator_agent",
         instruction=get_evaluator_instruction(),
         output_key="evaluation_result",

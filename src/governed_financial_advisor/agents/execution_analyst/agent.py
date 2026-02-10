@@ -91,10 +91,12 @@ You MUST revise your plan to address the specific feedback (e.g., "Market Closed
 def get_execution_analyst_instruction() -> str:
     return EXECUTION_ANALYST_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
 
+from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
+
 def create_execution_analyst_agent(model_name: str = MODEL_REASONING) -> Agent:
     """Factory to create execution analyst agent."""
     return Agent(
-        model=model_name,
+        model=get_adk_model(model_name),
         name="execution_analyst_agent",
         instruction=get_execution_analyst_instruction(),
         output_key="execution_plan_output",

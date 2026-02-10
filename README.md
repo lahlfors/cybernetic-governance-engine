@@ -106,7 +106,7 @@ For a deep dive into the theory and implementation, read **[README_GOVERNANCE.md
 
 The system orchestrates a team of specialized sub-agents, managed by a central **Supervisor Node**:
 
-1.  **Data Analyst Agent:** Performs market research using Google Search.
+1.  **Data Analyst Agent:** Performs market research using AlphaVantage (MCP) for real-time sentiment and news.
 2.  **Governed Trader Agent (Executor):**
     *   **Worker:** Proposes trading strategies based on analysis.
     *   **Executor:** A "Dumb Executor" that only runs approved trades.
@@ -244,6 +244,10 @@ The system is designed to meet **ISO/IEC 42001** standards for AI Management Sys
 
 The system includes a dedicated benchmarking suite to measure end-to-end latency and reliability.
 👉 **See [docs/PERFORMANCE.md](docs/PERFORMANCE.md) for methodology and metrics.**
+
+### Semantic Evaluation (Vertex AI)
+The system uses **Adaptive Rubrics** and Model-Based Evaluation to deterministicly score agent responses.
+👉 **See [docs/PERFORMANCE.md#advanced-evaluation-vertex-ai](docs/PERFORMANCE.md#advanced-evaluation-vertex-ai)**
 
 ## Architecture Diagram
 

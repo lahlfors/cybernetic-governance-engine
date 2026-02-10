@@ -41,9 +41,11 @@ execution_analyst_agent = create_execution_analyst_agent()
 governed_trading_agent = create_governed_trader_agent()
 
 
+from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
+
 financial_coordinator = LlmAgent(
     name="financial_coordinator",
-    model=MODEL_NAME,
+    model=get_adk_model(MODEL_NAME),
     description=(
         "guide users through a structured process to receive financial "
         "advice by orchestrating a series of expert subagents. help them "

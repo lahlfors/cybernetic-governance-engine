@@ -32,13 +32,30 @@ async def evaluator_node(state: AgentState) -> dict[str, Any]:
     target_tool = "execute_trade"
     target_params = {}
 
-    if isinstance(plan, dict) and "steps" in plan:
-        for step in plan["steps"]:
-            if "trade" in step.get("action", "") or "execute" in step.get("action", ""):
-                target_params = step.get("parameters", {})
-                target_tool = step.get("action", "execute_trade")
-                if target_tool == "execute_buy": target_tool = "execute_trade"
-                break
+    if isinstance(plan, dict):
+        # Check if plan implies no action (Analysis Only)
+        if not plan.get("steps") and plan.get("reasoning"):
+            logger.info("ℹ️ Evaluator: Plan has no steps but contains reasoning. Treating as Analysis/Safe.")
+            # Route to explainer directly
+            return {
+                "evaluation_result": {
+                    "verdict": "APPROVED",
+                    "reasoning": "Plan involves no actions (Analysis Only).",
+                    "simulation_logs": [],
+                    "policy_check": "SKIPPED",
+                    "semantic_check": "SKIPPED"
+                },
+                "next_step": "explainer",
+                "risk_feedback": "Plan verified safe (No-op)."
+            }
+
+        if "steps" in plan:
+            for step in plan["steps"]:
+                if "trade" in step.get("action", "") or "execute" in step.get("action", ""):
+                    target_params = step.get("parameters", {})
+                    target_tool = step.get("action", "execute_trade")
+                    if target_tool == "execute_buy": target_tool = "execute_trade"
+                    break
 
     # --- SAFETY CONSTRAINT CHECK (The "Monitor" Phase) ---
     # We check safety constraints in parallel (logically) with execution.

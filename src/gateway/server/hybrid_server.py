@@ -79,6 +79,12 @@ async def check_market_status(symbol: str) -> str:
     return market_service.check_status(symbol)
 
 @mcp.tool()
+async def get_market_sentiment(symbol: str) -> str:
+    """Fetches real-time market sentiment and news for a given ticker symbol using AlphaVantage."""
+    logger.info(f"Tool Call: get_market_sentiment({symbol})")
+    return await market_service.get_sentiment(symbol)
+
+@mcp.tool()
 async def verify_content_safety(text: str) -> str:
     """Verifies if the provided text content is safe (Jailbreak detection)."""
     logger.info("Tool Call: verify_content_safety")

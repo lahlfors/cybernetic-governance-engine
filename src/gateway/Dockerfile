@@ -38,9 +38,7 @@ RUN uv pip install \
     langgraph \
     langgraph-checkpoint-redis \
     nemoguardrails \
-    google-cloud-firestore \
-    yfinance \
-    duckduckgo-search
+    google-cloud-firestore
 
 # Copy Source Code
 COPY src/gateway /app/src/gateway

@@ -175,6 +175,15 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
             status = market_service.check_status(symbol)
             return gateway_pb2.ToolResponse(status="SUCCESS", output=status)
 
+        elif tool_name == "get_market_sentiment":
+            symbol = params.get("symbol", "UNKNOWN")
+            # This is an async method now
+            try:
+                sentiment = await market_service.get_sentiment(symbol)
+                return gateway_pb2.ToolResponse(status="SUCCESS", output=sentiment)
+            except Exception as e:
+                return gateway_pb2.ToolResponse(status="ERROR", error=str(e))
+
         # --- SEMANTIC SAFETY TOOL (NeMo gRPC) ---
         elif tool_name == "verify_content_safety":
             text = params.get("text", "")
