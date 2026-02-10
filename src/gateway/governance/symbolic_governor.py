@@ -23,16 +23,18 @@ Responsibilities:
 1. SR 11-7 Compliance: Enforce hard constraints (e.g., Confidence >= 0.95, CBF Safety).
 2. ISO 42001 Compliance: Ensure process transparency, logging, and human oversight (Consensus).
 3. Cybernetic Stability: Prevent actions that violate safety boundaries using Control Barrier Functions (CBF).
+4. Systemic Accident Prevention (STAMP/STPA): Enforce UCA constraints via STPAValidator.
 
 See `docs/NEURO_SYMBOLIC_GOVERNANCE.md` for detailed architecture combining
 Residual-Based Control (RBC) and Optimization-Based Control (OPC).
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from src.gateway.core.policy import OPAClient
 from src.gateway.governance.contracts import SafetyFilter, ConsensusProvider
+from src.gateway.governance.stpa_validator import STPAValidator
 
 logger = logging.getLogger("SymbolicGovernor")
 
@@ -45,11 +47,13 @@ class SymbolicGovernor:
         self,
         opa_client: OPAClient,
         safety_filter: SafetyFilter,
-        consensus_engine: ConsensusProvider
+        consensus_engine: ConsensusProvider,
+        stpa_validator: STPAValidator = None
     ):
         self.opa_client = opa_client
         self.safety_filter = safety_filter
         self.consensus_engine = consensus_engine
+        self.stpa_validator = stpa_validator or STPAValidator()
 
     async def govern(self, tool_name: str, params: Dict[str, Any]) -> None:
         """
@@ -57,6 +61,14 @@ class SymbolicGovernor:
         Raises GovernanceError if any check fails.
         """
         logger.info(f"⚖️ Symbolic Governor evaluating: {tool_name}")
+
+        # 0. STAMP/STPA: "Unsafe Control Actions" (Module 5)
+        # Check against the STPA ontology for UCAs (e.g., Latency, Authorization).
+        # This applies to ALL tools, not just execute_trade.
+        stpa_violations = self.stpa_validator.validate(tool_name, params)
+        if stpa_violations:
+             # Just raise the first one for now, or join them
+             raise GovernanceError(f"STPA Violation: {stpa_violations[0]}")
 
         # 1. SR 11-7: "Conceptual Soundness" / Deterministic Rules
         # Rule: "If confidence interval < 95%, do not execute trade."
@@ -104,3 +116,55 @@ class SymbolicGovernor:
                 raise GovernanceError(f"Consensus Escalation: {consensus['reason']}")
 
         logger.info(f"✅ Symbolic Governor Approved: {tool_name}")
+
+    async def verify(self, tool_name: str, params: Dict[str, Any]) -> List[str]:
+        """
+        Performs a 'Dry Run' of all governance checks and returns a list of violations.
+        Used by the Evaluator Agent (System 3) for simulation.
+        Does NOT raise exceptions.
+        """
+        violations = []
+
+        # 0. STPA Check
+        stpa_violations = self.stpa_validator.validate(tool_name, params)
+        violations.extend(stpa_violations)
+
+        # 1. SR 11-7 Confidence Check (Trade specific)
+        if tool_name == "execute_trade":
+            confidence = params.get("confidence", 0.0)
+            if confidence < 0.95:
+                violations.append(f"SR 11-7 Violation: Model Confidence {confidence} < 0.95.")
+
+            # 2. CBF Check
+            cbf_result = self.safety_filter.verify_action(tool_name, params)
+            if cbf_result.startswith("UNSAFE"):
+                violations.append(f"Safety Violation (CBF): {cbf_result}")
+
+        # 3. OPA Check
+        opa_payload = params.copy()
+        opa_payload["action"] = tool_name
+        try:
+            policy_decision = await self.opa_client.evaluate_policy(opa_payload)
+            if policy_decision == "DENY":
+                violations.append("ISO 42001 Policy Violation: OPA Denied Action.")
+            elif policy_decision == "MANUAL_REVIEW":
+                violations.append("ISO 42001 Policy Check: Manual Review Required.")
+        except Exception as e:
+            violations.append(f"OPA Check Failed: {e}")
+
+        # 4. Consensus Check (Trade specific) - Maybe skip for simple dry run to save time/tokens?
+        # Or mock it. For now, we'll try to include it if feasible, but it's expensive.
+        # Let's include it to be thorough, but wrap in try/except.
+        if tool_name == "execute_trade":
+            try:
+                amount = params.get("amount", 0.0)
+                symbol = params.get("symbol", "UNKNOWN")
+                consensus = await self.consensus_engine.check_consensus(tool_name, amount, symbol)
+                if consensus["status"] == "REJECT":
+                     violations.append(f"Consensus Rejection: {consensus['reason']}")
+                elif consensus["status"] == "ESCALATE":
+                     violations.append(f"Consensus Escalation: {consensus['reason']}")
+            except Exception as e:
+                 violations.append(f"Consensus Check Failed: {e}")
+
+        return violations

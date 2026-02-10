@@ -2,9 +2,9 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from .logic import SymbolicReasoner
+from src.gateway.governance.stpa_validator import STPAValidator
 from .memory import HistoryAnalyst
-from .ontology import TradingKnowledgeGraph
+from src.gateway.governance.ontology import TradingKnowledgeGraph
 
 logger = logging.getLogger("EvaluatorAgent.Auditor")
 
@@ -25,7 +25,7 @@ class EvaluatorAuditor:
     """
     def __init__(self):
         self.ontology = TradingKnowledgeGraph()
-        self.logic_engine = SymbolicReasoner(self.ontology)
+        self.logic_engine = STPAValidator(self.ontology)
         self.memory_analyst = HistoryAnalyst()
 
     def _build_safety_rubric(self) -> str:
@@ -84,7 +84,18 @@ class EvaluatorAuditor:
         agent_response = str(plan_data)
 
         # 1. Symbolic Layer (Deterministic Logic Check)
-        logic_result = self.logic_engine.evaluate_plan(plan_data)
+        # Adapt logic engine call to iterate over plan steps
+        violations = []
+        steps = plan_data.get("steps", [])
+        for step in steps:
+             action = step.get("action")
+             params = step.get("parameters", {})
+             step_violations = self.logic_engine.validate(action, params)
+             if step_violations:
+                 violations.extend(step_violations)
+
+        status = "APPROVED" if not violations else "REJECTED"
+        logic_result = {"status": status, "violations": violations}
 
         # 2. Neural Layer (LLM Judge / Vertex AI)
         safety_metric = EvaluationMetric(

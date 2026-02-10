@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass, field
 
-logger = logging.getLogger("EvaluatorAgent.Ontology")
+logger = logging.getLogger("Gateway.Governance.Ontology")
 
 @dataclass
 class Constraint:
@@ -100,6 +100,14 @@ class TradingKnowledgeGraph:
             description="Cannot sell more than 10% of portfolio without explicit confirmation.",
             logic="sell_percentage <= 0.10",
             scope=["execute_sell"]
+        ))
+
+        # New: Map executing trades to constraints (for the SymbolicGovernor)
+        self.add_constraint(Constraint(
+            id="FIN-2",
+            description="Agent must not execute trade if latency > 200ms",
+            logic="latency_ms <= 200",
+            scope=["execute_trade"]
         ))
 
     def add_uca(self, uca: STAMP_UCA):

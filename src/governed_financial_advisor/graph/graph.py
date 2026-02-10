@@ -46,8 +46,6 @@ def create_graph(redis_url=None):
     workflow.add_node("governed_trader", governed_trader_node)     # Executor (System 1)
     workflow.add_node("explainer", explainer_node)                 # Monitoring (System 3)
 
-    workflow.add_node("human_review", lambda x: x) # Placeholder
-
     # 2. Entry Point
     workflow.set_entry_point("supervisor")
 
@@ -56,9 +54,10 @@ def create_graph(redis_url=None):
         "data_analyst": "data_analyst",
         "execution_analyst": "execution_analyst",
         "evaluator": "evaluator", # Direct route if re-entry
-        "governed_trader": "execution_analyst", # Enforce: Must start at Planner
+        # STRICT ENFORCEMENT: Never route directly to governed_trader from Supervisor.
+        # Must go through Planning & Evaluation first.
+        "governed_trader": "execution_analyst",
         "explainer": "explainer",
-        "human_review": "human_review",
         "FINISH": END
     })
 
@@ -68,6 +67,7 @@ def create_graph(redis_url=None):
     workflow.add_edge("execution_analyst", "evaluator")
 
     # Evaluator -> Conditional (Executor OR Back to Planner)
+    # This acts as the "Check" in Plan-Do-Check-Act.
     workflow.add_conditional_edges("evaluator", lambda x: x["next_step"], {
         "governed_trader": "governed_trader",    # Approved
         "execution_analyst": "execution_analyst" # Rejected (Re-plan)
@@ -81,9 +81,8 @@ def create_graph(redis_url=None):
 
     # 5. Other Loops
     workflow.add_edge("data_analyst", "supervisor")
-    workflow.add_edge("human_review", "supervisor")
 
     return workflow.compile(
         checkpointer=get_checkpointer(redis_url),
-        interrupt_before=["human_review"]
+        interrupt_before=["governed_trader"] # Optional: Human-in-the-loop before execution
     )

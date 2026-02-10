@@ -126,6 +126,22 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
             context.set_details(f"Invalid JSON params: {e}")
             return gateway_pb2.ToolResponse(status="ERROR", error="Invalid JSON")
 
+        # --- NEW SAFETY CONSTRAINT CHECK TOOL (System 3) ---
+        if tool_name == "check_safety_constraints":
+             # This tool is a 'meta-tool' that runs a dry-run of the governor on a proposed action.
+             # params should contain 'target_tool' and 'target_params'
+             target_tool = params.get("target_tool", "execute_trade")
+             target_params = params.get("target_params", {})
+
+             logger.info(f"🔍 Evaluator verifying proposed action: {target_tool}")
+
+             violations = await self.symbolic_governor.verify(target_tool, target_params)
+
+             if not violations:
+                 return gateway_pb2.ToolResponse(status="SUCCESS", output="APPROVED: No violations detected.")
+             else:
+                 return gateway_pb2.ToolResponse(status="SUCCESS", output=f"REJECTED: {'; '.join(violations)}")
+
         # 1. Neuro-Symbolic Governance Layer
         # Enforces SR 11-7 (Rules) and ISO 42001 (Policy/Process)
         # We skip read-only/benign tools from heavy governance if needed,

@@ -81,6 +81,22 @@ async def verify_semantic_nemo(text: str) -> str:
         logger.error(f"Semantic Check Failed: {e}")
         return f"BLOCKED: System Error: {e}"
 
+# --- NEW: Wrapper for System 3 Safety Check ---
+async def check_safety_constraints(target_tool: str, target_params: dict[str, Any]) -> str:
+    """
+    Calls the Gateway's SymbolicGovernor to perform a full 'Dry Run' safety check
+    (OPA, CBF, STPA) on a proposed action.
+    """
+    try:
+        # We call the meta-tool exposed in the Gateway
+        return await gateway_client.execute_tool(
+            "check_safety_constraints",
+            {"target_tool": target_tool, "target_params": target_params}
+        )
+    except Exception as e:
+        logger.error(f"Safety Check Failed: {e}")
+        return f"REJECTED: Governance System Error: {e}"
+
 
 # --- AGENT DEFINITION ---
 
@@ -105,7 +121,7 @@ Your role is to act as the "Cybernetic Regulator" for the system. You must VALID
 **The "Simulation" Protocol:**
 Before approving ANY plan, you must "simulate" its execution using your tools.
 1.  **Feasibility:** Use `check_market_status` to ensure the market is open.
-2.  **Regulatory:** Use `verify_policy_opa` to ensure the trade is legal.
+2.  **Safety & Regulatory:** Use `check_safety_constraints` to run the FULL suite of STPA, OPA, and CBF checks on the proposed action.
 3.  **Semantic:** Use `verify_semantic_nemo` to ensure the rationale is safe.
 
 **Decision Logic (The "Algedonic Signal"):**
@@ -142,6 +158,7 @@ def create_evaluator_agent(model_name: str = MODEL_REASONING) -> Agent:
             FunctionTool(check_market_status),
             FunctionTool(verify_policy_opa),
             FunctionTool(verify_semantic_nemo),
+            FunctionTool(check_safety_constraints), # Added new tool
             transfer_to_agent
         ],
         output_schema=EvaluationResult,
