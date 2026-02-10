@@ -16,6 +16,7 @@ from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
 from src.governed_financial_advisor.infrastructure.telemetry.nemo_exporter import NeMoOTelCallback
+from src.governed_financial_advisor.infrastructure.config_manager import config_manager # New import
 
 # Configure Logging
 logger = logging.getLogger("NeMoManager")
@@ -49,19 +50,11 @@ def _get_or_create_cache(config_path: str, model_name: str) -> str | None:
             return None
 
         # 2. Define Cache (TTL: 1 hour)
-        # We use a static name or just let it generate one.
-        # For simplicity, we create a new one on startup (ephemeral).
-        # In prod, we might check for existing one.
-
-        # We need to wrap content in Content object
         contents = [Content(role="user", parts=[Part.from_text(system_prompt)])]
 
         cache = CachedContent.create(
             model_name=model_name,
-            system_instruction=None, # NeMo injects system instructions in the prompt usually?
-            # Wait, if we use cache, we should put system prompt here?
-            # Instructions: "cache the NeMo system prompts"
-            # If we put it in contents, it acts as context.
+            system_instruction=None,
             contents=contents,
             ttl=datetime.timedelta(hours=1),
             display_name="governance_cache_v1"
@@ -80,7 +73,7 @@ def _get_or_create_cache(config_path: str, model_name: str) -> str | None:
 class GeminiLLM(LLM):
     """Custom LangChain-compatible wrapper for Google Gemini using Vertex AI."""
 
-    model: str = os.environ.get("GUARDRAILS_MODEL_NAME", "gemini-2.0-flash")
+    model: str = config_manager.get("GUARDRAILS_MODEL_NAME", "gemini-2.0-flash")
 
     @property
     def _llm_type(self) -> str:
@@ -95,14 +88,12 @@ class GeminiLLM(LLM):
             # Inject Cache if available
             llm_kwargs = {}
             if CACHED_CONTENT_NAME:
-                # Assuming ChatVertexAI supports cached_content (newer versions)
-                # If not, this might fail, so we wrap in try/except or check version
                 llm_kwargs["cached_content"] = CACHED_CONTENT_NAME
 
             llm = ChatVertexAI(
                 model_name=self.model,
-                project=os.environ.get("GOOGLE_CLOUD_PROJECT", "laah-cybernetics"),
-                location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
+                project=config_manager.get("GOOGLE_CLOUD_PROJECT", "laah-cybernetics"),
+                location=config_manager.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
                 **llm_kwargs
             )
             response = llm.invoke(prompt)
@@ -133,8 +124,8 @@ class GeminiLLM(LLM):
 
             llm = ChatVertexAI(
                 model_name=self.model,
-                project=os.environ.get("GOOGLE_CLOUD_PROJECT", "laah-cybernetics"),
-                location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
+                project=config_manager.get("GOOGLE_CLOUD_PROJECT", "laah-cybernetics"),
+                location=config_manager.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
                 **llm_kwargs
             )
             response = await llm.ainvoke(prompt)
@@ -166,33 +157,21 @@ def _get_gemini_llm(model_name: str, **kwargs) -> GeminiLLM:
 def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
     """
     Creates and initializes a NeMo Guardrails manager with Gemini support.
-
-    Args:
-        config_path: Path to the guardrails configuration directory.
-                     Defaults to 'config/rails'.
-
-    Returns:
-        An initialized LLMRails instance.
     """
     global CACHED_CONTENT_NAME
 
-    # Fix for nested event loops
     try:
         nest_asyncio.apply()
     except Exception:
         pass
 
-    # Register custom Gemini provider - pass the class directly, not a factory
     register_llm_provider("gemini", GeminiLLM)
 
-    # Resolve config path
     if not os.path.exists(config_path):
-        # Try finding it relative to the current working directory
         cwd_path = os.path.join(os.getcwd(), config_path)
         if os.path.exists(cwd_path):
             config_path = cwd_path
         else:
-            # Try relative to this file
             base_dir = os.path.dirname(os.path.abspath(__file__))
             possible_path = os.path.join(base_dir, "rails_config")
             if os.path.exists(possible_path):
@@ -202,16 +181,14 @@ def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
         raise FileNotFoundError(f"NeMo Guardrails config not found at: {config_path}")
 
     # Initialize Cache if using Vertex AI
-    # Check env var to allow disabling it
-    if os.environ.get("ENABLE_GOVERNANCE_CACHE", "true").lower() == "true":
-        model_name = os.environ.get("GUARDRAILS_MODEL_NAME", "gemini-2.0-flash")
+    if config_manager.get("ENABLE_GOVERNANCE_CACHE", "true").lower() == "true":
+        model_name = config_manager.get("GUARDRAILS_MODEL_NAME", "gemini-2.0-flash")
         CACHED_CONTENT_NAME = _get_or_create_cache(config_path, model_name)
 
     config = RailsConfig.from_path(config_path)
     rails = LLMRails(config)
 
-    # Explicitly register actions to avoid import resolution issues
-    # This is more robust than relying on NeMo's import mechanism
+    # Explicitly register actions
     try:
         from governed_financial_advisor.governance.nemo_actions import (
             check_approval_token,
@@ -242,22 +219,14 @@ async def validate_with_nemo(user_input: str, rails: LLMRails) -> tuple[bool, st
     Validates user input using NeMo Guardrails.
     Returns (is_safe: bool, response: str).
     """
-    # 1. Initialize ISO 42001 OTel callback
     handler = NeMoOTelCallback()
-
-    # 2. Set the global context variable for custom actions to capture events
     token = streaming_handler_var.set(handler)
 
-    # Start a new span for the guardrail check
     with tracer.start_as_current_span("guardrails.validate_input") as span:
         try:
             span.set_attribute("guardrails.framework", "nemo")
             span.set_attribute("guardrails.input_length", len(user_input))
 
-            # Check for 'self_check_input' or similar rails
-            # We perform a generation call which triggers the input rails
-            # If blocked, the response will be a refusal message.
-            # 3. Call generate_async with the handler
             res = await rails.generate_async(
                 messages=[{"role": "user", "content": user_input}],
                 streaming_handler=handler
@@ -266,8 +235,6 @@ async def validate_with_nemo(user_input: str, rails: LLMRails) -> tuple[bool, st
             is_safe = True
             response_content = ""
 
-            # Heuristic: Check if the response indicates a block
-            # NeMo typically returns a predefined message if blocked by a rail
             if res and isinstance(res, dict) and "content" in res:
                 content = res["content"]
                 if any(phrase in content for phrase in ["I cannot answer", "policy", "I am programmed", "I am sorry"]):
@@ -277,7 +244,6 @@ async def validate_with_nemo(user_input: str, rails: LLMRails) -> tuple[bool, st
                     is_safe = True
                     response_content = content
 
-            # If response object structure varies (e.g. string)
             elif isinstance(res, str):
                  if any(phrase in res for phrase in ["I cannot answer", "policy", "I am programmed", "I am sorry"]):
                     is_safe = False
@@ -286,10 +252,9 @@ async def validate_with_nemo(user_input: str, rails: LLMRails) -> tuple[bool, st
                     is_safe = True
                     response_content = res
 
-            # Record outcome
             verdict = "APPROVED" if is_safe else "REJECTED"
             span.set_attribute("guardrails.outcome", "ALLOWED" if is_safe else "BLOCKED")
-            span.set_attribute("risk.verdict", verdict) # Consistent naming
+            span.set_attribute("risk.verdict", verdict)
             span.set_attribute("guardrails.intervened", not is_safe)
 
             return is_safe, response_content
@@ -298,11 +263,6 @@ async def validate_with_nemo(user_input: str, rails: LLMRails) -> tuple[bool, st
             logger.error(f"NeMo Validation Error: {e}")
             span.record_exception(e)
             span.set_status(Status(StatusCode.ERROR))
-
-            # Fail safe (or fail closed depending on policy)
-            # Here we allow the graph to proceed if NeMo crashes,
-            # relying on the Graph's internal safety.
             return True, ""
         finally:
-            # Clean up the context variable
             streaming_handler_var.reset(token)

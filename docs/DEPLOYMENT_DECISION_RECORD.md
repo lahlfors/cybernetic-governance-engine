@@ -1,152 +1,32 @@
-# Deployment Decision Record: Cloud Run vs. GKE
+# Deployment Decision Record
 
-## Executive Summary
+## 1. Executive Summary
+This document records key architectural decisions regarding the deployment of the Neuro-Cybernetic Governance system.
 
-This document records the architectural decision to deploy the **Governed Financial Advisor** system to **Google Kubernetes Engine (GKE)**, rejecting the Serverless (Cloud Run) approach due to persistent GPU and state requirements.
+## 2. Infrastructure
+*   **Platform:** Google Kubernetes Engine (GKE) Standard.
+    *   **Reason:** Required for persistent GPU access (vLLM stateful sets) which is not supported by Cloud Run or Autopilot.
+*   **Region:** `northamerica-northeast2` (Toronto) / `us-central1` (Backup).
 
-**Key Constraints:**
-1.  **GPU Requirement:** The **Gateway Subsystem** (specifically the `vLLM` service) requires persistent GPU resources for local LLM inference.
-2.  **State Requirement:** The system relies on **Redis** for state management (LangGraph checkpoints, caching).
-3.  **Services Scope:**
-    *   **Gateway Service** (gRPC, Governance Logic)
-    *   **vLLM Service** (GPU Inference Backend)
-    *   **Financial Advisor** (Main Application, HTTP)
-    *   **OPA** (Policy Engine, lightweight)
-    *   **NeMo Guardrails** (Governance Sidecar)
+## 3. Configuration & Secrets Management (Updated 2026-01-27)
 
-**Decision:** **Deploy to GKE (Standard)**.
-While Cloud Run offers simplicity for stateless services, the hard requirement for **persistent GPU inference (vLLM)** and **stateful storage (Redis)** makes GKE the more robust and cost-effective choice for this specific architecture. Cloud Run's GPU support is currently in Preview and optimized for sporadic inference, not the high-throughput, low-latency "always-on" serving required by vLLM.
+### Decision: No `.env` Files in Production
+*   **Problem:** Storing secrets in `.env` files is insecure and hard to rotate. It violates 12-factor app principles for secrets.
+*   **Solution:** A tiered configuration strategy managed by `ConfigManager` (`src/governed_financial_advisor/infrastructure/config_manager.py`).
 
----
+### Strategy
+1.  **Kubernetes Secrets (Primary):**
+    *   Secrets are injected as Environment Variables via `envFrom` in Deployment manifests.
+    *   This is the standard, high-performance path.
+    *   Managed via External Secrets Operator or CI/CD pipelines.
 
-## 1. Workload Analysis
+2.  **Google Secret Manager (Fallback):**
+    *   If an environment variable is missing AND `ENV=production`, the application attempts to fetch the secret directly from GSM using Workload Identity.
+    *   This ensures resilience: if K8s secrets are misconfigured, the app can still recover (fail-open for auth, fail-closed for logic).
 
-| Service | Type | Resource Needs | Statefulness | Networking |
-| :--- | :--- | :--- | :--- | :--- |
-| **vLLM Service** | Inference Server | **GPU (High VRAM)**, High RAM | Stateless (but heavy model weights) | Internal gRPC/HTTP |
-| **Gateway Service** | Middleware | CPU, Low Memory | Stateless | Exposes gRPC, Calls vLLM |
-| **Financial Advisor** | App Server | CPU, Med Memory | Stateless | Exposes HTTP, Calls Gateway |
-| **OPA** | Policy Engine | CPU, Low Memory | Stateless (Policies cached) | Internal Sidecar |
-| **NeMo** | Guardrails | CPU, Med Memory | Stateless | Internal HTTP |
-| **Redis** | Database | Memory | **Stateful** (Persistence) | Internal TCP |
+3.  **Local Development:**
+    *   `.env` files are still supported for local testing but are ignored in production builds.
 
----
-
-## 2. Platform Comparison
-
-### Google Cloud Run (Serverless)
-*   **Pros:**
-    *   **Simplicity:** No cluster management. "Scale to Zero" reduces costs for idle dev environments.
-    *   **Integration:** Native IAM integration, easy domain mapping.
-    *   **Ops:** No patching of nodes or master control plane.
-*   **Cons:**
-    *   **GPU Limitations:** Cloud Run GPU support is in **Preview**. It supports NVIDIA L4 GPUs but has significant cold start times (loading large models takes seconds to minutes), making it unsuitable for real-time interactive "Chat" agents unless `min_instances > 0` (which negates cost savings).
-    *   **State:** Does not support persistent volumes for databases like Redis. You must use **Memorystore** (Managed Redis) which is expensive and lives outside the service, or risk data loss with in-memory instances.
-    *   **Networking:** Service-to-service communication requires OIDC authentication handling, adding complexity to `gRPC` calls between microservices.
-
-### Google Kubernetes Engine (GKE)
-*   **Pros:**
-    *   **GPU Power:** Native support for all GPU types (L4, T4, A100). Persistent nodes mean **no cold starts** for model loading.
-    *   **State Management:** Supports StatefulSets and PersistentVolumes (PVC) for running Redis efficiently within the cluster (or connecting to Memorystore).
-    *   **Networking:** Internal DNS (`svc.cluster.local`) makes microservice communication trivial. No auth overhead for internal calls.
-    *   **Resource Efficiency:** Bin-packing multiple lightweight services (OPA, NeMo, Gateway) onto the same nodes as the Advisor.
-*   **Cons:**
-    *   **Complexity:** Requires managing node pools, upgrading clusters (mostly automated now), and writing Kubernetes manifests/Helm charts.
-    *   **Cost:** Control plane fee (if not using Autopilot/Zonal) and idle node costs if not carefully autoscaled.
-
-### Hybrid (Cloud Run + GKE)
-*   **Concept:** Run stateless services (Advisor, Gateway, OPA, NeMo) on Cloud Run and the stateful/GPU workloads (vLLM, Redis) on GKE.
-*   **Pros:**
-    *   **Best of Both Worlds (Compute):** Serverless scaling for the app logic; persistent GPU power for inference.
-    *   **Security:** Strong isolation by default (different GCP services).
-*   **Cons:**
-    *   **Networking Complexity:** Requires **Direct VPC Egress** or Serverless VPC Connector to allow Cloud Run to talk to private GKE services (Internal Load Balancer).
-    *   **Operational Overhead:** You must maintain *two* distinct deployment pipelines and infrastructure stacks.
-    *   **Cost Inefficiency:** You still pay for the GKE Control Plane and the GPU node. Moving the lightweight apps to Cloud Run saves very little (scale-to-zero is rare for a main app) but adds network egress/connector costs.
-
----
-
-## 3. Deep Dive: Critical Blockers
-
-### The "vLLM" GPU Problem
-The **Gateway** architecture relies on `vLLM` acting as a high-performance inference server.
-*   **On Cloud Run:** Every time a new instance spins up (scale-out), it must download/load the model weights (10GB+ for Llama-3-8B) into VRAM. This causes a **Cold Start of 30s - 2min**. This is unacceptable for a "Financial Advisor" chat interface. Keeping an instance warm (`min_instances=1`) runs the GPU 24/7, costing the same as GKE but with less control.
-*   **On GKE:** The vLLM Pod runs on a node with a GPU attached. The model stays loaded in VRAM. Requests are served instantly (<20ms TTFT).
-
-### The "Redis" State Problem
-The application uses **LangGraph** with Redis checkpoints.
-*   **On Cloud Run:** You cannot run Redis *inside* Cloud Run reliably. You must provision **Cloud Memorystore for Redis** (managed service). This is production-grade but adds a minimum fixed cost (~$35/mo for basic tier) and network peering complexity (Serverless VPC Access Connector).
-*   **On GKE:** You can deploy a Redis `StatefulSet` or use a Helm Chart (e.g., Bitnami Redis) directly in the cluster. For non-critical production or dev/test, this is practically free (uses spare RAM on existing nodes). For production, you can still use Memorystore.
-
----
-
-## 4. Selected Architecture: "Unified GKE Cluster"
-
-We have deployed the entire stack to a **GKE Standard Cluster**.
-
-**Why not Hybrid?**
-While a Hybrid approach (vLLM on GKE, App on Cloud Run) is technically feasible, it introduces unnecessary complexity.
-1.  **Networking:** You would need to configure Cloud Run Direct VPC Egress to talk to an Internal Load Balancer (ILB) in front of the vLLM service in GKE. This adds latency (~5-10ms) and configuration overhead.
-2.  **Cost:** You are already paying for the GKE Control Plane (unless Zonal) and the GPU node. The incremental cost of running the lightweight Financial Advisor and Gateway services *on that same cluster* is effectively zero (they fit into the spare CPU/RAM of the system nodes). Moving them to Cloud Run adds a separate bill.
-3.  **Operations:** A single Terraform state for GKE is simpler than managing Cloud Run IAM + GKE IAM + VPC Connectors.
-
-### Architecture Diagram
-```mermaid
-graph TD
-    User[User / Web UI] -->|HTTPS| Ingress[GKE Ingress]
-
-    subgraph "GKE Cluster (governance-stack)"
-        Ingress -->|HTTP| Advisor[Financial Advisor Svc]
-
-        Advisor -->|gRPC| Gateway[Gateway Svc]
-
-        subgraph "Governance Pods"
-            Gateway -.->|Localhost| OPA[OPA Sidecar]
-            Gateway -->|HTTP| NeMo[NeMo Service]
-        end
-
-        subgraph "Inference Node Pool (GPU)"
-            Gateway -->|gRPC| vLLM[vLLM Service]
-        end
-
-        subgraph "Data Plane"
-            Advisor -->|TCP| Redis[Redis StatefulSet]
-        end
-    end
-```
-
-### Proposed Configuration
-1.  **Node Pool A (General Purpose):**
-    *   **Machine Type:** `e2-standard-4` (4 vCPU, 16GB RAM).
-    *   **Workloads:** Financial Advisor, Gateway, OPA, NeMo, Redis.
-    *   **Autoscaling:** 1-5 nodes.
-2.  **Node Pool B (GPU Inference):**
-    *   **Machine Type:** `g2-standard-4` (4 vCPU, 16GB RAM) + **1x NVIDIA L4 GPU**.
-    *   **Workloads:** vLLM Service.
-    *   **Taints/Tolerations:** Ensure only vLLM runs here to maximize GPU availability.
-
-### Why not GKE Autopilot?
-*   **GKE Autopilot** is excellent for CPU workloads but has stricter limitations on GPU resource requests and system capabilities (e.g., shared memory `/dev/shm` size). vLLM often requires large shared memory, which can be tricky to configure on Autopilot.
-*   **Standard GKE** gives you full control over the `tmpfs` mounts required for PyTorch/NCCL (used by vLLM).
-
----
-
-## 5. Cost Estimation (Monthly, Approximate)
-
-| Component | Specification | Est. Cost (GKE) | Est. Cost (Cloud Run + Memorystore) |
-| :--- | :--- | :--- | :--- |
-| **Compute (App)** | 2x e2-standard-2 | ~$100 | ~$50 (Scale to zero savings) |
-| **Compute (GPU)** | 1x NVIDIA L4 | ~$250 | ~$250 (Must run 24/7 to avoid cold starts) |
-| **Database** | Redis (In-Cluster) | $0 (Shared resources) | $35 (Memorystore Basic) |
-| **Control Plane** | GKE Management | $72 (Free zonal available) | $0 |
-| **Networking** | Load Balancing | ~$18 | $0 (Included) |
-| **TOTAL** | | **~$440** | **~$335 - $400** |
-
-**Verdict:** The cost difference is negligible when factoring in the requirement to keep the GPU warm. GKE offers significantly better performance, debugging capabilities, and local state management for this specific complex stack.
-
-## 6. Implementation Status (Completed)
-
-1.  **Refine `gke.tf`**: `google_container_node_pool` is split into `default-pool` (CPU) and `gpu-pool` (GPU) with correct taints.
-2.  **Redis on K8s**: Redis is deployed via Kubernetes manifest (StatefulSet).
-3.  **vLLM Manifest**: `vllm-deployment.yaml` correctly tolerates the GPU node taints.
-4.  **Gateway Service**: Deployed as a standard Kubernetes Deployment + Service.
+## 4. Compute Decisions
+*   **vLLM:** Split into `vllm-fast` (CPU/Light GPU) and `vllm-reasoning` (A100/H100) to optimize cost vs. latency.
+*   **Gateway:** Stateless gRPC service, horizontally scalable.
