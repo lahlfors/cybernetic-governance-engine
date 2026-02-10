@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
-from src.governed_financial_advisor.evaluator_agent.red_agent import RedAgent
+from src.governed_financial_advisor.agents.evaluator.red_agent import RedAgent # Updated import
 from src.gateway.governance.symbolic_governor import SymbolicGovernor, GovernanceError
 from src.gateway.governance.stpa_validator import STPAValidator
 

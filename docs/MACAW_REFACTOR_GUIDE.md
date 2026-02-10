@@ -1,86 +1,68 @@
-# MACAW Refactoring Guide: Transition to Agentic Governance
+# MACAW Refactoring Guide: Transition to Neuro-Cybernetic Governance (Optimistic Parallel)
 
 ## 1. Executive Summary
 
-This document details the architectural refactoring of the **Governed Financial Advisor** from a parallel, optimistic execution model to the **Capital One MACAW (Multi-Agent Conversational AI Workflow)** pattern.
+This document details the architectural transformation of the **Governed Financial Advisor** into a **Neuro-Cybernetic Governance** system.
 
-The refactor prioritizes **Safety and Correctness** over raw latency for high-risk financial operations. It introduces a strict **Cybernetic Governance** model aligned with **ISO/IEC 42001**, utilizing the **Viable System Model (VSM)** to define agent roles.
+The architecture has shifted from a "Sequential Blocking" model to an **"Optimistic Parallel Execution"** model. This design prioritizes speed and reactivity, allowing the **Executor (System 1)** to act immediately while the **Evaluator (System 3)** monitors in real-time, intervening only if safety constraints are violated.
+
+This aligns with **ISO/IEC 42001 (AIMS)** and **SR 11-7 (Model Risk Management)** by embedding safety controls directly into the execution fabric via a "Digital Immune System".
 
 ---
 
 ## 2. Architectural Shift
 
-### Before: Optimistic Parallelism
-*   **Flow:** `Supervisor -> [Trader Prep || Safety Check] -> Trader`
-*   **Philosophy:** "Optimistic Execution" - Assume success, check safety in parallel to save time.
-*   **Risk:** "Safety Tax" is hidden but failures are messy. Complex "Worker/Verifier" logic buried inside the Trader agent.
+### Before: Sequential Blocking (The "Safety Tax")
+*   **Flow:** `Planner -> Evaluator -> Executor`
+*   **Philosophy:** "Pessimistic Execution" - Assume failure, block until proven safe.
+*   **Drawback:** High latency due to waiting for full safety checks before any action.
 
-### After: MACAW Sequential Blocking
-*   **Flow:** `Supervisor -> Planner -> Evaluator -> Executor -> Explainer`
-*   **Philosophy:** "Optimistic Planning, Pessimistic Execution" - Plan fast, but **BLOCK** execution until a Simulation/Evaluation phase is passed.
-*   **Benefit:** Strict Separation of Concerns, Feedforward Control (Simulation), and Second-Order Cybernetics (Watcher/Evaluator).
+### After: Optimistic Parallel Execution (The "Digital Immune System")
+*   **Flow:** `Planner -> [Evaluator || Executor] -> Explainer`
+*   **Philosophy:** "Optimistic Execution with Interrupts" - Act fast, check concurrently, interrupt on violation.
+*   **Key Mechanism:** A shared state flag (`safety_violation` in Redis) allows the Evaluator to halt the Executor mid-flight.
 
 ---
 
-## 3. Component Refactors
+## 3. Core Components
 
 ### 3.1. The Planner (System 4 Feedforward)
 *   **Component:** `src/governed_financial_advisor/agents/execution_analyst/agent.py`
-*   **Change:**
-    *   Renamed role to **Planner**.
-    *   Prompt updated to generate `ExecutionPlan` (DAG of steps) based on user intent and strategy.
-    *   **Goal:** Anticipate future states (Feedforward).
+*   **Role:** Generates the execution plan.
+*   **Logic:** Spawns both the **Executor** and **Evaluator** branches simultaneously upon plan creation.
 
-### 3.2. The Evaluator (System 3 Control)
-*   **Component:** `src/governed_financial_advisor/agents/evaluator/agent.py` (**Refactored**)
-*   **Change:**
-    *   Created a dedicated **Evaluator Agent**.
-    *   **De-Mocking:** The Evaluator now calls the **Agentic Gateway** for all verifications (`check_market_status`, `verify_policy_opa`, `verify_semantic_nemo`).
-    *   **Dry Run:** Uses the `dry_run=True` flag to verify policies without executing trades.
-    *   **Optimization:** The `Evaluator Node` runs these gateway calls in **Parallel** (`asyncio.gather`) to minimize latency overhead.
-    *   **Output:** `EvaluationResult` (Verdict + Reasoning).
-
-### 3.3. The Executor (System 1 Implementation)
+### 3.2. The Executor (System 1 Implementation)
 *   **Component:** `src/governed_financial_advisor/agents/governed_trader/agent.py`
-*   **Change:**
-    *   Stripped of all "Reasoning" and "Strategy" logic.
-    *   Refactored into a "Dumb Executor" (System 1).
-    *   **Strict Constraint:** Can ONLY execute the `execute_trade` tool via the Gateway as specified in the approved `ExecutionPlan`.
+*   **Role:** Executes the trade immediately.
+*   **Constraint:** Polls the `safety_violation` flag in `src/gateway/core/tools.py` before finalizing any external API call (HTTP POST). If the flag is set, it aborts.
 
-### 3.4. The Explainer (System 3 Monitoring)
-*   **Component:** `src/governed_financial_advisor/agents/explainer/agent.py` (**NEW**)
-*   **Change:**
-    *   Created a dedicated **Explainer Agent**.
-    *   **Faithfulness:** Compares `execution_result` (Technical) with `execution_plan_output` (Intent) to ensure the user report is accurate.
-    *   Prevents "Post-Hoc Rationalization".
+### 3.3. The Evaluator (System 3 Real-Time Monitor)
+*   **Component:** `src/governed_financial_advisor/agents/evaluator/agent.py`
+*   **Role:** Races against the Executor to verify safety constraints (STPA, OPA, CBF).
+*   **Action:** If a violation is detected, it triggers the `trigger_safety_intervention` tool, which sets the `safety_violation` flag, stopping the Executor.
 
----
-
-## 4. Deletions & Clean-Up
-
-*   **Deleted:** `src/governed_financial_advisor/graph/nodes/optimistic_nodes.py`
-    *   **Reason:** The "Optimistic Execution Node" logic (Parallel Prep + Safety) was incompatible with the strict MACAW "Simulation" step.
-*   **Removed:** `SequentialAgent` logic in `GovernedTrader`.
-    *   **Reason:** Redundant. The Graph itself now manages the sequential flow (`Planner -> Evaluator -> Executor`).
-*   **Removed:** `Risk Analyst` Agent Code.
-    *   **Reason:** The Risk Analyst is an offline component. Its code has been removed from the runtime `src/agents/` path to prevent accidental inclusion in the synchronous execution graph.
+### 3.4. The Gateway (Infrastructure Enforcement)
+*   **Component:** `src/gateway/server/main.py`
+*   **Role:** Central enforcement point.
+*   **Tools:**
+    *   `execute_trade`: Checks Redis for interrupts.
+    *   `check_safety_constraints`: Used by Evaluator for dry-run validation.
+    *   `trigger_safety_intervention`: Used by Evaluator to signal a stop.
+*   **Logic:** Integrates `STPAValidator` (in `src/gateway/governance/stpa_validator.py`) to enforce deterministic safety rules (e.g., latency limits, authorization).
 
 ---
 
-## 5. Documentation Updates
+## 4. Safety Mechanisms (Modules 1, 5, 6, 7)
 
-The following documentation has been updated to reflect this refactor:
+1.  **STPA Constraints (Module 5):** Defined in `src/gateway/governance/ontology.py` and enforced by `STPAValidator`. Blocks "Unsafe Control Actions" (UCAs).
+2.  **Interrupt Mechanism (Module 6):** Redis-based shared state allows asynchronous interruption of running processes.
+3.  **Red Teaming (Module 1):** `tests/red_teaming/test_adversarial.py` validates resilience against adversarial attacks.
+4.  **Control Barrier Functions (Module 7):** Enforced by `SymbolicGovernor` in Gateway to prevent boundary violations (e.g., bankruptcy).
 
-1.  **`ARCHITECTURE.md`**:
-    *   Added **MACAW Architecture** diagram.
-    *   Mapped components to **Viable System Model (VSM)**.
-    *   Detailed the **"Optimistic Planning, Pessimistic Execution"** latency strategy.
-    *   Added **vLLM Integration** details (Hybrid Inference).
+---
 
-2.  **`FUNCTIONAL_SPEC.md`**:
-    *   Updated "Component Wiring" to show the sequential flow.
-    *   Documented the new **Evaluator** and **Explainer** roles.
+## 5. Deployment
 
-3.  **`docs/SYSTEM_DESCRIPTION_ISO_42001.md`**:
-    *   Incorporated the **Cybernetic Analysis** (Feedforward, Requisite Variety).
-    *   Mapped ISO 42001 clauses (6.1, 9.1) to the new Agentic components.
+*   **Infrastructure:** GKE Standard (for vLLM GPU persistence).
+*   **State:** Redis (for shared safety flags).
+*   **Observability:** OpenTelemetry (OTel) traces the "race" between Executor and Evaluator.
