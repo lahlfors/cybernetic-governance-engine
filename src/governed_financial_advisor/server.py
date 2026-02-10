@@ -84,8 +84,10 @@ async def query_agent(req: QueryRequest, request: Request):
         if current_span:
             current_span.set_attribute("enduser.id", req.user_id)
             current_span.set_attribute("thread.id", req.thread_id)
-            # Capture trace_id for UI
-            trace_id = f"{current_span.get_span_context().trace_id:032x}"
+            # Capture trace_id for UI ONLY if sampled
+            ctx = current_span.get_span_context()
+            if ctx.trace_flags.sampled:
+                trace_id = f"{ctx.trace_id:032x}"
 
         # 1. NeMo Security
         is_safe, msg = await validate_with_nemo(req.prompt, rails)

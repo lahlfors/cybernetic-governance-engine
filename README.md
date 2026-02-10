@@ -240,6 +240,11 @@ The suite tests for:
 The system is designed to meet **ISO/IEC 42001** standards for AI Management Systems.
 👉 **See [docs/ISO_42001_COMPLIANCE.md](docs/ISO_42001_COMPLIANCE.md) for the Telemetry Audit Map.**
 
+## Performance & Benchmarking
+
+The system includes a dedicated benchmarking suite to measure end-to-end latency and reliability.
+👉 **See [docs/PERFORMANCE.md](docs/PERFORMANCE.md) for methodology and metrics.**
+
 ## Architecture Diagram
 
 <img src="financial-advisor.png" alt="Financial Advisor Architecture" width="800"/>

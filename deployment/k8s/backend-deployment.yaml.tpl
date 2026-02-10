@@ -88,6 +88,8 @@ spec:
               value: "${OTEL_EXPORTER_OTLP_ENDPOINT}"
             - name: OTEL_EXPORTER_OTLP_HEADERS
               value: "${OTEL_EXPORTER_OTLP_HEADERS}"
+            - name: TRACE_SAMPLING_RATE
+              value: "${TRACE_SAMPLING_RATE}"
 
             # --- Cold Tier Storage ---
             - name: COLD_TIER_GCS_BUCKET

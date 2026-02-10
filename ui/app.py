@@ -203,13 +203,23 @@ if prompt := st.chat_input("Ask about market analysis, strategies, or trading...
             response, trace_id = query_agent(prompt)
         st.markdown(response)
 
-        # Show Trace Link
-        if trace_id and st.session_state.project_id != "unknown":
-            url = f"https://console.cloud.google.com/traces/list?project={st.session_state.project_id}&tid={trace_id}"
-            st.caption(f"🔍 [View Trace]({url})")
-
     # Add assistant response to history
     st.session_state.messages.append({"role": "assistant", "content": response, "trace_id": trace_id})
+    
+    # Update Sidebar with latest trace immediately
+    if trace_id:
+        st.session_state.last_trace_id = trace_id
+        st.session_state.last_trace_url = f"https://console.cloud.google.com/traces/list?project={st.session_state.project_id}&tid={trace_id}"
+        st.rerun()
+
+# Sidebar Trace Display
+if "last_trace_id" in st.session_state:
+     with st.sidebar:
+        st.divider()
+        st.subheader("🔍 Debugging")
+        st.caption(f"Last Trace ID: `{st.session_state.last_trace_id}`")
+        if "last_trace_url" in st.session_state:
+            st.markdown(f"[View Trace in Google Cloud console]({st.session_state.last_trace_url})")
 
 # Footer
 st.divider()
