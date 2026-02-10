@@ -2,10 +2,10 @@
 Gateway Core: Policy & Governance (OPA + CircuitBreaker)
 """
 
+import json
 import logging
 import time
 import urllib.parse
-import json
 from typing import Any
 
 import httpx
@@ -80,6 +80,11 @@ class OPAClient:
             self.transport = httpx.AsyncHTTPTransport(retries=0)
             logger.info(f"🌐 OPAClient configured for HTTP: {self.target_url}")
 
+        self.client = httpx.AsyncClient(transport=self.transport)
+
+    async def close(self):
+        await self.client.aclose()
+
     async def evaluate_policy(self, input_data: dict[str, Any], current_latency_ms: float = 0.0) -> str:
         if not self.cb.can_execute():
             logger.warning("⚠️ Circuit Breaker OPEN. Fast failing OPA check -> DENY.")
@@ -105,32 +110,31 @@ class OPAClient:
                 headers["Authorization"] = f"Bearer {self.auth_token}"
 
             try:
-                async with httpx.AsyncClient(transport=self.transport) as client:
-                    response = await client.post(
-                        self.target_url,
-                        json={"input": input_data},
-                        headers=headers,
-                        timeout=1.0
-                    )
+                response = await self.client.post(
+                    self.target_url,
+                    json={"input": input_data},
+                    headers=headers,
+                    timeout=1.0
+                )
 
-                    governance_tax_ms = (time.time() - start_time) * 1000
-                    span.set_attribute("latency_currency_tax", governance_tax_ms)
+                governance_tax_ms = (time.time() - start_time) * 1000
+                span.set_attribute("latency_currency_tax", governance_tax_ms)
 
-                    response.raise_for_status()
-                    self.cb.record_success()
+                response.raise_for_status()
+                self.cb.record_success()
 
-                    result = response.json().get("result", "DENY")
-                    span.set_attribute("governance.decision", result)
+                result = response.json().get("result", "DENY")
+                span.set_attribute("governance.decision", result)
 
-                    if result == "ALLOW":
-                        logger.info(f"✅ OPA ALLOWED | Action: {input_data.get('action')}")
-                    elif result == "MANUAL_REVIEW":
-                         logger.warning(f"⚠️ OPA MANUAL REVIEW | Action: {input_data.get('action')}")
-                    else:
-                        logger.warning(f"⛔ OPA DENIED | Action: {input_data.get('action')} | Input: {input_data}")
-                        span.set_attribute("governance.denial_reason", "POLICY_VIOLATION")
+                if result == "ALLOW":
+                    logger.info(f"✅ OPA ALLOWED | Action: {input_data.get('action')}")
+                elif result == "MANUAL_REVIEW":
+                     logger.warning(f"⚠️ OPA MANUAL REVIEW | Action: {input_data.get('action')}")
+                else:
+                    logger.warning(f"⛔ OPA DENIED | Action: {input_data.get('action')} | Input: {input_data}")
+                    span.set_attribute("governance.denial_reason", "POLICY_VIOLATION")
 
-                    return result
+                return result
 
             except Exception as e:
                 self.cb.record_failure()
