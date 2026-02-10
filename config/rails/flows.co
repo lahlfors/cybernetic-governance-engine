@@ -1,6 +1,27 @@
 # NeMo Guardrails Flows - Colang 2.x
 # Actions are registered programmatically, so no import needed
 
+import core
+import llm
+
+# Main flow - required entry point for Colang 2.x
+flow main
+  activate llm continuation
+  activate greeting
+  activate check_authorization
+  activate check_latency
+  activate check_financial_risk
+
+flow greeting
+  user expressed greeting
+  bot express greeting
+
+flow user expressed greeting
+  user said "hello" or user said "hi" or user said "hey"
+
+flow bot express greeting
+  bot say "Hello! I'm your financial advisor assistant. How can I help you today?"
+
 flow check_authorization
   user said "execute trade"
   $allowed = await check_approval_token()

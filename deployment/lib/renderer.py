@@ -41,8 +41,10 @@ def generate_vllm_manifest(accelerator, config):
     vllm_args_list = [
         '            - "--model"',
         f'            - "{model_name}"',
-        '            - "--served-model-name"',
-        f'            - "{model_name}"'
+        f'            - "{model_name}"',
+        '            - "--enable-auto-tool-choice"',
+        '            - "--tool-call-parser"',
+        '            - "llama3_json"'
     ]
 
     if quantization:

@@ -32,6 +32,21 @@ async def lifespan(app: FastAPI):
     # Startup: Initialize Graph (and Redis)
     print("🔄 Initializing Agent Graph...")
     app.state.graph = create_graph(redis_url=Config.REDIS_URL)
+    
+    # Initialize Redis Indices if using Redis Checkpointer (langgraph-checkpoint-redis)
+    try:
+        if hasattr(app.state.graph, "checkpointer") and app.state.graph.checkpointer:
+            cp = app.state.graph.checkpointer
+            # Check for AsyncRedisSaver (lazy check to avoid import)
+            if "RedisSaver" in str(type(cp)):
+                print("Checking Redis Checkpointer setup...")
+                if hasattr(cp, "setup"):
+                    print("⚙️ Running Redis Checkpointer setup()...")
+                    await cp.setup()
+                    print("✅ Redis Checkpointer setup complete")
+    except Exception as e:
+        print(f"⚠️ Failed to setup Redis Checkpointer: {e}")
+
     print("✅ Agent Graph Initialized")
     yield
     # Shutdown
@@ -74,15 +89,25 @@ async def query_agent(req: QueryRequest, request: Request):
 
         # 1. NeMo Security
         is_safe, msg = await validate_with_nemo(req.prompt, rails)
+        print(f"DEBUG: NeMo is_safe={is_safe}, msg='{msg}'")
+
         if not is_safe:
-            return {"response": msg}
+            return {"response": msg, "trace_id": trace_id}
+        
+        # If NeMo generated a valid response (e.g. greeting), return it
+        if msg:
+            print("DEBUG: NeMo handled response.")
+            return {"response": msg, "trace_id": trace_id}
 
         # 2. Graph Execution (Calls Existing Agents)
-        # Using ainvoke to run the graph asynchronously
+        print(f"DEBUG: Invoking Graph with prompt '{req.prompt}'")
         res = await request.app.state.graph.ainvoke(
             {"messages": [("user", req.prompt)]},
-            config={"recursion_limit": 20, "configurable": {"thread_id": req.thread_id}}
+            {"recursion_limit": 20, "configurable": {"thread_id": req.thread_id}}
         )
+        print(f"DEBUG: Graph result messages keys: {res.keys() if res else 'None'}")
+        if res and "messages" in res and res["messages"]:
+             print(f"DEBUG: Last message content: '{res['messages'][-1].content}'")
 
         # Extract the last message content
         return {

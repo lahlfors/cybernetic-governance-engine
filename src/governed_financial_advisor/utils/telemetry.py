@@ -111,7 +111,8 @@ def configure_telemetry():
             # Hot Tier: Cloud Trace
             try:
                 from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
-                cloud_exporter = CloudTraceSpanExporter()
+                gcp_project = os.environ.get("GOOGLE_CLOUD_PROJECT")
+                cloud_exporter = CloudTraceSpanExporter(project_id=gcp_project)
                 hot_processor = BatchSpanProcessor(cloud_exporter)
 
                 # Optimizer Processor (Correct Import)
@@ -167,7 +168,8 @@ def configure_telemetry():
                 # Fallback: Just add Cloud Trace if optimizer failed
                 try:
                      from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
-                     cloud_exporter = CloudTraceSpanExporter()
+                     gcp_project = os.environ.get("GOOGLE_CLOUD_PROJECT")
+                     cloud_exporter = CloudTraceSpanExporter(project_id=gcp_project)
                      provider.add_span_processor(BatchSpanProcessor(cloud_exporter))
                      logger.info("✅ OpenTelemetry: Fallback to simple Cloud Trace.")
                 except Exception:

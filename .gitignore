@@ -16,6 +16,8 @@ venv.bak/
 .build_venv/
 .manual_deploy_venv/
 source/
+deploy_*.txt
+deployment/artifacts/
 
 # IDEs
 .vscode/

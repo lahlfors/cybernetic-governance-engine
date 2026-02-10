@@ -73,7 +73,7 @@ def build_gateway_image(project_id):
     cloudbuild_yaml = f"""
 steps:
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', '{gateway_image_uri}', '-f', 'src/gateway/Dockerfile', '.']
+    args: ['build', '-t', '{gateway_image_uri}', '-f', 'src/gateway/Dockerfile', '.']
 images:
 - '{gateway_image_uri}'
 """
@@ -192,8 +192,8 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
 
     # 2. Redis Configuration - Ephemeral Check
     if not redis_host:
-         print("ℹ️ No Redis Host provided. Application will use ephemeral memory (MemorySaver).")
-         redis_host = "" # Ensure it's empty string for template substitution if needed, or ignored
+            print("ℹ️ No Redis Host provided. Application will use ephemeral memory (MemorySaver).")
+            redis_host = "" # Ensure it's empty string for template substitution if needed, or ignored
 
     # 3. Mirror Secrets to K8s
     # We grab secrets that Terraform (or manual setup) put into Secret Manager/Env and ensure K8s has them.
@@ -214,7 +214,7 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
     # Finance Policy
     policy_path = "src/governed_financial_advisor/governance/policy/finance_policy.rego"
     if not os.path.exists(policy_path) and os.path.exists("deployment/finance_policy.rego"):
-         policy_path = "deployment/finance_policy.rego"
+            policy_path = "deployment/finance_policy.rego"
 
     if os.path.exists(policy_path):
         subprocess.run(f"kubectl create secret generic finance-policy-rego --from-file=finance_policy.rego={policy_path} -n governance-stack --dry-run=client -o yaml | kubectl apply -f -", shell=True)
@@ -245,21 +245,62 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
     with open(deployment_tpl) as f:
         manifest_content = f.read()
 
-    # Substitute Variables
+    # Substitute Variables from .env (single source of truth)
     timestamp = str(int(time.time()))
-    manifest_content = manifest_content.replace("${IMAGE_URI}", image_uri)
-    manifest_content = manifest_content.replace("${REDIS_HOST}", redis_host)
-    manifest_content = manifest_content.replace("${REDIS_PORT}", redis_port)
-    manifest_content = manifest_content.replace("${PROJECT_ID}", project_id)
-    manifest_content = manifest_content.replace("${REGION}", region)
-    vertex_ai_flag = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "1")
-    manifest_content = manifest_content.replace("${GOOGLE_GENAI_USE_VERTEXAI}", vertex_ai_flag)
-    manifest_content = manifest_content.replace("${MODEL_FAST}", os.environ.get("MODEL_FAST", "gemini-2.5-flash-lite"))
-    manifest_content = manifest_content.replace("${MODEL_REASONING}", os.environ.get("MODEL_REASONING", "gemini-2.5-pro"))
-    manifest_content = manifest_content.replace("${DEPLOY_TIMESTAMP}", timestamp)
-    manifest_content = manifest_content.replace("${OTEL_EXPORTER_OTLP_ENDPOINT}", os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", ""))
-    otel_headers = os.environ.get("OTEL_EXPORTER_OTLP_HEADERS", "")
-    manifest_content = manifest_content.replace("${OTEL_EXPORTER_OTLP_HEADERS}", otel_headers)
+    
+    # Build substitution map from environment
+    substitutions = {
+        # Infrastructure
+        "${IMAGE_URI}": image_uri,
+        "${REDIS_HOST}": redis_host,
+        "${REDIS_PORT}": redis_port,
+        "${GOOGLE_CLOUD_PROJECT}": project_id,
+        "${GOOGLE_CLOUD_LOCATION}": region,
+        "${DEPLOY_TIMESTAMP}": timestamp,
+        "${PORT}": os.environ.get("PORT", "8080"),
+        
+        # Model Configuration (Tiered)
+        "${MODEL_FAST}": os.environ.get("MODEL_FAST", ""),
+        "${MODEL_REASONING}": os.environ.get("MODEL_REASONING", ""),
+        "${MODEL_CONSENSUS}": os.environ.get("MODEL_CONSENSUS", os.environ.get("MODEL_REASONING", "")),
+        
+        # vLLM Endpoints
+        "${VLLM_BASE_URL}": os.environ.get("VLLM_BASE_URL", "http://vllm-service.governance-stack.svc.cluster.local:8000/v1"),
+        "${VLLM_API_KEY}": os.environ.get("VLLM_API_KEY", "EMPTY"),
+        "${VLLM_FAST_API_BASE}": os.environ.get("VLLM_FAST_API_BASE", os.environ.get("VLLM_BASE_URL", "")),
+        "${VLLM_REASONING_API_BASE}": os.environ.get("VLLM_REASONING_API_BASE", os.environ.get("VLLM_BASE_URL", "")),
+        
+        # Policy Engine
+        "${OPA_URL}": os.environ.get("OPA_URL", "http://localhost:8181/v1/data/finance/allow"),
+        
+        # Langfuse (Hot Tier)
+        "${LANGFUSE_PUBLIC_KEY}": os.environ.get("LANGFUSE_PUBLIC_KEY", ""),
+        "${LANGFUSE_SECRET_KEY}": os.environ.get("LANGFUSE_SECRET_KEY", ""),
+        "${LANGFUSE_HOST}": os.environ.get("LANGFUSE_HOST", ""),
+        
+        # OpenTelemetry (Cold Tier)
+        "${OTEL_EXPORTER_OTLP_ENDPOINT}": os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
+        "${OTEL_EXPORTER_OTLP_HEADERS}": os.environ.get("OTEL_EXPORTER_OTLP_HEADERS", ""),
+        
+        # Cold Tier Storage
+        "${COLD_TIER_GCS_BUCKET}": os.environ.get("COLD_TIER_GCS_BUCKET", ""),
+        "${COLD_TIER_GCS_PREFIX}": os.environ.get("COLD_TIER_GCS_PREFIX", "cold_tier"),
+        
+        # MCP Configuration
+        "${MCP_MODE}": os.environ.get("MCP_MODE", "stdio"),
+        "${ALPHAVANTAGE_API_KEY}": os.environ.get("ALPHAVANTAGE_API_KEY", ""),
+    }
+    
+    # Helper: strip surrounding quotes from .env values (they get re-quoted in YAML)
+    def strip_quotes(val):
+        if isinstance(val, str) and len(val) >= 2:
+            if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                return val[1:-1]
+        return val
+    
+    # Apply all substitutions (with quote stripping)
+    for placeholder, value in substitutions.items():
+        manifest_content = manifest_content.replace(placeholder, str(strip_quotes(value)))
 
     # Write Generated Manifest
     generated_dir = Path("deployment/k8s/generated")
@@ -277,6 +318,7 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
     print("\n--- ⏳ Waiting for Backend IP ---")
     backend_url = None
     for _ in range(30): # 5 Minutes Max
+    # ... (rest of file)
         result = run_command(
             ["kubectl", "get", "service", "governed-financial-advisor", "-n", "governance-stack", "-o", "jsonpath='{.status.loadBalancer.ingress[0].ip}'"],
             check=False, capture_output=True

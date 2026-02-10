@@ -26,39 +26,88 @@ spec:
       containers:
         # Main Agent Container
         - name: ingress-agent
-          image: ${IMAGE_URI} # Replaced by deploy script
+          image: ${IMAGE_URI}
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
           env:
+            # --- Service Configuration ---
             - name: PORT
-              value: "8080"
-            - name: GOOGLE_CLOUD_PROJECT
-              value: "${PROJECT_ID}"
-            - name: GOOGLE_CLOUD_LOCATION
-              value: "${REGION}"
-            - name: GOOGLE_GENAI_USE_VERTEXAI
-              value: "${GOOGLE_GENAI_USE_VERTEXAI}"
-            - name: MODEL_FAST
-              value: "${MODEL_FAST}"
-            - name: MODEL_REASONING
-              value: "${MODEL_REASONING}"
-            - name: VLLM_BASE_URL
-              value: "http://vllm-service.governance-stack.svc.cluster.local:8000/v1"
-            - name: OPA_URL
-              value: "http://localhost:8181/v1/data/finance/allow"
+              value: "${PORT}"
             - name: DEPLOY_TIMESTAMP
               value: "${DEPLOY_TIMESTAMP}"
-            # OpenTelemetry (OTLP)
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "${OTEL_EXPORTER_OTLP_ENDPOINT}"
-            - name: OTEL_EXPORTER_OTLP_HEADERS
-              value: "${OTEL_EXPORTER_OTLP_HEADERS}"
-            # Redis for State Persistence
+
+            # --- Infrastructure ---
+            - name: GOOGLE_CLOUD_PROJECT
+              value: "${GOOGLE_CLOUD_PROJECT}"
+            - name: GOOGLE_CLOUD_LOCATION
+              value: "${GOOGLE_CLOUD_LOCATION}"
+
+            # --- Redis Session Management ---
             - name: REDIS_HOST
               value: "${REDIS_HOST}"
             - name: REDIS_PORT
               value: "${REDIS_PORT}"
+
+            # --- Model Configuration (Tiered) ---
+            - name: MODEL_FAST
+              value: "${MODEL_FAST}"
+            - name: MODEL_REASONING
+              value: "${MODEL_REASONING}"
+            - name: MODEL_CONSENSUS
+              value: "${MODEL_CONSENSUS}"
+
+            # --- vLLM Inference Endpoints ---
+            - name: VLLM_BASE_URL
+              value: "${VLLM_BASE_URL}"
+            - name: VLLM_API_KEY
+              value: "${VLLM_API_KEY}"
+            - name: OPENAI_API_BASE
+              value: "${VLLM_BASE_URL}"
+            - name: OPENAI_API_KEY
+              value: "${VLLM_API_KEY}"
+            - name: VLLM_FAST_API_BASE
+              value: "${VLLM_FAST_API_BASE}"
+            - name: VLLM_REASONING_API_BASE
+              value: "${VLLM_REASONING_API_BASE}"
+
+            # --- Policy Engine ---
+            - name: OPA_URL
+              value: "${OPA_URL}"
+
+            # --- Langfuse (Hot Tier Observability) ---
+            - name: LANGFUSE_PUBLIC_KEY
+              value: "${LANGFUSE_PUBLIC_KEY}"
+            - name: LANGFUSE_SECRET_KEY
+              value: "${LANGFUSE_SECRET_KEY}"
+            - name: LANGFUSE_HOST
+              value: "${LANGFUSE_HOST}"
+
+            # --- OpenTelemetry (Cold Tier) ---
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "${OTEL_EXPORTER_OTLP_ENDPOINT}"
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              value: "${OTEL_EXPORTER_OTLP_HEADERS}"
+
+            # --- Cold Tier Storage ---
+            - name: COLD_TIER_GCS_BUCKET
+              value: "${COLD_TIER_GCS_BUCKET}"
+            - name: COLD_TIER_GCS_PREFIX
+              value: "${COLD_TIER_GCS_PREFIX}"
+
+            # --- MCP Configuration ---
+            - name: MCP_MODE
+              value: "${MCP_MODE}"
+            - name: ALPHAVANTAGE_API_KEY
+              value: "${ALPHAVANTAGE_API_KEY}"
+
+            # --- Secrets (from K8s Secrets) ---
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token-secret
+                  key: token
+
           resources:
             requests:
               cpu: "500m"
@@ -101,7 +150,7 @@ metadata:
   name: governed-financial-advisor
   namespace: governance-stack
 spec:
-  type: LoadBalancer # Exposes an External IP for the UI to consume
+  type: LoadBalancer
   selector:
     app: governed-financial-advisor
   ports:
