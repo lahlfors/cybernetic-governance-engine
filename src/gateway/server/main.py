@@ -9,6 +9,7 @@ from concurrent import futures
 import grpc
 from opentelemetry import trace
 from pythonjsonlogger import jsonlogger
+from src.governed_financial_advisor.infrastructure.redis_client import redis_client # Added import
 
 # Adjust path so we can import from src
 sys.path.append(".")
@@ -141,6 +142,17 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
                  return gateway_pb2.ToolResponse(status="SUCCESS", output="APPROVED: No violations detected.")
              else:
                  return gateway_pb2.ToolResponse(status="SUCCESS", output=f"REJECTED: {'; '.join(violations)}")
+
+        # --- NEW SAFETY INTERVENTION TOOL (Module 5) ---
+        if tool_name == "trigger_safety_intervention":
+            reason = params.get("reason", "Unknown Hazard")
+            logger.critical(f"🛑 SAFETY INTERVENTION TRIGGERED: {reason}")
+
+            # Set the shared Redis flag
+            # In a real K8s setup, all Gateway replicas must see this. Redis provides that.
+            redis_client.set("safety_violation", reason)
+
+            return gateway_pb2.ToolResponse(status="SUCCESS", output="INTERVENTION_ACK: System Locked.")
 
         # 1. Neuro-Symbolic Governance Layer
         # Enforces SR 11-7 (Rules) and ISO 42001 (Policy/Process)

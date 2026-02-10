@@ -19,20 +19,17 @@ tracer = trace.get_tracer("src.governed_financial_advisor.graph.nodes.evaluator_
 
 async def evaluator_node(state: AgentState) -> dict[str, Any]:
     """
-    System 3 Control Node: The "Pessimistic Gatekeeper".
-    Runs the Evaluator Agent which orchestrates the simulation.
-
-    Refactored to enforce safety via `check_safety_constraints` tool.
+    System 3 Control Node: The "Real-Time Monitor".
+    Runs the Evaluator Agent which races against the Executor to verify safety.
     """
 
     plan = state.get("execution_plan_output")
     if not plan:
-        # No plan to evaluate
+        # No plan to evaluate, so no race.
         return {"next_step": "execution_analyst", "risk_feedback": "No plan provided."}
 
     # Extract details for checks
-    # Basic parsing if plan is dict (from Planner)
-    target_tool = "execute_trade" # Default assumption for high risk
+    target_tool = "execute_trade"
     target_params = {}
 
     if isinstance(plan, dict) and "steps" in plan:
@@ -40,52 +37,61 @@ async def evaluator_node(state: AgentState) -> dict[str, Any]:
             if "trade" in step.get("action", "") or "execute" in step.get("action", ""):
                 target_params = step.get("parameters", {})
                 target_tool = step.get("action", "execute_trade")
-                # Fix naming mismatch if needed
                 if target_tool == "execute_buy": target_tool = "execute_trade"
                 break
 
-    # --- SAFETY CONSTRAINT CHECK (The "Check" Phase) ---
-    # We run the comprehensive safety check (System 3) via the Gateway.
-    # This replaces the previous ad-hoc parallel checks.
+    # --- SAFETY CONSTRAINT CHECK (The "Monitor" Phase) ---
+    # We check safety constraints in parallel (logically) with execution.
+    # If safe, we join at Explainer. If unsafe, we interrupt.
 
     with tracer.start_as_current_span("evaluator.safety_check") as span:
         start_time = time.time()
 
-        logger.info(f"🛡️ Evaluator: Running Safety Constraints Check for {target_tool}")
+        logger.info(f"🛡️ Evaluator: Monitoring execution for {target_tool}")
 
-        # Call the new meta-tool
+        # Call the meta-tool exposed in Gateway
         safety_result_str = await check_safety_constraints(target_tool, target_params)
 
         latency = (time.time() - start_time) * 1000
         span.set_attribute("safety_check.latency_ms", latency)
 
-        # Parse the result string from the tool
-        # Expected: "APPROVED: ..." or "REJECTED: ..."
+        # Parse Result
         is_safe = "APPROVED" in safety_result_str
 
         span.set_attribute("safety_check.passed", is_safe)
         span.set_attribute("safety_check.details", safety_result_str)
 
     # --- DECISION LOGIC ---
-    # We update the state based on the safety check.
-    # We can still run the agent if we want a conversational explanation,
-    # but the HARD gating logic is here in the node code (Graph Control).
+    # In Optimistic Parallel model:
+    # If Safe -> Route to 'explainer' (Join point with Executor)
+    # If Unsafe -> Route to 'execution_analyst' (Re-plan).
+    # NOTE: The *Interruption* of the parallel Executor happens via shared state (Redis)
+    # triggered by the `safety_intervention` tool called by the agent (or here directly).
+
+    # If we rely on the node logic to intervene:
+    if not is_safe:
+        logger.warning("🛑 Evaluator Node Detected Violation! Sending Interrupt Signal.")
+        # We can call the intervention tool here if the agent didn't do it via tool use.
+        # Ideally the agent does it, but fail-safe here.
+        from src.governed_financial_advisor.agents.evaluator.agent import safety_intervention
+        await safety_intervention(reason=safety_result_str)
 
     verdict = "APPROVED" if is_safe else "REJECTED"
-    next_step = "governed_trader" if is_safe else "execution_analyst"
+    # FIX: Route to 'explainer' on success to join with Executor branch.
+    next_step = "explainer" if is_safe else "execution_analyst"
 
     eval_result = {
         "verdict": verdict,
         "reasoning": safety_result_str,
         "simulation_logs": [f"Safety Check Latency: {latency:.2f}ms"],
         "policy_check": "PASSED" if is_safe else "FAILED",
-        "semantic_check": "PASSED" if is_safe else "FAILED" # Covered by safety check now
+        "semantic_check": "PASSED" if is_safe else "FAILED"
     }
 
     logger.info(f"⚖️ Evaluator Verdict: {verdict} -> Routing to {next_step}")
 
     return {
         "evaluation_result": eval_result,
-        "next_step": next_step,
+        "next_step": next_step, # Used by conditional edge
         "risk_feedback": safety_result_str if not is_safe else "Plan verified safe."
     }

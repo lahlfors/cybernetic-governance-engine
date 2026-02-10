@@ -13,8 +13,8 @@
 # limitations under the License.
 
 """
-Graph Definition: MACAW Architecture (Sequential Blocking Execution)
-Planner -> Evaluator -> Executor -> Explainer
+Graph Definition: MACAW Architecture (Optimistic Parallel Execution)
+Planner -> [Evaluator || Executor] -> Explainer
 """
 
 from langgraph.graph import END, StateGraph
@@ -55,22 +55,35 @@ def create_graph(redis_url=None):
         "execution_analyst": "execution_analyst",
         "evaluator": "evaluator", # Direct route if re-entry
         # STRICT ENFORCEMENT: Never route directly to governed_trader from Supervisor.
-        # Must go through Planning & Evaluation first.
+        # Must go through Planning first.
         "governed_trader": "execution_analyst",
         "explainer": "explainer",
         "FINISH": END
     })
 
-    # 4. MACAW Sequential Flow
+    # 4. MACAW Optimistic Parallel Flow
 
-    # Planner -> Evaluator (Simulation)
-    workflow.add_edge("execution_analyst", "evaluator")
+    # Conditional function to determine if parallel execution should start
+    def route_from_planner(state):
+        plan = state.get("execution_plan_output")
+        # Safety Check: Do not execute if no plan exists or plan is empty
+        if not plan or (isinstance(plan, dict) and not plan.get("steps")):
+             return ["evaluator"] # Only route to evaluator (which will fail/feedback)
 
-    # Evaluator -> Conditional (Executor OR Back to Planner)
-    # This acts as the "Check" in Plan-Do-Check-Act.
-    workflow.add_conditional_edges("evaluator", lambda x: x["next_step"], {
-        "governed_trader": "governed_trader",    # Approved
-        "execution_analyst": "execution_analyst" # Rejected (Re-plan)
+        # If plan exists, spawn BOTH branches
+        return ["evaluator", "governed_trader"]
+
+    # Planner -> [Evaluator, Executor] (Parallel Branches)
+    workflow.add_conditional_edges("execution_analyst", route_from_planner, {
+        "evaluator": "evaluator",
+        "governed_trader": "governed_trader"
+    })
+
+    # Evaluator -> Check (Interrupt if unsafe) or Join
+    # FIX: Route to 'explainer' on success, 'execution_analyst' on failure.
+    workflow.add_conditional_edges("evaluator", lambda x: x.get("next_step", "explainer"), {
+        "explainer": "explainer",       # Safe -> Join
+        "execution_analyst": "execution_analyst" # Unsafe -> Re-plan
     })
 
     # Executor -> Explainer (Faithfulness)
