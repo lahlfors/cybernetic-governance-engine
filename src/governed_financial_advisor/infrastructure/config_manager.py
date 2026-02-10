@@ -13,7 +13,7 @@ logger = logging.getLogger("Infrastructure.ConfigManager")
 
 class ConfigManager:
     """
-    Production-grade Configuration Manager.
+    Production-grade Configuration Manager following Google Cloud Secret Manager patterns.
 
     Strategy:
     1. Check Environment Variables (K8s Secrets injected as Env Vars are standard).
@@ -43,25 +43,31 @@ class ConfigManager:
         Args:
             key: The environment variable name (e.g., "BROKER_API_KEY").
             default: Default value if not found.
-            secret_id: Optional. The specific Secret Manager ID if different from key.
-                       If provided, and key is missing in Env, GSM is queried.
+            secret_id: Optional. The specific Secret Manager ID.
+                       If not provided, defaults to `key` converted to kebab-case (e.g., "broker-api-key").
         """
         # 1. Try Environment Variable (Fastest, supports K8s Secrets)
         val = os.getenv(key)
         if val is not None:
             return val
 
-        # 2. If Production and Secret ID provided, try GSM
-        if self.env == "production" and secret_id and self.project_id:
-            logger.info(f"Config: Fetching {key} from Secret Manager ({secret_id})...")
+        # 2. If Production, try GSM
+        if self.env == "production" and self.project_id:
+            # Determine Secret ID: explicit > auto-kebab
+            target_secret_id = secret_id if secret_id else key.lower().replace("_", "-")
+
+            logger.info(f"Config: Key {key} missing. Fetching from Secret Manager as '{target_secret_id}'...")
+
             client = self._get_gsm_client()
             if client:
                 try:
-                    name = f"projects/{self.project_id}/secrets/{secret_id}/versions/latest"
+                    # Access "latest" version
+                    name = f"projects/{self.project_id}/secrets/{target_secret_id}/versions/latest"
                     response = client.access_secret_version(request={"name": name})
                     return response.payload.data.decode("UTF-8")
                 except Exception as e:
-                    logger.warning(f"Config: Failed to fetch {secret_id} from GSM: {e}")
+                    # Log specific errors (PermissionDenied, NotFound) for debugging
+                    logger.warning(f"Config: Failed to fetch {target_secret_id} from GSM: {e}")
 
         # 3. Return Default
         return default
