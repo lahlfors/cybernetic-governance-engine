@@ -93,7 +93,8 @@ def create_graph(redis_url=None):
     workflow.add_edge("explainer", "supervisor")
 
     # 5. Other Loops
-    workflow.add_edge("data_analyst", "supervisor")
+    # PIPELINE: Data Analyst -> Execution Analyst (Skip Supervisor for automatic flow)
+    workflow.add_edge("data_analyst", "execution_analyst")
 
     return workflow.compile(
         checkpointer=get_checkpointer(redis_url),

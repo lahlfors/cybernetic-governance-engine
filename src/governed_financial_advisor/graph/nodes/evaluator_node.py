@@ -67,7 +67,9 @@ async def evaluator_node(state: AgentState) -> dict[str, Any]:
         logger.info(f"🛡️ Evaluator: Monitoring execution for {target_tool}")
 
         # Call the meta-tool exposed in Gateway
-        safety_result_str = await check_safety_constraints(target_tool, target_params)
+        # Extract risk profile from state, default to 'Moderate'
+        risk_profile = state.get("risk_attitude", "Moderate").capitalize()
+        safety_result_str = await check_safety_constraints(target_tool, target_params, risk_profile)
 
         latency = (time.time() - start_time) * 1000
         span.set_attribute("safety_check.latency_ms", latency)

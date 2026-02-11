@@ -64,14 +64,18 @@ async def verify_semantic_nemo(text: str) -> str:
         logger.error(f"Semantic Check Failed: {e}")
         return f"BLOCKED: System Error: {e}"
 
-async def check_safety_constraints(target_tool: str, target_params: dict[str, Any]) -> str:
+async def check_safety_constraints(target_tool: str, target_params: dict[str, Any], risk_profile: str = "Medium") -> str:
     """
     Calls the Gateway's SymbolicGovernor to perform a full 'Dry Run' safety check.
     """
     try:
         return await gateway_client.execute_tool(
             "check_safety_constraints",
-            {"target_tool": target_tool, "target_params": target_params}
+            {
+                "target_tool": target_tool,
+                "target_params": target_params,
+                "risk_profile": risk_profile
+            }
         )
     except Exception as e:
         logger.error(f"Safety Check Failed: {e}")

@@ -36,41 +36,67 @@ opa_client = OPAClient()
 llm_client = GatewayClient() # Uses env vars
 
 # --- 3. Governance Logic (Shared) ---
+# Initialize Neuro-Symbolic Governor
+from src.gateway.governance import SymbolicGovernor, GovernanceError
+symbolic_governor = SymbolicGovernor(
+    opa_client=opa_client,
+    safety_filter=safety_filter,
+    consensus_engine=consensus_engine
+)
+
 async def enforce_governance(tool_name: str, params: dict):
     """
     Centralized Governance Check (OPA, Safety, Consensus).
     """
-    # 1. OPA Check
+    # 1. Neuro-Symbolic Governance Layer
+    # Enforces SR 11-7 (Rules) and ISO 42001 (Policy/Process)
     if tool_name not in ["check_market_status", "verify_content_safety"]:
-        payload = params.copy()
-        payload['action'] = tool_name
-        decision = await opa_client.evaluate_policy(payload)
-
-        if decision == "DENY":
-            raise PermissionError(f"OPA Policy Violation: Action '{tool_name}' DENIED.")
-        if decision == "MANUAL_REVIEW":
-            logger.critical(f"MANUAL REVIEW REQUIRED for {tool_name}")
-            raise PermissionError("Manual Review Triggered - Admin Notified.")
-
-    # 2. Safety Filter (Trade Only)
-    if tool_name == "execute_trade":
-        cbf_result = safety_filter.verify_action(tool_name, params)
-        if cbf_result.startswith("UNSAFE"):
-             raise ValueError(f"Safety Filter Blocked: {cbf_result}")
-
-        # 3. Consensus Engine
-        amount = params.get("amount", 0)
-        symbol = params.get("symbol", "UNKNOWN")
-        consensus = await consensus_engine.check_consensus(tool_name, amount, symbol)
-
-        if consensus["status"] == "REJECT":
-             raise PermissionError(f"Consensus Rejected: {consensus['reason']}")
-        if consensus["status"] == "ESCALATE":
-             raise PermissionError(f"Consensus Escalation: {consensus['reason']}")
+        try:
+            await symbolic_governor.govern(tool_name, params)
+        except GovernanceError as e:
+            logger.warning(f"🛡️ Symbolic Governor BLOCKED {tool_name}: {e}")
+            raise PermissionError(f"Governance Blocked: {e}")
 
     return True
 
 # --- 4. MCP Tools Definition ---
+
+@mcp.tool()
+async def check_safety_constraints(target_tool: str, target_params: dict, risk_profile: str = "Medium") -> str:
+    """
+    Meta-tool: Runs a dry-run of the Symbolic Governor on a proposed action.
+    Used by the Evaluator Agent (System 3) to verify safety before execution.
+    """
+    logger.info(f"🔍 Evaluator verifying proposed action: {target_tool} (Risk: {risk_profile})")
+    
+    # Inject risk profile into params for OPA to see
+    # The Governor's 'verify' method eventually calls OPA.
+    # We need to ensure 'risk_profile' is in the payload OPA receives.
+    # We might need to patch attributes or pass it via context if SymbolicGovernor supports it.
+    # For now, let's inject it into target_params as metadata if possible, 
+    # or rely on OPAClient updates if we modify SymbolicGovernor.
+    
+    # Reviewing SymbolicGovernor.verify: it calls opa_client.evaluate_policy(params)
+    # So we should add risk_profile to target_params for the check.
+    verification_params = target_params.copy()
+    verification_params["risk_profile"] = risk_profile
+    
+    violations = await symbolic_governor.verify(target_tool, verification_params)
+
+    if not violations:
+        return "APPROVED: No violations detected."
+    else:
+        return f"REJECTED: {'; '.join(violations)}"
+
+@mcp.tool()
+async def trigger_safety_intervention(reason: str) -> str:
+    """
+    Emergency Stop: Locks the system via Redis when a violation is detected.
+    """
+    logger.critical(f"🛑 SAFETY INTERVENTION TRIGGERED: {reason}")
+    from src.governed_financial_advisor.infrastructure.redis_client import redis_client
+    redis_client.set("safety_violation", reason)
+    return "INTERVENTION_ACK: System Locked."
 
 @mcp.tool()
 async def check_market_status(symbol: str) -> str:
