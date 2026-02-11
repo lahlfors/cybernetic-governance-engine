@@ -22,11 +22,15 @@ flow user expressed greeting
 flow bot express greeting
   bot say "Hello! I'm your financial advisor assistant. How can I help you today?"
 
+flow market analysis
+  user said "analyze stock" or user said "market data" or user said "check price"
+  bot continue
+
 flow check_authorization
   user said "execute trade"
   $allowed = await check_approval_token()
   if not $allowed
-    bot refuse to respond
+    bot say "I cannot execute trades without a valid approval token. Please provide one."
     abort
 
 flow check_latency
