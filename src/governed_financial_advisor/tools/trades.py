@@ -35,12 +35,23 @@ async def execute_trade(order: dict) -> str:
         order: A dictionary containing trade details (symbol, amount, currency, transaction_id, confidence).
     """
     # Handle dict input
+    # Handle dict input
     if isinstance(order, dict):
         # We need to keep it as dict for model_dump equivalent or just verify
         # but gateway expects dict params anyway.
         params = order
         tid = order.get("transaction_id", "UNKNOWN")
         conf = order.get("confidence", 0.0)
+    elif isinstance(order, str):
+        # Handle JSON string input (e.g. from raw LLM output)
+        import json
+        try:
+            params = json.loads(order)
+            tid = params.get("transaction_id", "UNKNOWN")
+            conf = params.get("confidence", 0.0)
+        except json.JSONDecodeError:
+             logger.error(f"Failed to parse TradeOrder string: {order}")
+             return f"ERROR: Invalid trade order format. Expected JSON string or dict. Got: {order}"
     else:
         # Fallback if somehow passed as object (though type hint says dict)
         params = order.model_dump()

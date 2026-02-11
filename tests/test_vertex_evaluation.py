@@ -47,7 +47,7 @@ def generate_workflow():
     return [
         {
             "step": "Market Analysis",
-            "prompt": f"Hi, please analyze the stock performance of {symbol}.",
+            "prompt": f"Analyze the stock performance of {symbol}.",
             "rubric": f"Did the response provide a detailed analysis of {symbol}'s stock performance?",
         },
         {
