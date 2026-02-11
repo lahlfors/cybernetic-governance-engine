@@ -1,19 +1,19 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vllm-fast
+  name: vllm-reasoning
   namespace: governance-stack
   labels:
-    app: vllm-fast
+    app: vllm-reasoning
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: vllm-fast
+      app: vllm-reasoning
   template:
     metadata:
       labels:
-        app: vllm-fast
+        app: vllm-reasoning
     spec:
       volumes:
         - name: dshm
@@ -28,11 +28,11 @@ spec:
           imagePullPolicy: IfNotPresent
           resources:
             limits:
-              nvidia.com/gpu: "${TP_SIZE_FAST}"
+              nvidia.com/gpu: 1
               memory: "32Gi"
               cpu: "8"
             requests:
-              nvidia.com/gpu: "${TP_SIZE_FAST}"
+              nvidia.com/gpu: 1
               memory: "16Gi"
               cpu: "4"
           volumeMounts:
@@ -48,7 +48,6 @@ spec:
                   key: token
             - name: PORT
               value: "8000"
-
           ports:
             - containerPort: 8000
               name: http
@@ -69,17 +68,14 @@ spec:
             - "-m"
             - "vllm.entrypoints.openai.api_server"
             - "--model"
-            - "${MODEL_FAST}"
+            - "meta-llama/Meta-Llama-3.1-8B-Instruct"
             - "--served-model-name"
-            - "${MODEL_FAST}"
+            - "meta-llama/Meta-Llama-3.1-8B-Instruct"
             - "--dtype"
             - "auto"
-            - "--enable-prefix-caching"
             - "--max-model-len"
-            - "8192"
+            - "16384"
             - "--enforce-eager"
-            - "--tensor-parallel-size"
-            - "${TP_SIZE_FAST}"
             - "--gpu-memory-utilization"
             - "0.90"
             - "--disable-log-stats"
@@ -98,11 +94,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: vllm-fast-service
+  name: vllm-reasoning
   namespace: governance-stack
 spec:
   selector:
-    app: vllm-fast
+    app: vllm-reasoning
   ports:
   - port: 8000
     targetPort: 8000

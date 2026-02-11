@@ -3,28 +3,25 @@ import json
 import logging
 import os
 import sys
-import time
 from concurrent import futures
 
 import grpc
 from opentelemetry import trace
 from pythonjsonlogger import jsonlogger
-from src.governed_financial_advisor.infrastructure.redis_client import redis_client # Added import
+
+from src.governed_financial_advisor.infrastructure.redis_client import (
+    redis_client,  # Added import
+)
 
 # Adjust path so we can import from src
 sys.path.append(".")
 
-from src.gateway.protos import gateway_pb2
-from src.gateway.protos import gateway_pb2_grpc
-from src.gateway.protos import nemo_pb2
-from src.gateway.protos import nemo_pb2_grpc
-
-from src.gateway.core.llm import HybridClient
-from src.gateway.core.policy import OPAClient
-from src.gateway.core.tools import execute_trade, TradeOrder
+from src.gateway.core.llm import GatewayClient
 from src.gateway.core.market import market_service
-from src.gateway.governance import SymbolicGovernor, GovernanceError
-
+from src.gateway.core.policy import OPAClient
+from src.gateway.core.tools import TradeOrder, execute_trade
+from src.gateway.governance import GovernanceError, SymbolicGovernor
+from src.gateway.protos import gateway_pb2, gateway_pb2_grpc, nemo_pb2, nemo_pb2_grpc
 from src.governed_financial_advisor.governance.consensus import consensus_engine
 from src.governed_financial_advisor.governance.safety import safety_filter
 
@@ -41,7 +38,7 @@ tracer = trace.get_tracer("gateway.server")
 class GatewayService(gateway_pb2_grpc.GatewayServicer):
     def __init__(self):
         logger.info("Initializing Gateway Service Components...")
-        self.llm_client = HybridClient()
+        self.llm_client = GatewayClient()
         self.opa_client = OPAClient()
 
         # Initialize Neuro-Symbolic Governor

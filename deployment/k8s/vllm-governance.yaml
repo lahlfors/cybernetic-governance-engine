@@ -1,25 +1,25 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vllm-reasoning
+  name: vllm-governance
   namespace: governance-stack
   labels:
-    app: vllm-reasoning
+    app: vllm-governance
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
-      app: vllm-reasoning
+      app: vllm-governance
   template:
     metadata:
       labels:
-        app: vllm-reasoning
+        app: vllm-governance
     spec:
       volumes:
         - name: dshm
           emptyDir:
             medium: Memory
-            sizeLimit: "32Gi"
+            sizeLimit: "8Gi"
         - name: model-cache
           emptyDir: {}
       containers:
@@ -28,13 +28,13 @@ spec:
           imagePullPolicy: IfNotPresent
           resources:
             limits:
-              nvidia.com/gpu: "${TP_SIZE_REASONING}"
-              memory: "64Gi"
-              cpu: "16"
+              nvidia.com/gpu: 1
+              memory: "16Gi"
+              cpu: "4"
             requests:
-              nvidia.com/gpu: "${TP_SIZE_REASONING}"
-              memory: "32Gi"
-              cpu: "12"
+              nvidia.com/gpu: 1
+              memory: "8Gi"
+              cpu: "2"
           volumeMounts:
             - mountPath: /dev/shm
               name: dshm
@@ -48,7 +48,6 @@ spec:
                   key: token
             - name: PORT
               value: "8000"
-
           ports:
             - containerPort: 8000
               name: http
@@ -56,30 +55,29 @@ spec:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 120
+            initialDelaySeconds: 60
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 300
+            initialDelaySeconds: 120
             periodSeconds: 15
           command:
             - "python3"
             - "-m"
             - "vllm.entrypoints.openai.api_server"
             - "--model"
-            - "${MODEL_REASONING}"
+            - "meta-llama/Llama-3.2-3B-Instruct"
             - "--served-model-name"
-            - "${MODEL_REASONING}"
+            - "meta-llama/Llama-3.2-3B-Instruct"
             - "--dtype"
             - "auto"
-            - "--enable-prefix-caching"
             - "--max-model-len"
             - "8192"
+            - "--guided-decoding-backend"
+            - "outlines"
             - "--enforce-eager"
-            - "--tensor-parallel-size"
-            - "${TP_SIZE_REASONING}"
             - "--gpu-memory-utilization"
             - "0.90"
             - "--disable-log-stats"
@@ -98,11 +96,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: vllm-reasoning-service
+  name: vllm-governance
   namespace: governance-stack
 spec:
   selector:
-    app: vllm-reasoning
+    app: vllm-governance
   ports:
   - port: 8000
     targetPort: 8000

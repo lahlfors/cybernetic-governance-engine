@@ -40,10 +40,15 @@ spec:
               value: "laah-cybernetics"
             - name: GOOGLE_CLOUD_LOCATION
               value: "northamerica-northeast2"
-            - name: VLLM_BASE_URL
-              value: "http://vllm-service.governance-stack.svc.cluster.local:8000/v1"
+            # Split-Brain Architecture
+            - name: VLLM_REASONING_API_BASE
+              value: "http://vllm-reasoning:8000/v1"
+            - name: VLLM_FAST_API_BASE
+              value: "http://vllm-governance:8000/v1"
             - name: OPA_URL
               value: "http://localhost:8181/v1/data/finance/allow"
+            - name: SANDBOX_URL
+              value: "http://localhost:8081/execute"
             - name: DEPLOY_TIMESTAMP
               value: "20260127214321"
           # Load secrets from K8s Secret (optional, fallback to GSM)
@@ -70,7 +75,6 @@ spec:
             - "--addr=localhost:8181"
             - "--config-file=/config/opa_config.yaml"
             - "/policies/finance_policy.rego"
-
           volumeMounts:
             - name: policy-volume
               mountPath: /policies/finance_policy.rego
@@ -86,6 +90,19 @@ spec:
             limits:
               cpu: "250m"
               memory: "256Mi"
+
+        # Sandbox Sidecar (Capability Upgrade)
+        - name: sandbox-sidecar
+          image: gcr.io/laah-cybernetics/financial-advisor:latest
+          command: ["uvicorn", "src.sandbox.main:app", "--host", "0.0.0.0", "--port", "8081"]
+          workingDir: /app
+          ports:
+            - containerPort: 8081
+          resources:
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+          imagePullPolicy: Always
 
 ---
 apiVersion: v1
