@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""data_analyst_agent for finding information using generic search (DuckDuckGo)"""
+"""data_analyst_agent for finding information using AlphaVantage MCP"""
 
 import logging
 from typing import Optional
@@ -22,6 +22,7 @@ from google.adk.tools import FunctionTool
 
 from config.settings import MODEL_FAST
 from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
+from src.governed_financial_advisor.infrastructure.gateway_client import gateway_client
 
 logger = logging.getLogger(__name__)
 
@@ -34,19 +35,20 @@ DATA_ANALYST_PROMPT_OBJ = Prompt(
                     Part(
                         text="""
 Agent Role: data_analyst
-Tool Usage: Use the provided `perform_market_search` tool.
+Tool Usage: Use the provided `get_market_sentiment_tool` tool.
 
-Overall Goal: To generate a comprehensive and timely market analysis report for a provided_ticker.
+Overall Goal: To generate a comprehensive and timely market sentiment report for a provided_ticker.
 
 Inputs (from calling agent/environment):
-
 provided_ticker: (string, mandatory) The stock market ticker symbol.
 
 Mandatory Process - Data Collection:
-Perform multiple, distinct search queries to ensure comprehensive coverage using the `perform_market_search` tool.
+Fetch real-time market sentiment and news using the 'get_market_sentiment_tool' tool.
 
 Expected Final Output (Structured Report):
-A comprehensive text report summarizing the search findings.
+A comprehensive text report summarizing the sentiment and key news.
+The report MUST be formatted in Markdown.
+If no data is found, state that clearly.
 """
                     )
                 ]
@@ -58,43 +60,29 @@ A comprehensive text report summarizing the search findings.
 def get_data_analyst_instruction() -> str:
     return DATA_ANALYST_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
 
-def perform_market_search(query: str) -> str:
+async def get_market_sentiment_tool(ticker: str) -> str:
     """
-    Search for market data using DuckDuckGo (Open Source / No API Key).
+    Fetch market sentiment for a ticker using the Gateway (AlphaVantage MCP).
     """
+    logger.info(f"Calling Gateway (MCP) for sentiment: {ticker}")
     try:
-        from duckduckgo_search import DDGS
-
-        logger.info(f"Searching DuckDuckGo for: {query}")
-        results_text = []
-
-        with DDGS() as ddgs:
-            # Fetch up to 5 results
-            results = list(ddgs.text(query, max_results=5))
-
-            if not results:
-                return "No results found."
-
-            for i, r in enumerate(results):
-                title = r.get("title", "No Title")
-                body = r.get("body", "")
-                href = r.get("href", "")
-                results_text.append(f"Source {i+1}: {title}\nURL: {href}\nSummary: {body}\n")
-
-        return "\n".join(results_text)
-
-    except ImportError:
-        return "Error: duckduckgo-search not installed. Please install it to use open search."
+        # Use GatewayClient to call the MCP tool
+        result = await gateway_client.execute_tool("get_market_sentiment", {"symbol": ticker})
+        return result
     except Exception as e:
-        logger.error(f"Search failed: {e}")
-        return f"Error performing search: {e}"
+        logger.error(f"Gateway Call Failed: {e}")
+        return f"Error fetching sentiment: {e}"
+
+from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
+
+from config.settings import Config
 
 def create_data_analyst_agent(model_name: str = MODEL_FAST) -> Agent:
     """Factory to create data analyst agent."""
     return Agent(
-        model=model_name,
+        model=get_adk_model(model_name, api_base=Config.VLLM_FAST_API_BASE),
         name="data_analyst_agent",
         instruction=get_data_analyst_instruction(),
         output_key="market_data_analysis_output",
-        tools=[FunctionTool(perform_market_search)],
+        tools=[FunctionTool(get_market_sentiment_tool)],
     )

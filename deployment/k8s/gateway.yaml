@@ -15,7 +15,7 @@ spec:
       labels:
         app: gateway
     spec:
-      serviceAccountName: default # In prod, use Workload Identity
+      serviceAccountName: gateway-sa # Updated to use specific SA for Workload Identity
       containers:
       - name: gateway
         image: gcr.io/${PROJECT_ID}/governance-stack/gateway:latest
@@ -24,6 +24,8 @@ spec:
         - containerPort: 50051
           name: grpc
         env:
+        - name: ENV
+          value: "production" # Signals ConfigManager to use GSM
         - name: PORT
           value: "50051"
         - name: VLLM_SERVICE_URL
@@ -32,6 +34,12 @@ spec:
           value: "http://opa-service:8181/v1/data/finance/allow"
         - name: NEMO_URL
           value: "nemo-service:8000"
+        # Secrets injection via K8s Secrets (Standard Pattern)
+        # ConfigManager will use these if present, or fetch from GSM if missing
+        envFrom:
+        - secretRef:
+            name: gateway-secrets
+            optional: true # Allow missing secrets to fall back to GSM
         resources:
           requests:
             cpu: "500m"

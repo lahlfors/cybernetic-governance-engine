@@ -9,6 +9,7 @@ from concurrent import futures
 import grpc
 from opentelemetry import trace
 from pythonjsonlogger import jsonlogger
+from src.governed_financial_advisor.infrastructure.redis_client import redis_client # Added import
 
 # Adjust path so we can import from src
 sys.path.append(".")
@@ -18,7 +19,7 @@ from src.gateway.protos import gateway_pb2_grpc
 from src.gateway.protos import nemo_pb2
 from src.gateway.protos import nemo_pb2_grpc
 
-from src.gateway.core.llm import HybridClient
+from src.gateway.core.llm import GatewayClient
 from src.gateway.core.policy import OPAClient
 from src.gateway.core.tools import execute_trade, TradeOrder
 from src.gateway.core.market import market_service
@@ -40,7 +41,7 @@ tracer = trace.get_tracer("gateway.server")
 class GatewayService(gateway_pb2_grpc.GatewayServicer):
     def __init__(self):
         logger.info("Initializing Gateway Service Components...")
-        self.llm_client = HybridClient()
+        self.llm_client = GatewayClient()
         self.opa_client = OPAClient()
 
         # Initialize Neuro-Symbolic Governor
@@ -126,6 +127,33 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
             context.set_details(f"Invalid JSON params: {e}")
             return gateway_pb2.ToolResponse(status="ERROR", error="Invalid JSON")
 
+        # --- NEW SAFETY CONSTRAINT CHECK TOOL (System 3) ---
+        if tool_name == "check_safety_constraints":
+             # This tool is a 'meta-tool' that runs a dry-run of the governor on a proposed action.
+             # params should contain 'target_tool' and 'target_params'
+             target_tool = params.get("target_tool", "execute_trade")
+             target_params = params.get("target_params", {})
+
+             logger.info(f"🔍 Evaluator verifying proposed action: {target_tool}")
+
+             violations = await self.symbolic_governor.verify(target_tool, target_params)
+
+             if not violations:
+                 return gateway_pb2.ToolResponse(status="SUCCESS", output="APPROVED: No violations detected.")
+             else:
+                 return gateway_pb2.ToolResponse(status="SUCCESS", output=f"REJECTED: {'; '.join(violations)}")
+
+        # --- NEW SAFETY INTERVENTION TOOL (Module 5) ---
+        if tool_name == "trigger_safety_intervention":
+            reason = params.get("reason", "Unknown Hazard")
+            logger.critical(f"🛑 SAFETY INTERVENTION TRIGGERED: {reason}")
+
+            # Set the shared Redis flag
+            # In a real K8s setup, all Gateway replicas must see this. Redis provides that.
+            redis_client.set("safety_violation", reason)
+
+            return gateway_pb2.ToolResponse(status="SUCCESS", output="INTERVENTION_ACK: System Locked.")
+
         # 1. Neuro-Symbolic Governance Layer
         # Enforces SR 11-7 (Rules) and ISO 42001 (Policy/Process)
         # We skip read-only/benign tools from heavy governance if needed,
@@ -146,6 +174,15 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
             symbol = params.get("symbol", "UNKNOWN")
             status = market_service.check_status(symbol)
             return gateway_pb2.ToolResponse(status="SUCCESS", output=status)
+
+        elif tool_name == "get_market_sentiment":
+            symbol = params.get("symbol", "UNKNOWN")
+            # This is an async method now
+            try:
+                sentiment = await market_service.get_sentiment(symbol)
+                return gateway_pb2.ToolResponse(status="SUCCESS", output=sentiment)
+            except Exception as e:
+                return gateway_pb2.ToolResponse(status="ERROR", error=str(e))
 
         # --- SEMANTIC SAFETY TOOL (NeMo gRPC) ---
         elif tool_name == "verify_content_safety":

@@ -1,19 +1,3 @@
-# Copyright 2025 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""Evaluator Agent (System 3 Control) - Simulation & Governance"""
-
 import logging
 import json
 from typing import Any, Literal
@@ -43,7 +27,6 @@ async def check_market_status(symbol: str) -> str:
 async def verify_policy_opa(action: str, params: str) -> str:
     """
     Checks Regulatory Policy (OPA) via Gateway (MCP) in Dry Run mode.
-    Note: Requires 'evaluate_policy' tool on MCP Server.
     """
     try:
         # Try to parse params
@@ -81,13 +64,43 @@ async def verify_semantic_nemo(text: str) -> str:
         logger.error(f"Semantic Check Failed: {e}")
         return f"BLOCKED: System Error: {e}"
 
+async def check_safety_constraints(target_tool: str, target_params: dict[str, Any], risk_profile: str = "Medium") -> str:
+    """
+    Calls the Gateway's SymbolicGovernor to perform a full 'Dry Run' safety check.
+    """
+    try:
+        return await gateway_client.execute_tool(
+            "check_safety_constraints",
+            {
+                "target_tool": target_tool,
+                "target_params": target_params,
+                "risk_profile": risk_profile
+            }
+        )
+    except Exception as e:
+        logger.error(f"Safety Check Failed: {e}")
+        return f"REJECTED: Governance System Error: {e}"
+
+# --- NEW: SAFETY INTERVENTION TOOL (Module 5) ---
+async def safety_intervention(reason: str) -> str:
+    """
+    EMERGENCY STOP: Signals the Gateway to interrupt any pending execution.
+    Sets the 'safety_violation' flag in shared state.
+    """
+    logger.warning(f"🛑 Evaluator Triggering Intervention: {reason}")
+    try:
+        # Call the intervention tool on Gateway (which sets Redis key)
+        return await gateway_client.execute_tool("trigger_safety_intervention", {"reason": reason})
+    except Exception as e:
+        logger.critical(f"FATAL: Could not trigger intervention: {e}")
+        return f"ERROR: Intervention Failed: {e}"
 
 # --- AGENT DEFINITION ---
 
 class EvaluationResult(BaseModel):
     verdict: Literal["APPROVED", "REJECTED"] = Field(..., description="Final decision on the plan.")
     reasoning: str = Field(..., description="Detailed explanation of the verdict.")
-    simulation_logs: list[str] = Field(..., description="Logs of the simulation steps (e.g. 'Market Open verified').")
+    simulation_logs: list[str] = Field(..., description="Logs of the simulation steps.")
     policy_check: str = Field(..., description="Result of OPA check.")
     semantic_check: str = Field(..., description="Result of NeMo check.")
 
@@ -99,28 +112,20 @@ EVALUATOR_PROMPT_OBJ = Prompt(
                 parts=[
                     Part(
                         text="""
-You are the **Evaluator Agent (System 3 Control)**.
-Your role is to act as the "Cybernetic Regulator" for the system. You must VALIDATE the `execution_plan_output` provided by the Planner.
+You are the **Evaluator Agent (System 3 Control)** acting as a **REAL-TIME SAFETY MONITOR**.
 
-**The "Simulation" Protocol:**
-Before approving ANY plan, you must "simulate" its execution using your tools.
-1.  **Feasibility:** Use `check_market_status` to ensure the market is open.
-2.  **Regulatory:** Use `verify_policy_opa` to ensure the trade is legal.
-3.  **Semantic:** Use `verify_semantic_nemo` to ensure the rationale is safe.
+**Protocol: Optimistic Supervision**
+The Executor is ALREADY running the trade in parallel. You must race to verify safety and INTERRUPT if necessary.
 
-**Decision Logic (The "Algedonic Signal"):**
-- If ALL checks pass -> Verdict: **APPROVED**.
-- If ANY check fails -> Verdict: **REJECTED**.
+1.  **Monitor:** Use `check_safety_constraints` immediately to verify the proposed action.
+2.  **Intervene:** If ANY violation is found (e.g. "REJECTED" or "BLOCKED"), you must IMMEDIATELY call `safety_intervention(reason="...")` to stop the Executor.
+3.  **Report:** Output your `EvaluationResult`.
 
-**Output:**
-You must output a structured `EvaluationResult`.
-- `reasoning`: Explain clearly why you approved or rejected. If rejected, provide specific feedback for the Planner to fix it.
+**Decision Logic:**
+- If Violation Found -> Call `safety_intervention` -> Verdict: **REJECTED**.
+- If All Safe -> Verdict: **APPROVED**.
 
-**Routing:**
-- If APPROVED -> `transfer_to_agent("governed_trader")`
-- If REJECTED -> `transfer_to_agent("execution_analyst")` (send back for replanning)
-
-You are the "Pessimistic Gatekeeper". Do not assume success. Verify everything.
+You are the "Digital Immune System". Act fast to neutralize threats.
 """
                     )
                 ]
@@ -132,9 +137,11 @@ You are the "Pessimistic Gatekeeper". Do not assume success. Verify everything.
 def get_evaluator_instruction() -> str:
     return EVALUATOR_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
 
+from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
+
 def create_evaluator_agent(model_name: str = MODEL_REASONING) -> Agent:
     return Agent(
-        model=model_name,
+        model=get_adk_model(model_name),
         name="evaluator_agent",
         instruction=get_evaluator_instruction(),
         output_key="evaluation_result",
@@ -142,6 +149,8 @@ def create_evaluator_agent(model_name: str = MODEL_REASONING) -> Agent:
             FunctionTool(check_market_status),
             FunctionTool(verify_policy_opa),
             FunctionTool(verify_semantic_nemo),
+            FunctionTool(check_safety_constraints),
+            FunctionTool(safety_intervention), # Added intervention tool
             transfer_to_agent
         ],
         output_schema=EvaluationResult,

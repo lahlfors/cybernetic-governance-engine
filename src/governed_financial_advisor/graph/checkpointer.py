@@ -14,7 +14,7 @@ def get_checkpointer(redis_url: str | None = None) -> BaseCheckpointSaver:
 
     if redis_url is None:
         redis_host = os.environ.get("REDIS_HOST")
-        if redis_host:
+        if redis_host and redis_host.lower() not in ["", "none", "false"]:
              redis_port = os.environ.get("REDIS_PORT", "6379")
              redis_url = f"redis://{redis_host}:{redis_port}"
 

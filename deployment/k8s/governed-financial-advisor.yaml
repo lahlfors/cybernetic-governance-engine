@@ -15,6 +15,7 @@ spec:
       labels:
         app: governed-financial-advisor
     spec:
+      serviceAccountName: advisor-sa # Explicit SA for Workload Identity
       volumes:
         - name: policy-volume
           secret:
@@ -26,11 +27,13 @@ spec:
       containers:
         # Main Agent Container
         - name: ingress-agent
-          image: gcr.io/laah-cybernetics/financial-advisor:latest # Replaced by deploy script
+          image: gcr.io/laah-cybernetics/financial-advisor:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
           env:
+            - name: ENV
+              value: "production"
             - name: PORT
               value: "8080"
             - name: GOOGLE_CLOUD_PROJECT
@@ -43,6 +46,11 @@ spec:
               value: "http://localhost:8181/v1/data/finance/allow"
             - name: DEPLOY_TIMESTAMP
               value: "20260127214321"
+          # Load secrets from K8s Secret (optional, fallback to GSM)
+          envFrom:
+            - secretRef:
+                name: advisor-secrets
+                optional: true
           resources:
             requests:
               cpu: "500m"
@@ -86,7 +94,7 @@ metadata:
   name: governed-financial-advisor
   namespace: governance-stack
 spec:
-  type: LoadBalancer # Exposes an External IP for the UI to consume
+  type: LoadBalancer
   selector:
     app: governed-financial-advisor
   ports:

@@ -18,7 +18,7 @@ import logging
 
 from google.adk.agents import LlmAgent
 
-from config.settings import MODEL_NAME
+from config.settings import MODEL_REASONING
 from src.governed_financial_advisor.tools.router import route_request
 from src.governed_financial_advisor.utils.telemetry import configure_telemetry
 
@@ -41,9 +41,13 @@ execution_analyst_agent = create_execution_analyst_agent()
 governed_trading_agent = create_governed_trader_agent()
 
 
+from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
+
+from config.settings import Config
+
 financial_coordinator = LlmAgent(
     name="financial_coordinator",
-    model=MODEL_NAME,
+    model=get_adk_model(MODEL_REASONING, api_base=Config.VLLM_REASONING_API_BASE),
     description=(
         "guide users through a structured process to receive financial "
         "advice by orchestrating a series of expert subagents. help them "

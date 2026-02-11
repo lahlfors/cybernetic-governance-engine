@@ -1,38 +1,41 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vllm-service
+  name: vllm-reasoning
   namespace: default
   labels:
-    app: vllm-inference
+    app: vllm-reasoning
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: vllm-inference
+      app: vllm-reasoning
   template:
     metadata:
       labels:
-        app: vllm-inference
+        app: vllm-reasoning
     spec:
       tolerations:
-      # Allow scheduling on nodes with GPU taints
       - key: "nvidia.com/gpu"
         operator: "Equal"
         value: "present"
         effect: "NoSchedule"
-
       nodeSelector:
-        cloud.google.com/gke-accelerator: nvidia-l4 # Explicitly target L4 nodes
-
+        cloud.google.com/gke-accelerator: nvidia-l4
       containers:
       - name: vllm
-        image: vllm/vllm-openai:latest # Use official image or custom build
+        image: vllm/vllm-openai:latest
         command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
         args:
         - "--model"
-        - "meta-llama/Meta-Llama-3-8B-Instruct" # Example model
+        - "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
+        - "--max-model-len"
+        - "16384"
+        - "--enforce-eager"
         - "--trust-remote-code"
+        - "--enable-auto-tool-choice"
+        - "--tool-call-parser"
+        - "llama3_json"
         - "--port"
         - "8000"
         env:
@@ -57,16 +60,16 @@ spec:
       - name: dshm
         emptyDir:
           medium: Memory
-          sizeLimit: "4Gi" # Shared memory for NCCL
+          sizeLimit: "4Gi"
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: vllm-service
+  name: vllm-reasoning
   namespace: default
 spec:
   selector:
-    app: vllm-inference
+    app: vllm-reasoning
   ports:
   - port: 8000
     targetPort: 8000

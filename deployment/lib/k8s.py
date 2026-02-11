@@ -214,6 +214,14 @@ def deploy_k8s_infra(project_id, config, args=None):
         print(f"⚠️ K8s directory {k8s_dir} not found. Skipping.")
         return
 
+    # Deploy Redis (StatefulSet)
+    redis_manifest = k8s_dir / "redis-statefulset.yaml"
+    if redis_manifest.exists():
+        print(f"📦 Deploying Redis from {redis_manifest}...")
+        run_command(["kubectl", "apply", "-f", str(redis_manifest)])
+    else:
+        print(f"⚠️ Redis manifest not found at {redis_manifest}. Skipping Redis deployment.")
+
     # Generate Dynamic Manifests
     print(f"📄 Generating vLLM manifest for {accelerator_kind}...")
     vllm_yaml = generate_vllm_manifest(accelerator_kind, config)

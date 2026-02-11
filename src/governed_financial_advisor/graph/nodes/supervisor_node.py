@@ -71,12 +71,23 @@ def supervisor_node(state):
                 target_lower = target.lower()
                 if "data" in target_lower or "market" in target_lower:
                     next_step = "data_analyst"
-                elif "execution" in target_lower or "risk" in target_lower:
+                elif "execution" in target_lower or "risk" in target_lower or "strategy" in target_lower or "plan" in target_lower:
                     next_step = "execution_analyst"
                 elif "trade" in target_lower:
-                    next_step = "governed_trader"
+                    # STRICT RULE: Traders cannot be called directly. Must go through Planner.
+                    next_step = "execution_analyst"
                 elif "human" in target_lower or "review" in target_lower:
                     next_step = "human_review"
+
+    # 2b. FALLBACK HEURISTICS (If LLM refuses to call tool but intent is clear)
+    if next_step == "FINISH":
+         last_msg_lower = last_msg_text.lower()
+         if "strategy" in last_msg_lower or "plan" in last_msg_lower:
+             print("--- [Graph] Heuristic Route: Forcing Execution Analyst ---")
+             next_step = "execution_analyst"
+         elif "analyze" in last_msg_lower or "price" in last_msg_lower:
+             print("--- [Graph] Heuristic Route: Forcing Data Analyst ---")
+             next_step = "data_analyst"
 
     # 3. Return updated state and routing signal
     # We must return the 'updated_state' dictionary, not the original 'state'

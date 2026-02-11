@@ -78,9 +78,10 @@ def smart_sampling(span: Any) -> bool:
     if "execute" in span.name.lower() or "write" in span.name.lower():
         return True
 
-    # C. READ: Default (Chat) -> 1%
+    # C. READ: Default (Chat) -> Variable Sampling (Default 1%)
     # We assume if it's not Write/Risky, it's Read/Chat
-    if random.random() < 0.01:
+    sampling_rate = float(os.getenv("TRACE_SAMPLING_RATE", "0.01"))
+    if random.random() < sampling_rate:
         return True
 
     return False

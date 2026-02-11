@@ -2,7 +2,6 @@
 
 This document describes the **Cybernetic Governance Architecture** of the Financial Advisor system, aligned with **ISO/IEC 42001** and Capital One's **MACAW** framework.
 
-For a detailed guide on the architectural refactoring, see [MACAW_REFACTOR_GUIDE.md](docs/MACAW_REFACTOR_GUIDE.md).
 For details on the Gateway Sidecar infrastructure, see [GATEWAY_ARCHITECTURE.md](docs/GATEWAY_ARCHITECTURE.md).
 
 ## 1. The Cybernetic Model (Viable System Model)
@@ -63,25 +62,25 @@ To balance User Experience (Latency) with Corporate Safety, we use a hybrid stra
 
 ---
 
-## 3. Infrastructure & vLLM Integration
+## 3. Sovereign Split-Brain Infrastructure
 
-The system employs a **Hybrid Inference Stack** to balance reasoning capability with latency and data sovereignty.
+The system employs a **Sovereign Split-Brain** architecture to balance reasoning capability with latency and data sovereignty, eliminating external cloud dependencies.
 
-### 3.1. The Hybrid Client
-The `HybridClient` (Logic moved to `src/gateway/core/llm.py`, Agent uses gRPC Stub) routes traffic between two paths:
+### 3.1. The Gateway Client
+The `GatewayClient` (`src/gateway/core/llm.py`) routes traffic between two specialized vLLM nodes based on the task type:
 
-1.  **Reliable Path (Vertex AI Gemini):**
+1.  **Node A: The Brain (Reasoning Plane)**
     *   **Use Case:** High-order reasoning, Planning (System 4), and Evaluation (System 3).
-    *   **Model:** `gemini-2.5-pro` (Reasoning).
-    *   **Why:** Requires maximum context window and reasoning depth.
+    *   **Model:** `deepseek-ai/DeepSeek-R1-Distill-Llama-8B` (Hosted on GKE with NVIDIA L4).
+    *   **Why:** Provides advanced reasoning capabilities for complex financial analysis.
 
-2.  **Fast Path (Self-Hosted vLLM):**
-    *   **Use Case:** Strict Schema Enforcement (JSON), Executor actions (System 1), and Latency-Critical Checks.
-    *   **Model:** `meta-llama/Llama-3.1-8B-Instruct` (Hosted on GKE with NVIDIA L4).
-    *   **Role in MACAW:**
+2.  **Node B: The Police (Governance Plane)**
+    *   **Use Case:** Fast Governance Checks, JSON Formatting (FSM), and Simple Execution (System 1).
+    *   **Model:** `meta-llama/Llama-3.2-3B-Instruct` (Hosted on Shared GPU).
+    *   **Role:**
         *   Used by the **Executor** and **Evaluator** for deterministic tasks.
-        *   Enforces JSON schemas via `guided_json` (FSM), ensuring the "Dumb Executor" never hallucinates malformed tool calls.
-        *   **Data Sovereignty:** Keeps sensitive execution details within the VPC/Cluster perimeter.
+        *   Enforces JSON schemas via `outlines` (FSM), ensuring the "Dumb Executor" never hallucinates malformed tool calls.
+        *   **Latency:** Optimized for <50ms response times.
 
 ---
 
@@ -113,16 +112,14 @@ The `HybridClient` (Logic moved to `src/gateway/core/llm.py`, Agent uses gRPC St
 
 *   **Clause 6.1 (Actions to address risks):** The **Planner/Evaluator** loop functions as a dynamic Risk Assessment for every transaction.
 *   **Clause 8.1 (Operational Planning):** The **Graph State** and **Evaluator Logic** constitute the operational controls.
-*   **Clause 9.1 (Monitoring):** The **Explainer** and **Tracing (Langfuse)** provide real-time monitoring of agent performance.
+*   **Clause 9.1 (Monitoring):** The **Explainer** and **Tracing** provide real-time monitoring of agent performance.
 
 ---
 
 ## 6. Deployment & Observability
 
-### 6.1. State Management (Ephemeral)
-The system uses **MemorySaver** (In-Memory) for LangGraph conversation checkpoints (`AgentState`) and session history. This eliminates the dependency on Redis for state persistence, simplifying the architecture for reasoning engine deployment and reducing latency.
+### 6.1. State Management
+The system uses **Redis** for state persistence (`langgraph-checkpoint-redis`), ensuring reliable recovery across stateless compute instances.
 
-### 6.2. Observability (Langfuse Cloud)
-We use **[Langfuse Cloud](https://cloud.langfuse.com/)** (SaaS) as the centralized observability platform.
-*   **Endpoint:** `https://us.cloud.langfuse.com`
-*   **Integration:** Captures traces from LangGraph (Control Plane) and Google ADK (Reasoning Plane).
+### 6.2. Observability
+We use **OpenTelemetry** with OTLP exporters for distributed tracing across the Gateway and Agents.

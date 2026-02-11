@@ -1,86 +1,38 @@
 import os
-
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Tiered Model Configuration (from .env)
-
-# --- MODEL FAMILIES (Hardcoded Defaults) ---
-LLAMA_FAST = "meta-llama/Llama-3.1-8B-Instruct"
-LLAMA_REASONING = "meta-llama/Llama-3.1-70B-Instruct"
-
-GEMINI_FAST = "gemini-2.0-flash"
-GEMINI_REASONING = "gemini-1.5-pro"
-
-# --- FAST PATH (Control Plane) ---
-# Used for: Routing, JSON formatting, Simple Execution
-# Default: Gemini 2.0 Flash (Low Latency)
-MODEL_FAST = os.getenv("MODEL_FAST", GEMINI_FAST)
-VLLM_FAST_API_BASE = os.getenv("VLLM_FAST_API_BASE", "http://vllm-fast-service:8000/v1")
-
-# --- REASONING PATH (Reasoning Plane) ---
-# Used for: Risk Analysis, Strategic Planning, Evaluation (STPA)
-# Default: Gemini 1.5 Pro (High Reliability)
-MODEL_REASONING = os.getenv("MODEL_REASONING", GEMINI_REASONING)
-VLLM_REASONING_API_BASE = os.getenv("VLLM_REASONING_API_BASE", "http://vllm-reasoning-service:8000/v1")
-
-# Consensus Engine: Separate model for multi-agent debate (can use different provider)
-MODEL_CONSENSUS = os.getenv("MODEL_CONSENSUS", MODEL_REASONING)
-
-# Legacy alias for backward compatibility
-MODEL_NAME = MODEL_FAST
-
 class Config:
-    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "EMPTY") # Required for Gemini models
-    DEFAULT_MODEL = MODEL_FAST
+    # --- MODEL IDENTIFIERS ---
+    # FORCE DeepSeek as the default for Reasoning
+    DEFAULT_REASONING_MODEL = "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
+    
+    # Node A: The Brain (Reasoning/Planner)
+    VLLM_REASONING_API_BASE = os.getenv("VLLM_REASONING_API_BASE", "http://vllm-reasoning:8000/v1")
+    MODEL_REASONING = os.getenv("MODEL_REASONING", DEFAULT_REASONING_MODEL)
 
-    # Cloud Run / Infrastructure
-    GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "sovereign-stack")
-    GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "local")
+    # Node B: The Police (Governance/FSM)
+    VLLM_FAST_API_BASE = os.getenv("VLLM_FAST_API_BASE", "http://vllm-governance:8000/v1")
+    MODEL_FAST = os.getenv("MODEL_FAST", "meta-llama/Llama-3.2-3B-Instruct")
+
+    # --- INFRASTRUCTURE ---
     PORT = int(os.getenv("PORT", 8080))
+    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
-    # Data Stores
-    FIRESTORE_DATABASE = os.getenv("FIRESTORE_DATABASE", "(default)")
-    # Build REDIS_URL from host/port for compatibility with K8s deployment
-    REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-    REDIS_PORT = os.getenv("REDIS_PORT", "6379")
-    REDIS_URL = os.getenv("REDIS_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}")
-
-    # Governance
-    OPA_URL = os.getenv("OPA_URL", "http://localhost:8181/v1/data/finance/decision")
+    # Sidecars
+    OPA_URL = os.getenv("OPA_URL", "http://localhost:8181/v1/data/finance/allow")
     OPA_AUTH_TOKEN = os.getenv("OPA_AUTH_TOKEN")
-    NEMO_URL = os.getenv("NEMO_URL", "http://nemo:8000/v1/guardrails/check")
+    SANDBOX_URL = os.getenv("SANDBOX_URL", "http://localhost:8081/execute")
 
-    # Model Endpoints
-    VLLM_FAST_API_BASE = VLLM_FAST_API_BASE
-    VLLM_REASONING_API_BASE = VLLM_REASONING_API_BASE
-
-    # Model Names
-    MODEL_REASONING = MODEL_REASONING
-
-    # Runtime Configuration Override (for Agent Engine)
-    try:
-        from config import runtime_config
-        OPA_URL = getattr(runtime_config, "OPA_URL", OPA_URL)
-        NEMO_URL = getattr(runtime_config, "NEMO_URL", NEMO_URL)
-        OPA_AUTH_TOKEN = getattr(runtime_config, "OPA_AUTH_TOKEN", OPA_AUTH_TOKEN)
-        GOOGLE_CLOUD_PROJECT = getattr(runtime_config, "GOOGLE_CLOUD_PROJECT", GOOGLE_CLOUD_PROJECT)
-        GOOGLE_CLOUD_LOCATION = getattr(runtime_config, "GOOGLE_CLOUD_LOCATION", GOOGLE_CLOUD_LOCATION)
-    except ImportError:
-        pass
-
-    @staticmethod
-    def get_llm_config(profile="default"):
-        """
-        Returns the LLM configuration.
-        Note: The 'base_url' here is primarily for standard/legacy clients.
-        The HybridClient (Gateway) manages its own routing and ignores this
-        base_url when switching between Fast/Reasoning endpoints.
-        """
-        return {
-            "model": Config.DEFAULT_MODEL,
-            "temperature": 0.0,
-            "google_api_key": Config.GOOGLE_API_KEY,
-            "base_url": Config.VLLM_FAST_API_BASE
-        }
+# Backward compatibility & Module-level access
+MODEL_NAME = Config.DEFAULT_REASONING_MODEL
+MODEL_FAST = Config.MODEL_FAST
+MODEL_REASONING = Config.MODEL_REASONING
+VLLM_FAST_API_BASE = Config.VLLM_FAST_API_BASE
+VLLM_REASONING_API_BASE = Config.VLLM_REASONING_API_BASE
+PORT = Config.PORT
+REDIS_URL = Config.REDIS_URL
+OPA_URL = Config.OPA_URL
+OPA_AUTH_TOKEN = Config.OPA_AUTH_TOKEN
+SANDBOX_URL = Config.SANDBOX_URL

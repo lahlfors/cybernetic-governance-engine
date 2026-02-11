@@ -1,155 +1,110 @@
 import os
 import time
-import json
 import argparse
-import random
-from abc import ABC, abstractmethod
+import statistics
 from dotenv import load_dotenv
-
-# Load env vars from .env
-load_dotenv()
-
-try:
-    from langfuse import observe
-    # from langfuse.openai import openai # Patch OpenAI client if used, or use standard
-except ImportError:
-    # print("⚠️ Langfuse not found. Tracing will be disabled.")
-    def observe(*args, **kwargs):
-        def decorator(func):
-            return func
-        return decorator
-
 from openai import OpenAI
 
-# Configuration
-VLLM_API_BASE = os.getenv("VLLM_API_BASE", "http://localhost:8000/v1") 
-MODEL_NAME = os.getenv("VLLM_MODEL", "google/gemma-2-9b-it")
-LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "http://localhost:3000")
+# Load env vars
+load_dotenv()
 
-class ModelBackend(ABC):
-    @abstractmethod
-    def generate(self, prompt: str) -> str:
-        pass
+# Configuration Defaults
+DEFAULT_VLLM_API_BASE = os.getenv("VLLM_API_BASE", "http://localhost:8000/v1")
+DEFAULT_MODEL_NAME = os.getenv("VLLM_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
 
-class VLLMBackend(ModelBackend):
-    def __init__(self, base_url, model_name):
-        self.client = OpenAI(base_url=base_url, api_key="EMPTY")
+class VLLMBenchmark:
+    def __init__(self, base_url, model_name, api_key="EMPTY"):
+        self.client = OpenAI(base_url=base_url, api_key=api_key)
         self.model_name = model_name
+        print(f"🔧 Initialized Benchmark for Model: {self.model_name} @ {base_url}")
 
-    def generate(self, prompt: str) -> str:
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=256
-        )
-        return response.choices[0].message.content
+    def run_inference(self, prompt: str, max_tokens: int = 256):
+        start_time = time.time()
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_tokens,
+                temperature=0.7
+            )
+            end_time = time.time()
+            latency = end_time - start_time
+            
+            # Extract token usage
+            usage = response.usage
+            completion_tokens = usage.completion_tokens if usage else 0
+            prompt_tokens = usage.prompt_tokens if usage else 0
+            total_tokens = usage.total_tokens if usage else 0
+            
+            return {
+                "latency": latency,
+                "completion_tokens": completion_tokens,
+                "prompt_tokens": prompt_tokens,
+                "total_tokens": total_tokens,
+                "throughput": completion_tokens / latency if latency > 0 else 0,
+                "content": response.choices[0].message.content
+            }
+        except Exception as e:
+            print(f"❌ Error during inference: {e}")
+            return None
 
-class SimulatedBackend(ModelBackend):
-    def __init__(self, name, mean_latency, jitter=0.1):
-        self.name = name
-        self.mean_latency = mean_latency
-        self.jitter = jitter
-
-    def generate(self, prompt: str) -> str:
-        # Simulate network/processing latency
-        delay = self.mean_latency + random.uniform(-self.jitter, self.jitter)
-        time.sleep(max(0, delay))
-        return f"[{self.name}] Simulated response to: {prompt[:20]}..."
-
-@observe(name="tool_execution")
-def execute_tool(tool_name, args):
-    """Simulates a tool call with network latency."""
-    time.sleep(0.5) # Simulate RTT
-    if tool_name == "calculator":
-        return eval(args.get("expression", "0"))
-    return "Tool not found"
-
-@observe(name="governance_check")
-def measure_governance_overhead(check_type="pre_flight"):
-    """Simulates the overhead of NeMo Guardrails/OPA checks."""
-    time.sleep(0.15) # Example: 150ms governance latency
-    return "SAFE"
-
-@observe(name="agent_reasoning")
-def run_agent_step(backend: ModelBackend, prompt: str):
-    """Executes a single step of the agent: Model -> Tool -> Result."""
+def run_benchmark(benchmark, prompt, iterations):
+    print(f"\n🚀 Running Benchmark ({iterations} iterations)...")
+    print(f"📝 Prompt: {prompt[:50]}...")
     
-    # 0. Pre-Generation Governance (Input Rails)
-    measure_governance_overhead("input_rails")
-
-    # 1. Model Inference (Reasoning)
-    content = backend.generate(prompt)
+    results = []
     
-    # 2. Post-Generation Governance (Output Rails)
-    measure_governance_overhead("output_rails")
+    # Warmup
+    print("🔥 Warming up (1 request)...")
+    benchmark.run_inference(prompt, max_tokens=10)
 
-    # 3. Simulated Tool parsing (naive)
-    # Force tool use for benchmark consistency if prompt asks for calculation
-    if "Calculate" in prompt or "CALC" in content:
-        # Fictitious parsing logic
-        result = execute_tool("calculator", {"expression": "2+2"})
-        return f"{content}\nResult: {result}"
-        
-    return content
-
-@observe(name="e2e_benchmark_task")
-def run_benchmark_iteration(iteration_id, backend: ModelBackend, prompt: str):
-    start = time.time()
-    response = run_agent_step(backend, prompt)
-    duration = time.time() - start
-    return duration, response
-
-def run_scenario(name, backend, iterations=3):
-    print(f"\n🚀 Running Scenario: {name}")
-    durations = []
     for i in range(iterations):
-        dur, _ = run_benchmark_iteration(i, backend, "Calculate 2+2 and explain the philosophy of math.")
-        durations.append(dur)
-        print(f"  Iteration {i+1}: {dur:.3f}s")
+        print(f"  Iteration {i+1}/{iterations}...", end="", flush=True)
+        stats = benchmark.run_inference(prompt)
+        if stats:
+            results.append(stats)
+            print(f" {stats['latency']:.3f}s | {stats['completion_tokens']} tok | {stats['throughput']:.1f} tok/s")
+        else:
+            print(" Failed")
+
+    if not results:
+        print("❌ No successful results.")
+        return
+
+    # Calculate aggregate metrics
+    latencies = [r["latency"] for r in results]
+    throughputs = [r["throughput"] for r in results]
     
-    avg_duration = sum(durations) / len(durations)
-    print(f"  👉 Average Latency: {avg_duration:.3f}s")
-    return avg_duration
+    avg_latency = statistics.mean(latencies)
+    # Handle single sample case for median/p95
+    if len(latencies) > 1:
+        metrics_p95 = statistics.quantiles(latencies, n=20)[18] if len(latencies) >= 20 else max(latencies)
+    else:
+        metrics_p95 = latencies[0]
+
+    avg_throughput = statistics.mean(throughputs)
+    
+    print("\n🏆 Benchmark Results")
+    print("-" * 50)
+    print(f"Model:              {benchmark.model_name}")
+    print(f"Successful Requests: {len(results)}/{iterations}")
+    print(f"Avg Latency:        {avg_latency:.3f} s")
+    print(f"P95 Latency:        {metrics_p95:.3f} s")
+    print(f"Avg Throughput:     {avg_throughput:.1f} tokens/s")
+    print("-" * 50)
 
 def main():
-    parser = argparse.ArgumentParser(description="Agent Performance Benchmark")
-    parser.add_argument("--mode", choices=["vllm", "simulate", "comparison"], default="comparison")
-    parser.add_argument("--vllm-url", default=VLLM_API_BASE)
-    parser.add_argument("--iterations", type=int, default=3)
-    args = parser.parse_args()
-
-    if args.mode == "vllm":
-        backend = VLLMBackend(args.vllm_url, MODEL_NAME)
-        run_scenario("vLLM (Real)", backend, args.iterations)
+    parser = argparse.ArgumentParser(description="vLLM Performance Benchmark")
+    parser.add_argument("--url", default=DEFAULT_VLLM_API_BASE, help="vLLM API Base URL")
+    parser.add_argument("--model", default=DEFAULT_MODEL_NAME, help="Model Name")
+    parser.add_argument("--iterations", type=int, default=5, help="Number of requests")
+    parser.add_argument("--prompt", default="Explain the theory of relativity in simple terms.", help="Prompt to use")
+    parser.add_argument("--max-tokens", type=int, default=256, help="Max tokens to generate")
     
-    elif args.mode == "simulate":
-        backend = SimulatedBackend("Simulated Generic", 1.0)
-        run_scenario("Simulated", backend, args.iterations)
-
-    elif args.mode == "comparison":
-        print("📊 Running Comparative Analysis: Hybrid Gemini vs Only Llama (Simulated)")
-
-        # Scenario A: Hybrid Gemini/Llama
-        # Assumption: Gemini Pro (Reasoning) has higher latency (~1.5s) + standard overhead
-        gemini_backend = SimulatedBackend("Gemini 1.5 Pro", mean_latency=1.5, jitter=0.2)
-        latency_gemini = run_scenario("Hybrid Gemini/Llama Architecture", gemini_backend, args.iterations)
-
-        # Scenario B: Only Llama
-        # Assumption: Llama 3 70B (vLLM) has lower latency (~0.5s) + standard overhead
-        llama_backend = SimulatedBackend("Llama 3 70B (vLLM)", mean_latency=0.5, jitter=0.1)
-        latency_llama = run_scenario("Only Llama Architecture", llama_backend, args.iterations)
-
-        print("\n🏆 Performance Summary")
-        print("-" * 60)
-        print(f"{'Architecture':<30} | {'Avg Latency':<12} | {'Throughput (est)':<15}")
-        print("-" * 60)
-        print(f"{'Hybrid Gemini/Llama':<30} | {latency_gemini:.3f}s       | {60/latency_gemini:.2f} RPM")
-        print(f"{'Only Llama':<30} | {latency_llama:.3f}s       | {60/latency_llama:.2f} RPM")
-        print("-" * 60)
-
-        improvement = ((latency_gemini - latency_llama) / latency_gemini) * 100
-        print(f"⚡ Llama Only is {improvement:.1f}% faster than Hybrid Gemini.")
-        print("Note: Hybrid Gemini provides higher reasoning capability (Google ADK) at the cost of latency.")
+    args = parser.parse_args()
+    
+    benchmark = VLLMBenchmark(args.url, args.model)
+    run_benchmark(benchmark, args.prompt, args.iterations)
 
 if __name__ == "__main__":
     main()

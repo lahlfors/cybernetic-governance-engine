@@ -48,6 +48,8 @@ spec:
               value: "${REDIS_HOST}"
             - name: REDIS_PORT
               value: "${REDIS_PORT}"
+            - name: REDIS_URL
+              value: "redis://${REDIS_HOST}:${REDIS_PORT}"
 
             # --- Model Configuration (Tiered) ---
             - name: MODEL_FAST
@@ -88,6 +90,8 @@ spec:
               value: "${OTEL_EXPORTER_OTLP_ENDPOINT}"
             - name: OTEL_EXPORTER_OTLP_HEADERS
               value: "${OTEL_EXPORTER_OTLP_HEADERS}"
+            - name: TRACE_SAMPLING_RATE
+              value: "${TRACE_SAMPLING_RATE}"
 
             # --- Cold Tier Storage ---
             - name: COLD_TIER_GCS_BUCKET

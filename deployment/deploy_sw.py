@@ -73,7 +73,7 @@ def build_gateway_image(project_id):
     cloudbuild_yaml = f"""
 steps:
 - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '{gateway_image_uri}', '-f', 'src/gateway/Dockerfile', '.']
+  args: ['build', '-t', '{gateway_image_uri}', '-f', 'src/gateway/Dockerfile', '.']
 images:
 - '{gateway_image_uri}'
 """
@@ -190,10 +190,11 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
     # This ensures the cluster is configured and vLLM is running
     deploy_k8s_infra(project_id, config)
 
-    # 2. Redis Configuration - Ephemeral Check
+    # 2. Redis Configuration
     if not redis_host:
-            print("ℹ️ No Redis Host provided. Application will use ephemeral memory (MemorySaver).")
-            redis_host = "" # Ensure it's empty string for template substitution if needed, or ignored
+        print("ℹ️ No Redis Host provided. Defaulting to internal Redis on GKE.")
+        redis_host = "redis.governance-stack.svc.cluster.local"
+
 
     # 3. Mirror Secrets to K8s
     # We grab secrets that Terraform (or manual setup) put into Secret Manager/Env and ensure K8s has them.
@@ -281,6 +282,7 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         # OpenTelemetry (Cold Tier)
         "${OTEL_EXPORTER_OTLP_ENDPOINT}": os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
         "${OTEL_EXPORTER_OTLP_HEADERS}": os.environ.get("OTEL_EXPORTER_OTLP_HEADERS", ""),
+        "${TRACE_SAMPLING_RATE}": os.environ.get("TRACE_SAMPLING_RATE", "0.01"),
         
         # Cold Tier Storage
         "${COLD_TIER_GCS_BUCKET}": os.environ.get("COLD_TIER_GCS_BUCKET", ""),

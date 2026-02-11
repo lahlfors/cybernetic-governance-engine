@@ -1,77 +1,84 @@
 import logging
 import os
-
 import redis
-
+from opentelemetry import trace
 from src.governed_financial_advisor.utils.telemetry import get_tracer
 
 logger = logging.getLogger("Infrastructure.Redis")
 
-class RedisWrapper:
+class RedisClient:
     """
-    Production-ready Redis wrapper.
-    Connects to Google Cloud Memorystore via REDIS_HOST.
-    Falls back to local memory ONLY if connection fails (for CI/Sandbox safety).
+    Wrapper around Redis for state management.
+    Handles connection pooling and provides typed accessors.
+    Falls back to in-memory dictionary if Redis is not configured or unavailable.
     """
     def __init__(self):
-        self.host = os.environ.get("REDIS_HOST", "localhost")
-        self.port = int(os.environ.get("REDIS_PORT", 6379))
-        self.port = int(os.environ.get("REDIS_PORT", 6379))
+        self.redis_host = os.getenv("REDIS_HOST")
+        self.redis_port = int(os.getenv("REDIS_PORT", 6379))
+        self.use_redis = bool(self.redis_host) and self.redis_host.lower() not in ["", "none", "false"]
+        
         self.client = None
-        self._local_cache = {}
+        self.memory_store = {}
+        
+        if self.use_redis:
+            try:
+                self.client = redis.Redis(host=self.redis_host, port=self.redis_port, decode_responses=True)
+                # Test connection
+                self.client.ping()
+                logger.info(f"✅ Redis connected at {self.redis_host}:{self.redis_port}")
+            except Exception as e:
+                logger.warning(f"⚠️ Redis connection failed ({e}). Falling back to in-memory store.")
+                self.client = None
+                self.use_redis = False
+        else:
+            logger.info("ℹ️ redis_client running in MEMORY-ONLY mode (REDIS_HOST not set).")
+        
         self.tracer = get_tracer()
 
-        try:
-            # Socket timeout is critical for fail-fast in sidecar architectures
-            self.client = redis.Redis(
-                host=self.host,
-                port=self.port,
-                decode_responses=True,
-                socket_connect_timeout=1.0,
-                socket_timeout=1.0
-            )
-            self.client.ping()
-            logger.info(f"✅ Connected to Redis at {self.host}:{self.port}")
-        except Exception as e:
-            logger.warning(f"⚠️ Redis connection failed: {e}. Running in ephemeral mode.")
-            self.client = None
-
     def get(self, key: str) -> str | None:
-        if self.tracer:
-            with self.tracer.start_as_current_span("redis.get") as span:
-                span.set_attribute("redis.key", key)
-                return self._do_get(key)
-        return self._do_get(key)
-
-    def _do_get(self, key: str) -> str | None:
-        try:
-            if self.client:
+        if self.use_redis and self.client:
+            try:
                 return self.client.get(key)
-        except Exception as e:
-            logger.error(f"Redis read error: {e}")
-        return self._local_cache.get(key)
-
-    def set(self, key: str, value: str):
-        if self.tracer:
-            with self.tracer.start_as_current_span("redis.set") as span:
-                span.set_attribute("redis.key", key)
-                self._do_set(key, value)
-        else:
-             self._do_set(key, value)
-
-    def _do_set(self, key: str, value: str):
-        try:
-            if self.client:
-                self.client.set(key, value)
-        except Exception as e:
-            logger.error(f"Redis write error: {e}")
-        self._local_cache[key] = value
+            except redis.RedisError as e:
+                logger.error(f"Redis GET Error: {e}")
+                return None
+        return self.memory_store.get(key)
 
     def get_float(self, key: str, default: float = 0.0) -> float:
         val = self.get(key)
         if val is None:
             return default
-        return float(val)
+        try:
+            return float(val)
+        except ValueError:
+            return default
 
-# Global singleton
-redis_client = RedisWrapper()
+    def set(self, key: str, value: str, ttl: int = None):
+        if self.use_redis and self.client:
+            try:
+                self.client.set(key, value, ex=ttl)
+                return
+            except redis.RedisError as e:
+                logger.error(f"Redis SET Error: {e}")
+                # Fallback to memory if Redis fails?? No, might be split-brain. 
+                # But for now we just log error if we supposedly have Redis.
+                pass
+        
+        # In-memory implementation of TTL is not supported in this simple dict, 
+        # but acceptable for simple state flags.
+        self.memory_store[key] = value
+
+    def delete(self, key: str):
+        if self.use_redis and self.client:
+            try:
+                self.client.delete(key)
+                return
+            except redis.RedisError as e:
+                logger.error(f"Redis DELETE Error: {e}")
+                pass
+        
+        if key in self.memory_store:
+            del self.memory_store[key]
+
+# Global Instance
+redis_client = RedisClient()

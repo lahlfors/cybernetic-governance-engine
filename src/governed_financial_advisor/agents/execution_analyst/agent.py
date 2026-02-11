@@ -66,6 +66,8 @@ Your role is to translate high-level user intent into a concrete, machine-verifi
 
 **Output Requirement:**
 You must output a valid JSON object matching the `ExecutionPlan` schema.
+DO NOT output any conversational text or markdown code blocks.
+ONLY output the raw JSON.
 - `steps`: A DAG (Directed Acyclic Graph) of actions.
 - `rationale`: Explain *why* this plan is safe and suitable.
 
@@ -91,10 +93,19 @@ You MUST revise your plan to address the specific feedback (e.g., "Market Closed
 def get_execution_analyst_instruction() -> str:
     return EXECUTION_ANALYST_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
 
+from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
+
+from config.settings import Config
+
 def create_execution_analyst_agent(model_name: str = MODEL_REASONING) -> Agent:
     """Factory to create execution analyst agent."""
     return Agent(
-        model=model_name,
+        model=get_adk_model(
+            model_name, 
+            api_base=Config.VLLM_REASONING_API_BASE,
+            # FSM Enforcement: Pass schema via guided_json (vLLM specific)
+            extra_body={"guided_json": ExecutionPlan.model_json_schema()}
+        ),
         name="execution_analyst_agent",
         instruction=get_execution_analyst_instruction(),
         output_key="execution_plan_output",
@@ -102,6 +113,7 @@ def create_execution_analyst_agent(model_name: str = MODEL_REASONING) -> Agent:
         # Configure JSON mode for Gemini using ADK's output_schema
         output_schema=ExecutionPlan,
         generate_content_config={
-            "response_mime_type": "application/json"
+            "response_mime_type": "application/json",
+            "max_output_tokens": 8192
         }
     )

@@ -15,10 +15,11 @@ The **Governed Financial Advisor** is a high-reliability agentic system designed
     *   **Executor (System 1):** `Governed Trader`. Executes authorized actions.
     *   **Monitor (System 3):** `Explainer Agent`. Reports faithfully.
 
-### 2.2. Reasoning Plane (Google ADK)
+### 2.2. Reasoning Plane (Sovereign vLLM)
 *   **Agents**: Located in `src/governed_financial_advisor/agents/`.
 *   **Evaluator**: A new specialized agent that orchestrates parallel simulation checks (Market, OPA, NeMo).
 *   **Explainer**: A dedicated agent for translating technical outputs to user-friendly, faithful text.
+*   **Infrastructure**: Powered by **DeepSeek-R1-Distill-Llama-8B** (Node A) and **Llama-3.2-3B** (Node B).
 
 ### 2.3. Governance Layer ("The Green Stack")
 *   **Evaluator-Driven**: Governance is no longer a sidecar "middleware" but an active **Agentic Step**.

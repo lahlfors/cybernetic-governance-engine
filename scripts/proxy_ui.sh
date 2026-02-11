@@ -1,47 +1,20 @@
 #!/bin/bash
-# Proxy localhost:8080 to the private Cloud Run UI service
-# Useful if the public URL returns 403 Forbidden due to IAM policy failures.
-
-# PID File to track the running proxy
-PID_FILE=".proxy_ui.pid"
-
-cleanup() {
-  if [ -f "$PID_FILE" ]; then
-    PID=$(cat "$PID_FILE")
-    if ps -p $PID > /dev/null 2>&1; then
-      echo "🛑 Stopping existing proxy (PID: $PID)..."
-      kill $PID
-    else
-      echo "🧹 Removing stale PID file..."
-    fi
-    rm "$PID_FILE"
-  fi
-}
-
-# Handle 'stop' command
-if [ "$1" == "stop" ]; then
-  cleanup
-  echo "✅ Proxy stopped."
-  exit 0
-fi
-
-# Auto-cleanup before starting new instance
-cleanup
+# Proxy localhost:8080 to the GKE UI service
+# Useful for local testing of the deployed UI.
 
 PORT=${PORT:-8080}
-echo "🚀 Starting Proxy to Financial Advisor UI..."
+NAMESPACE="governance-stack"
+SERVICE="service/financial-advisor-ui"
+
+# Ensure kubectl is in path
+if ! command -v kubectl &> /dev/null; then
+    echo "❌ kubectl could not be found. Please install it."
+    exit 1
+fi
+
+echo "🚀 Starting Proxy to Financial Advisor UI on GKE..."
 echo "🔗 Local URL: http://localhost:$PORT"
+echo "ℹ️  Press Ctrl+C to stop."
 
-# Start in background to capture PID, but wait for it so script stays alive
-gcloud run services proxy financial-advisor-ui \
-  --project laah-cybernetics \
-  --region us-central1 \
-  --port $PORT &
-
-PROXY_PID=$!
-echo $PROXY_PID > "$PID_FILE"
-
-# Trap interrupt to cleanup
-trap "cleanup; exit" INT TERM EXIT
-
-wait $PROXY_PID
+# Port forward to service port 80
+kubectl port-forward -n $NAMESPACE $SERVICE $PORT:80
