@@ -106,6 +106,8 @@ spec:
               value: "${MCP_MODE}"
             - name: ALPHAVANTAGE_API_KEY
               value: "${ALPHAVANTAGE_API_KEY}"
+            - name: MOCK_TRADES
+              value: "${MOCK_TRADES}"
 
             # --- Secrets (from K8s Secrets) ---
             - name: HUGGING_FACE_HUB_TOKEN

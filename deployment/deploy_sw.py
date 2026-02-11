@@ -295,6 +295,7 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         # MCP Configuration
         "${MCP_MODE}": os.environ.get("MCP_MODE", "stdio"),
         "${ALPHAVANTAGE_API_KEY}": os.environ.get("ALPHAVANTAGE_API_KEY", ""),
+        "${MOCK_TRADES}": os.environ.get("MOCK_TRADES", "True"),
     }
     
     # Helper: strip surrounding quotes from .env values (they get re-quoted in YAML)
