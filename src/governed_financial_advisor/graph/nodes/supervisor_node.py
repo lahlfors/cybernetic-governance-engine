@@ -78,6 +78,44 @@ def supervisor_node(state):
                 elif "human" in target_lower or "review" in target_lower:
                     next_step = "human_review"
 
+    # --- FALLBACK: Parse JSON from text if no function call intercepted ---
+    if next_step == "FINISH":
+        import json
+        import re
+        
+        # Try to find JSON block
+        try:
+            # Look for JSON structure {"name": "route_request", ...} or similar
+            json_match = re.search(r'\{.*\}', agent_text, re.DOTALL)
+            if json_match:
+                data = json.loads(json_match.group(0))
+                
+                # Check if it looks like a tool call or the expected output
+                if isinstance(data, dict):
+                    # Handle raw "execute_trade" or others by mapping to intents
+                    intent = data.get("name", "") or data.get("intent", "")
+                    target = data.get("target", "")
+                    
+                    if not intent and "parameters" in data:
+                         # Maybe it's {"name": "execute_trade", ...} type structure
+                         intent = data.get("name")
+                    
+                    if intent:
+                        print(f"--- [Graph] Supervisor Fallback: Found JSON intent '{intent}' ---")
+                        intent_lower = intent.lower()
+                        if "market" in intent_lower or "data" in intent_lower:
+                            next_step = "data_analyst"
+                        elif "strategy" in intent_lower or "trading" in intent_lower or "execute" in intent_lower:
+                            # Both strategy and execution go to execution_analyst (Planner)
+                            next_step = "execution_analyst"
+                            
+                        # Map execute_trade tool call to execution_analyst as well
+                        if "execute_trade" in intent_lower:
+                             next_step = "execution_analyst"
+
+        except Exception as e:
+            print(f"--- [Graph] Supervisor Fallback parsing failed: {e} ---")
+
     # 3. Return updated state and routing signal
     # We must return the 'updated_state' dictionary, not the original 'state'
     updated_state["messages"] = state["messages"] + [("ai", agent_text)]

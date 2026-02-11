@@ -23,7 +23,7 @@ flow bot express greeting
   bot say "Hello! I'm your financial advisor assistant. How can I help you today?"
 
 flow market analysis
-  user said "analyze stock" or user said "market data" or user said "check price"
+  user said "analyze stock" or user said "market data" or user said "check price" or user said "analyze the stock performance"
   bot continue
 
 flow check_authorization
