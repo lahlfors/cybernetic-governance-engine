@@ -25,7 +25,9 @@ class Config:
     PORT = int(os.getenv("PORT", 8080))
 
     # Data Stores
-    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+    _REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+    _REDIS_PORT = os.getenv("REDIS_PORT", "6379")
+    REDIS_URL = os.getenv("REDIS_URL", f"redis://{_REDIS_HOST}:{_REDIS_PORT}")
 
     # Governance Sidecars
     OPA_URL = os.getenv("OPA_URL", "http://localhost:8181/v1/data/finance/allow")

@@ -17,12 +17,12 @@
 from google.adk import Agent
 from google.adk.tools import transfer_to_agent
 
-from config.settings import MODEL_FAST
+from config.settings import Config
 from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
 
 EXPLAINER_PROMPT_OBJ = Prompt(
     prompt_data=PromptData(
-        model=MODEL_FAST,
+        model=Config.MODEL_FAST,
         contents=[
             Content(
                 parts=[
@@ -66,7 +66,7 @@ def get_explainer_instruction() -> str:
 
 from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
 
-def create_explainer_agent(model_name: str = MODEL_FAST) -> Agent:
+def create_explainer_agent(model_name: str = Config.MODEL_FAST) -> Agent:
     return Agent(
         model=get_adk_model(model_name),
         name="explainer_agent",

@@ -1,6 +1,6 @@
 import logging
 from langchain_google_genai import ChatGoogleGenerativeAI
-from config.settings import MODEL_REASONING, Config
+from config.settings import Config
 
 logger = logging.getLogger("Governance.Judge")
 
@@ -14,7 +14,7 @@ class JudgeAgent:
     def __init__(self):
         try:
             self.llm = ChatGoogleGenerativeAI(
-                model=MODEL_REASONING,
+                model=Config.MODEL_REASONING,
                 temperature=0.0,
                 google_api_key=Config.GOOGLE_API_KEY
             )

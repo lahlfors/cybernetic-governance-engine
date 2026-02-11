@@ -36,6 +36,10 @@ spec:
               value: "${PORT}"
             - name: DEPLOY_TIMESTAMP
               value: "${DEPLOY_TIMESTAMP}"
+            - name: GATEWAY_HOST
+              value: "${GATEWAY_HOST}"
+            - name: GATEWAY_PORT
+              value: "${GATEWAY_PORT}"
 
             # --- Infrastructure ---
             - name: GOOGLE_CLOUD_PROJECT

@@ -4,7 +4,7 @@ from typing import Any
 from langchain_google_genai import ChatGoogleGenerativeAI
 from opentelemetry import trace
 
-from config.settings import MODEL_CONSENSUS
+from config.settings import Config
 from src.governed_financial_advisor.utils.telemetry import genai_span
 
 logger = logging.getLogger("ConsensusEngine")
@@ -16,7 +16,7 @@ class ConsensusEngine:
     Implements a 'Critic' check for high-stakes decisions using a separate LLM call.
     """
 
-    def __init__(self, threshold: float = 10000.0, model_name: str = MODEL_CONSENSUS):
+    def __init__(self, threshold: float = 10000.0, model_name: str = Config.MODEL_CONSENSUS):
         self.threshold = threshold
         self.model_name = model_name
 

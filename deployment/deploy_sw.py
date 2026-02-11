@@ -273,6 +273,10 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         
         # Policy Engine
         "${OPA_URL}": os.environ.get("OPA_URL", "http://localhost:8181/v1/data/finance/allow"),
+
+        # Gateway Service
+        "${GATEWAY_HOST}": os.environ.get("GATEWAY_HOST", "gateway-service.default.svc.cluster.local"),
+        "${GATEWAY_PORT}": os.environ.get("GATEWAY_PORT", "50051"),
         
         # Langfuse (Hot Tier)
         "${LANGFUSE_PUBLIC_KEY}": os.environ.get("LANGFUSE_PUBLIC_KEY", ""),

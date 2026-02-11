@@ -6,7 +6,7 @@ from google.adk import Agent
 from google.adk.tools import FunctionTool, transfer_to_agent
 from pydantic import BaseModel, Field
 
-from config.settings import MODEL_REASONING
+from config.settings import Config
 from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
 from src.governed_financial_advisor.infrastructure.gateway_client import gateway_client
 
@@ -102,7 +102,7 @@ class EvaluationResult(BaseModel):
 
 EVALUATOR_PROMPT_OBJ = Prompt(
     prompt_data=PromptData(
-        model=MODEL_REASONING,
+        model=Config.MODEL_REASONING,
         contents=[
             Content(
                 parts=[
@@ -135,7 +135,7 @@ def get_evaluator_instruction() -> str:
 
 from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
 
-def create_evaluator_agent(model_name: str = MODEL_REASONING) -> Agent:
+def create_evaluator_agent(model_name: str = Config.MODEL_REASONING) -> Agent:
     return Agent(
         model=get_adk_model(model_name),
         name="evaluator_agent",

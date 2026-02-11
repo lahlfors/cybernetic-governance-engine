@@ -19,7 +19,7 @@ from typing import Any, Optional
 from google.adk import Agent
 from pydantic import BaseModel, Field
 
-from config.settings import MODEL_REASONING
+from config.settings import Config
 from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
 
 
@@ -43,7 +43,7 @@ class ExecutionPlan(BaseModel):
 
 EXECUTION_ANALYST_PROMPT_OBJ = Prompt(
     prompt_data=PromptData(
-        model=MODEL_REASONING, # Using reasoning model for planning
+        model=Config.MODEL_REASONING, # Using reasoning model for planning
         contents=[
             Content(
                 parts=[
@@ -93,7 +93,7 @@ def get_execution_analyst_instruction() -> str:
 
 from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
 
-def create_execution_analyst_agent(model_name: str = MODEL_REASONING) -> Agent:
+def create_execution_analyst_agent(model_name: str = Config.MODEL_REASONING) -> Agent:
     """Factory to create execution analyst agent."""
     return Agent(
         model=get_adk_model(model_name),

@@ -4,7 +4,7 @@ from typing import Any
 # Import Vertex AI integration
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from config.settings import MODEL_REASONING, Config
+from config.settings import Config
 from src.governed_financial_advisor.governance.structs import ProposedUCA
 from src.governed_financial_advisor.governance.judge import JudgeAgent
 
@@ -24,7 +24,7 @@ class PolicyTranspiler:
         # Initialize LLM for code generation
         try:
             self.llm = ChatGoogleGenerativeAI(
-                model=MODEL_REASONING,
+                model=Config.MODEL_REASONING,
                 temperature=0.0,
                 google_api_key=Config.GOOGLE_API_KEY
             )

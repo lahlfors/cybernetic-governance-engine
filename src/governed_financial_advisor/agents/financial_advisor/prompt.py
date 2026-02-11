@@ -14,12 +14,12 @@
 
 """Prompt for the financial_coordinator_agent."""
 
-from config.settings import MODEL_FAST
+from config.settings import Config
 from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
 
 FINANCIAL_COORDINATOR_PROMPT_OBJ = Prompt(
     prompt_data=PromptData(
-        model=MODEL_FAST,
+        model=Config.MODEL_FAST,
         contents=[
             Content(
                 parts=[

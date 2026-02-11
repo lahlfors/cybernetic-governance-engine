@@ -24,8 +24,8 @@ def route_request(intent: RouterIntent, tool_context: ToolContext) -> str:
             return "Routing to Data Analyst.", "data_analyst_agent"
 
         elif intent == RouterIntent.TRADING_STRATEGY:
-            transfer_to_agent("governed_trading_agent", tool_context)
-            return "Routing to Governed Trading Agent.", "governed_trading_agent"
+            transfer_to_agent("governed_trader_agent", tool_context)
+            return "Routing to Governed Trading Agent.", "governed_trader_agent"
 
         elif intent == RouterIntent.EXECUTION_PLAN:
             transfer_to_agent("execution_analyst_agent", tool_context)

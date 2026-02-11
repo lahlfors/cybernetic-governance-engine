@@ -20,7 +20,7 @@ from typing import Any
 from google.adk import Agent
 from google.adk.tools import FunctionTool
 
-from config.settings import MODEL_FAST
+from config.settings import Config
 from src.governed_financial_advisor.tools.trades import execute_trade
 from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
 
@@ -29,7 +29,7 @@ logger = logging.getLogger("GovernedTrader")
 # --- EXECUTOR PROMPT ---
 EXECUTOR_PROMPT_OBJ = Prompt(
     prompt_data=PromptData(
-        model=MODEL_FAST,
+        model=Config.MODEL_FAST,
         contents=[
             Content(
                 parts=[
@@ -71,7 +71,7 @@ def get_executor_instruction() -> str:
 
 from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
 
-def create_governed_trader_agent(model_name: str = MODEL_FAST) -> Agent:
+def create_governed_trader_agent(model_name: str = Config.MODEL_FAST) -> Agent:
     """Factory to create the Dumb Executor agent."""
     return Agent(
         model=get_adk_model(model_name),

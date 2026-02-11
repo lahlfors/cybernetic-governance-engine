@@ -7,6 +7,7 @@ import os
 import json
 import asyncio
 import grpc
+import threading
 from typing import AsyncGenerator
 
 from src.gateway.protos import gateway_pb2
@@ -16,19 +17,36 @@ logger = logging.getLogger("GatewayClient")
 
 class GatewayClient:
     _instance = None
-
+    
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance.channel = None
-            cls._instance.stub = None
+            cls._instance._local = threading.local()
         return cls._instance
 
+    @property
+    def channel(self):
+        return getattr(self._local, "channel", None)
+
+    @channel.setter
+    def channel(self, value):
+        self._local.channel = value
+
+    @property
+    def stub(self):
+        return getattr(self._local, "stub", None)
+
+    @stub.setter
+    def stub(self, value):
+        self._local.stub = value
+
     async def close(self):
-        """Closes the gRPC channel."""
+        """Closes the gRPC channel for the current thread."""
         if self.channel:
             await self.channel.close()
-            logger.info("GatewayClient gRPC channel closed.")
+            self.channel = None
+            self.stub = None
+            logger.info("GatewayClient gRPC channel closed (Thread Local).")
 
     def connect(self, host=None, port=None):
         if self.channel:
