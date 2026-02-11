@@ -19,7 +19,7 @@ from src.gateway.protos import gateway_pb2_grpc
 from src.gateway.protos import nemo_pb2
 from src.gateway.protos import nemo_pb2_grpc
 
-from src.gateway.core.llm import HybridClient
+from src.gateway.core.llm import GatewayClient
 from src.gateway.core.policy import OPAClient
 from src.gateway.core.tools import execute_trade, TradeOrder
 from src.gateway.core.market import market_service
@@ -41,7 +41,7 @@ tracer = trace.get_tracer("gateway.server")
 class GatewayService(gateway_pb2_grpc.GatewayServicer):
     def __init__(self):
         logger.info("Initializing Gateway Service Components...")
-        self.llm_client = HybridClient()
+        self.llm_client = GatewayClient()
         self.opa_client = OPAClient()
 
         # Initialize Neuro-Symbolic Governor

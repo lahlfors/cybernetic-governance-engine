@@ -15,7 +15,7 @@ sys.path.append(".")
 from mcp.server.fastmcp import FastMCP
 
 # Reuse existing core logic
-from src.gateway.core.llm import HybridClient
+from src.gateway.core.llm import GatewayClient
 from src.gateway.core.policy import OPAClient
 from src.gateway.core.tools import execute_trade, TradeOrder
 from src.gateway.core.market import market_service
@@ -33,7 +33,7 @@ app = FastAPI(title="Governed Financial Advisor Gateway (Hybrid)")
 mcp = FastMCP("Governed Gateway")
 opa_client = OPAClient()
 # We initialize HybridClient lazily or globally
-llm_client = HybridClient() # Uses env vars
+llm_client = GatewayClient() # Uses env vars
 
 # --- 3. Governance Logic (Shared) ---
 async def enforce_governance(tool_name: str, params: dict):
