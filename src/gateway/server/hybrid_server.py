@@ -4,6 +4,7 @@ import json
 import os
 import sys
 from typing import List, Optional, Dict, Any, Union
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -26,8 +27,16 @@ from src.governed_financial_advisor.governance.safety import safety_filter
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Gateway.Hybrid")
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    yield
+    # Shutdown
+    logger.info("Shutting down Market Service...")
+    await market_service.close()
+
 # --- 1. Initialize FastAPI App ---
-app = FastAPI(title="Governed Financial Advisor Gateway (Hybrid)")
+app = FastAPI(title="Governed Financial Advisor Gateway (Hybrid)", lifespan=lifespan)
 
 # --- 2. Initialize MCP Server ---
 mcp = FastMCP("Governed Gateway")
@@ -102,7 +111,7 @@ async def trigger_safety_intervention(reason: str) -> str:
 async def check_market_status(symbol: str) -> str:
     """Checks the current market status and price for a given ticker symbol."""
     logger.info(f"Tool Call: check_market_status({symbol})")
-    return market_service.check_status(symbol)
+    return await market_service.check_status(symbol)
 
 @mcp.tool()
 async def get_market_sentiment(symbol: str) -> str:

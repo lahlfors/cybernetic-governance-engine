@@ -172,8 +172,11 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
 
         if tool_name == "check_market_status":
             symbol = params.get("symbol", "UNKNOWN")
-            status = market_service.check_status(symbol)
-            return gateway_pb2.ToolResponse(status="SUCCESS", output=status)
+            try:
+                status = await market_service.check_status(symbol)
+                return gateway_pb2.ToolResponse(status="SUCCESS", output=status)
+            except Exception as e:
+                return gateway_pb2.ToolResponse(status="ERROR", error=str(e))
 
         elif tool_name == "get_market_sentiment":
             symbol = params.get("symbol", "UNKNOWN")
@@ -237,8 +240,12 @@ async def serve():
     server.add_insecure_port(f'[::]:{port}')
     logger.info(f"🚀 Gateway Server (gRPC) starting on port {port}...")
 
-    await server.start()
-    await server.wait_for_termination()
+    try:
+        await server.start()
+        await server.wait_for_termination()
+    finally:
+        logger.info("Shutting down Market Service...")
+        await market_service.close()
 
 if __name__ == '__main__':
     asyncio.run(serve())
