@@ -12,6 +12,9 @@ class Config:
     # Default: Llama 3.1 8B (The Workhorse)
     DEFAULT_MODEL = "meta-llama/Meta-Llama-3.1-8B-Instruct"
 
+    # --- MOCKING ---
+    MOCK_TRADES = os.getenv("MOCK_TRADES", "True").lower() == "true"
+
     # --- SPLIT-BRAIN INFRASTRUCTURE (Hardcoded Defaults) ---
     # Node A: The Brain (Reasoning/Planner) - Runs on dedicated L4 GPU
     VLLM_REASONING_API_BASE = os.getenv("VLLM_REASONING_API_BASE", "http://vllm-reasoning:8000/v1")
