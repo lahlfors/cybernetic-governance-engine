@@ -1,118 +1,46 @@
-# Financial Advisor (Cybernetic Governance Edition)
+# Financial Advisor (Sovereign Engine Edition)
 
-**This repository implements the [Cybernetic Governance Framework](README_GOVERNANCE.md), transforming a probabilistic LLM agent into a deterministic, engineering-controlled system.**
+**This repository implements the "Sovereign Engine" framework, a high-reliability, cloud-agnostic architecture for Agentic AI.**
 
 ## Overview
 
 The Financial Advisor is a multi-agent system designed to assist human financial advisors. Unlike standard "tool-use" agents that can unpredictably call functions, this system uses a **Hybrid Reasoning Architecture** combining deterministic workflow control with LLM-powered reasoning, guided by **Systems-Theoretic Process Analysis (STPA)** to guarantee safety constraints.
 
-Use this authentic reference implementation to understand how to build **high-reliability agentic systems** for regulated industries.
+Use this authentic reference implementation to understand how to build **high-reliability agentic systems** for regulated industries using a purely sovereign stack (no external API dependencies).
 
-## Agentic DevOps & The Policy Governor
+## Sovereign Architecture: Split-Brain vLLM
 
-This implementation adheres to the **Agentic DevOps** philosophy, reframing the infrastructure as a deterministic supervisor.
+This implementation adheres to the **Sovereign Stack** architecture, ensuring absolute control over inference and data.
 
-👉 **See [ARCHITECTURE.md](ARCHITECTURE.md) for the full architectural analysis.**
+👉 **See [docs/GATEWAY_ARCHITECTURE.md](docs/GATEWAY_ARCHITECTURE.md) for the full architectural analysis.**
 
-*   **The Advisor (LLM):** The "Brain" that reasons about financial strategy.
-*   **The Policy Governor:** The "Sentry" that enforces absolute boundaries ("The Wall"). Uses an **OPA Sidecar** for policy and **In-Process NeMo Guardrails** for semantic safety.
-    *   **New:** See **[Neuro-Symbolic Governance](docs/NEURO_SYMBOLIC_GOVERNANCE.md)** for the architectural combination of **Residual-Based Control (RBC)** and **Optimization-Based Control (OPC)**.
-*   **The Currency Broker (HybridClient):** Manages the "Latency as Currency" budget, enforcing a strict Bankruptcy Protocol if reasoning takes too long.
-*   **The Foundry (Pipelines):** Offline factories that compile STAMP hazards into Rego policies.
+### The Split-Brain Topology
+The system separates "Thinking" from "Governing" into two distinct vLLM services to optimize for cost and latency:
 
-## Hybrid Architecture: LangGraph + Google ADK
+1.  **Node A: The Brain (Reasoning Plane)**
+    *   **Model:** `meta-llama/Meta-Llama-3.1-8B-Instruct`
+    *   **Role:** Complex logic, Chain-of-Thought (CoT), Planning, and Data Analysis.
+    *   **Hardware:** Dedicated GPU (e.g., NVIDIA L4).
+    *   **Service:** `vllm-reasoning`
 
-This system implements a **Hybrid Manager-Worker Architecture** that separates concerns:
+2.  **Node B: The Police (Governance Plane)**
+    *   **Model:** `meta-llama/Llama-3.2-3B-Instruct`
+    *   **Role:** Fast FSM checks, JSON schema validation, Policy enforcement, and Chat.
+    *   **Hardware:** Shared GPU or High-Performance CPU.
+    *   **Service:** `vllm-governance`
 
-| Layer | Technology | Responsibility |
-|-------|------------|----------------|
-| **Control Plane** | LangGraph | Deterministic workflow orchestration, conditional routing, state management |
-| **Reasoning Plane** | Google ADK | LLM-powered agents with Vertex AI/Gemini for natural language understanding |
-| **Bridge** | Adapters | Wraps ADK agents as LangGraph nodes, intercepts tool calls for routing |
+### Computer Use (Sandboxed Execution)
+The system implements a **Computer Use** capability where the Data Analyst agent writes and executes Python code instead of relying on pre-defined tools.
 
-```
-┌─────────────────────────────────────────────────────────┐
-│               LangGraph StateGraph                       │
-│  ┌──────────┐    ┌────────────┐    ┌─────────────────┐ │
-│  │Supervisor│───▶│Conditional │───▶│Risk Refinement  │ │
-│  │  Node    │    │  Routing   │    │     Loop        │ │
-│  └────┬─────┘    └────────────┘    └─────────────────┘ │
-│       │                                                  │
-├───────┼──────────────── ADAPTERS ───────────────────────┤
-│       ▼                                                  │
-│  ┌─────────┐  ┌─────────┐  ┌────────────┐ │
-│  │  Data   │  │Execution│  │  Governed  │ │
-│  │ Analyst │  │ Analyst │  │   Trader   │ │
-│  └─────────┘  └─────────┘  └────────────┘ │
-│               Google ADK LlmAgents                       │
-└─────────────────────────────────────────────────────────┘
-```
+*   **Sandbox Sidecar:** A lightweight FastAPI service (`src/sandbox/main.py`) runs alongside the agent.
+*   **Security:** Code execution is isolated in a container with restricted network access, pre-loaded with `pandas` and `yfinance`.
+*   **Workflow:** Agent writes code -> Gateway sends to Sandbox -> Sandbox executes & returns STDOUT/STDERR -> Agent interprets result.
 
-**Why Hybrid?**
-- **LangGraph** excels at deterministic control flow—no LLM decides the execution path
-- **Google ADK** excels at LLM reasoning—native agent patterns with Vertex AI integration
-- **The Adapter Pattern** bridges them: ADK agents run inside LangGraph nodes, with tool calls intercepted to drive routing
+## Core Components
 
-👉 **For a deep dive, see [ARCHITECTURE.md](ARCHITECTURE.md)**
-
-## Sovereign Stack (Phase 1 & 2)
-
-This implementation adheres to the **Sovereign Stack** architecture, ensuring cloud independence and portability.
-
-👉 **See [ARCHITECTURE.md](ARCHITECTURE.md) for full architecture details.**
-
-*   **Cloud Agnostic:** Runs on local Docker, AWS, Azure, or On-Prem.
-*   **Local Governance:** Policy (OPA) and Semantic Guardrails (NeMo) run as **Sidecars**.
-*   **Standard Protocols:** Uses HTTP and **Unix Domain Sockets (UDS)** for ultra-low latency IPC.
-*   **Optimistic Execution:** Uses Python `asyncio` to parallelize safety checks and tool execution, reducing latency.
-
-## Governance & Safety (Green Stack)
-
-This repository implements the advanced **Green Stack Governance Architecture**, separating cognition from control to satisfy ISO 42001 and STPA requirements.
-
-👉 **Architecture Guide: [ARCHITECTURE.md](ARCHITECTURE.md)**
-
-### The 4-Layer Safety Loop
-1.  **Define (Risk Agent):** An offline "A2 Discovery" agent continuously scans for financial risks (e.g., Slippage, Drawdown) and defines Unsafe Control Actions (UCAs).
-2.  **Verify (Evaluator Agent):** A dedicated "Proctor" subsystem audits agent traces against the STPA safety ontology and simulates adversarial attacks (Red Teaming). **[See Evaluator Agent Docs](src/governed_financial_advisor/evaluator_agent/README.md)**
-3.  **Bridge (Transpiler):** A policy transpiler automatically converts discovered risks into executable code.
-4.  **Enforce (NeMo Guardrails):** Real-time, deterministic Python actions intercept tool calls in <10ms to block unsafe actions. **[See Governance Logic Docs](src/governed_financial_advisor/governance/README.md)**
-
-### Automated Pipeline
-The entire risk discovery and rule deployment loop is automated via **Vertex AI Pipelines**.
-👉 **Pipeline Docs: [src/governed_financial_advisor/pipelines/README.md](src/governed_financial_advisor/pipelines/README.md)**
-
-## High-Reliability Architecture
-
-This system demonstrates a **Hybrid Cognitive Architecture** designed for regulated industries:
-
-*   **Stateless Compute (GKE):** The core agent logic runs on Google Kubernetes Engine (GKE). This ensures **low latency** and **colocation** with the Gateway and vLLM services.
-*   **Redis State Store:** Session state is persisted to Redis (Cloud Memorystore) for reliable recovery across stateless compute instances.
-*   **Zero-Hop Policy (OPA Sidecar):** Regulatory checks happen over `localhost` or UDS. There is **no network latency** penalty for compliance, enabling high-frequency decision auditing.
-*   **Agentic Gateway (Sidecar):** A gRPC-based gateway handles all external IO and tool execution, isolating the Reasoning Plane from the Execution Plane.
-
-The architecture enforces "Defense in Depth" through six distinct layers (0-5), combining symbolic AI (Hard Logic) with Generative AI (Soft Logic):
-
-1.  **Conversational Guardrails (Layer 0):** **NeMo Guardrails** ensures the model stays on topic and prevents jailbreaks before any tool execution.
-2.  **Structural Validation (Layer 1):** Strict **Pydantic** schemas validate all inputs/outputs.
-3.  **Policy Engine (Layer 2):** **Open Policy Agent (OPA)** enforces Role-Based Access Control (RBAC) and business logic (e.g., trading limits) external to the Python code.
-4.  **Semantic Verification (Layer 3):** A specialized **Evaluator Agent** audits the proposed actions of a "Worker" agent to prevent hallucinations (Propose-Verify-Execute pattern) using Dry Run capabilities.
-5.  **Consensus Engine (Layer 4):** Simulates an ensemble vote for high-stakes actions.
-6.  **Deterministic Routing (LangGraph):** The system uses **LangGraph** to implement a strict State Graph, replacing probabilistic tool use with deterministic workflow control. This enforces the Strategy → Risk → Execution workflow and enables self-correcting loops.
-
-For a deep dive into the theory and implementation, read **[README_GOVERNANCE.md](README_GOVERNANCE.md)**.
-
-## Agent Team
-
-The system orchestrates a team of specialized sub-agents, managed by a central **Supervisor Node**:
-
-1.  **Data Analyst Agent:** Performs market research using AlphaVantage (MCP) for real-time sentiment and news.
-2.  **Governed Trader Agent (Executor):**
-    *   **Worker:** Proposes trading strategies based on analysis.
-    *   **Executor:** A "Dumb Executor" that only runs approved trades.
-3.  **Execution Analyst Agent (Planner):** Creates detailed execution plans (e.g., VWAP, TWAP).
-4.  **Evaluator Agent (Verifier):** A dedicated system 3 control unit that verifies plans against OPA policies and safety constraints via the Gateway.
-5.  **Risk Analyst Agent (Offline):** A specialized A2 Discovery agent that runs asynchronously to identify UCAs and update policies, removed from the runtime hot path to minimize latency.
+*   **The Gateway (GatewayClient):** A unified client that intelligently routes requests to the appropriate vLLM node based on the task mode (Reasoning vs. Governance).
+*   **The Policy Governor (OPA):** An **Open Policy Agent** sidecar that enforces business logic and regulatory compliance (e.g., "No trading in restricted regions").
+*   **The Agent (Google ADK):** The application logic layer, refactored to use the `GatewayClient` for all LLM interactions.
 
 ## Quick Start (Sovereign Stack)
 
@@ -120,7 +48,7 @@ The system orchestrates a team of specialized sub-agents, managed by a central *
 
 *   [uv](https://github.com/astral-sh/uv) (for Python dependency management)
 *   [Docker](https://docs.docker.com/get-docker/) & Docker Compose
-*   [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) (for GKE/TPU deployment)
+*   [Kubernetes](https://kubernetes.io/) (Minikube, Kind, or GKE)
 
 ### 2. Installation
 
@@ -135,126 +63,66 @@ uv sync
 
 ### 3. Configuration
 
-Copy the example environment file and configure your Google Cloud credentials (for Vertex AI access):
+The system is pre-configured for the Sovereign Stack. Copy the `.env.example` (or use the provided defaults):
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` with your settings:
+**Key Settings (Defaults):**
 ```bash
-# Model Configuration
-MODEL_FAST=gemini-2.5-flash-lite
-MODEL_REASONING=gemini-2.5-pro
+# Split-Brain URLs
+VLLM_REASONING_API_BASE=http://vllm-reasoning:8000/v1
+VLLM_FAST_API_BASE=http://vllm-governance:8000/v1
 
-# Vertex AI Configuration (Required for Reasoning Plane)
-GOOGLE_GENAI_USE_VERTEXAI=1
-GOOGLE_CLOUD_PROJECT=<YOUR_PROJECT_ID>
-GOOGLE_CLOUD_LOCATION=<YOUR_REGION>
-GOOGLE_API_KEY=<YOUR_API_KEY> # If using AI Studio
-
-# Sovereign Stack Configuration
-OPA_URL=http://localhost:8181/v1/data/finance/allow
-# For UDS (Linux/Mac): OPA_URL=http+unix://%2Ftmp%2Fopa.sock/v1/data/finance/allow
+# Sandbox
+SANDBOX_URL=http://localhost:8081/execute
 ```
 
-### 4. Run the Stack (Docker Compose)
+### 4. Run the Infrastructure (Kubernetes)
 
-Start the governance infrastructure (OPA, Redis, NeMo):
+Deploy the sovereign stack to your Kubernetes cluster:
+
+```bash
+# Apply Manifests
+kubectl apply -f deployment/k8s/
+```
+
+This will spin up:
+- `vllm-reasoning` (Llama 3.1 8B)
+- `vllm-governance` (Llama 3.2 3B)
+- `governed-financial-advisor` (Agent + OPA + Sandbox)
+- `redis` (State Store)
+
+### 5. Local Development (Docker Compose)
+
+For local testing without K8s, use Docker Compose (Note: Requires GPU support or CPU offloading):
 
 ```bash
 docker-compose up -d
 ```
 
-### 5. Run the Agentic Gateway (Required)
+### 6. Run the Agent Locally
 
-Start the gRPC Gateway service (Sidecar):
+To run the agent logic locally while connecting to the infrastructure:
 
 ```bash
-# Start in background or separate terminal
+# Start the Gateway (if not running in K8s)
 uv run python src/gateway/server/main.py
-```
-*Runs on port 50051.*
 
-### 6. Run the Agent
-
-```bash
-# Run the FastAPI server locally
+# Start the Agent Server
 uv run python src/governed_financial_advisor/server.py
 ```
 
-The server will start on `http://localhost:8080`.
+## Security & Governance
 
-### 7. Run the UI (Optional)
+This project implements "Defense in Depth" using a **Neuro-Symbolic Governance** approach:
 
-```bash
-# Install Streamlit
-uv pip install streamlit
-
-# Run the UI
-export BACKEND_URL="http://localhost:8080"
-streamlit run ui/app.py
-```
-
-## Production Deployment (GKE & TPU)
-
-This repository supports deploying the high-performance inference stack to Google Kubernetes Engine (GKE) using either NVIDIA GPUs or Google TPUs.
-
-### Deployment Options
-
-The `deploy_sw.py` script automates the entire process, including provisioning infrastructure, building containers, and deploying manifests.
-
-#### NVIDIA GPU (Default)
-Optimized for ultra-low latency using **Speculative Decoding**. Best for user-facing applications requiring strict SLAs (<200ms TTFT).
-
-```bash
-python3 deployment/deploy_sw.py \
-    --project-id <YOUR_PROJECT_ID> \
-    --region us-central1 \
-    --accelerator-type l4
-```
-
-## Security Verification (Red Teaming)
-
-This project includes a comprehensive **Red Team Test Suite** to verify the robustness of guardrails against adversarial attacks.
-
-To run the automated security tests against a deployed agent:
-
-```bash
-# 1. Ensure backend is running
-# 2. Run the test suite
-python3 tests/red_team/run_red_team.py
-```
-
-The suite tests for:
-*   ✅ Jailbreaks (DAN, Roleplay)
-*   ✅ Role Escalation
-*   ✅ Verifier Bypass
-*   ✅ Illegal Financial Advice
-*   ✅ Prompt Injection
-
-👉 **See [tests/red_team/README.md](tests/red_team/README.md) for full documentation.**
-
-### Compliance (ISO 42001)
-
-The system is designed to meet **ISO/IEC 42001** standards for AI Management Systems.
-👉 **See [docs/ISO_42001_COMPLIANCE.md](docs/ISO_42001_COMPLIANCE.md) for the Telemetry Audit Map.**
-
-## Performance & Benchmarking
-
-The system includes a dedicated benchmarking suite to measure end-to-end latency and reliability.
-👉 **See [docs/PERFORMANCE.md](docs/PERFORMANCE.md) for methodology and metrics.**
-
-### Semantic Evaluation (Vertex AI)
-The system uses **Adaptive Rubrics** and Model-Based Evaluation to deterministicly score agent responses.
-👉 **See [docs/PERFORMANCE.md#advanced-evaluation-vertex-ai](docs/PERFORMANCE.md#advanced-evaluation-vertex-ai)**
-
-## Architecture Diagram
-
-<img src="financial-advisor.png" alt="Financial Advisor Architecture" width="800"/>
+1.  **Structural Validation:** Pydantic schemas enforce input/output formats.
+2.  **Policy Engine:** OPA enforces RBAC and business rules.
+3.  **Sandboxed Execution:** Arbitrary code execution is confined to the ephemeral sandbox container.
+4.  **Split-Brain Verification:** The "Governance" node can be used to verify the outputs of the "Reasoning" node (Propose-Verify-Execute).
 
 ## License
 
 This project is licensed under the Apache 2.0 License - see the `LICENSE` file for details.
-
-**FSA Code Guidance:** This solution uses open-source dependencies compliant with Google FSA policies (Apache 2.0, MIT). The codebase is designed for internal prototyping and requires formal review before customer distribution or production use.
