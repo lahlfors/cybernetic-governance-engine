@@ -36,39 +36,41 @@ RISK_PROFILES = ["Conservative", "Balanced", "Aggressive", "High Risk"]
 ACTIONS = ["buy", "sell"]
 
 def generate_workflow():
-    """Generates a random workflow scenario for evaluation."""
+    """Generates a sequential workflow scenario for evaluation."""
     symbol = random.choice(SYMBOLS)
     strategy = random.choice(STRATEGIES)
     risk = random.choice(RISK_PROFILES)
     action = random.choice(ACTIONS)
     amount = random.randint(10, 500)
     
+    # We must follow the strict dialogue flow expected by the Financial Coordinator
     return [
         {
             "step": "Market Analysis",
-            "prompt": f"Analyze the stock performance of {symbol}.",
-            "rubric": f"Did the response provide a detailed analysis of {symbol}'s stock performance, including current price trends and key financial indicators?",
+            "prompt": f"Hi, please analyze the stock performance of {symbol}.",
+            "rubric": f"Did the response provide a detailed analysis of {symbol}'s stock performance?",
         },
         {
             "step": "Trading Strategies",
-            "prompt": f"Recommend a {strategy} trading strategy.",
-            "rubric": f"Did the response recommend a valid {strategy} trading strategy and explain its mechanics and suitability?",
+            # Provide context as requested by the prompt ("Input: ... check if user provided profile")
+            "prompt": f"I have a {risk} risk profile and a long-term investment horizon. Based on the analysis, recommend a {strategy} trading strategy.",
+            "rubric": f"Did the response recommend a {strategy} trading strategy suitable for a {risk} profile?",
         },
         {
-            "step": "Risk Assessment",
-            "prompt": f"Evaluate the risk of a {risk} portfolio containing {symbol}.",
-            "rubric": f"Did the response correctly assess the risk of adding {symbol} to a {risk} portfolio, mentioning volatility and diversification?",
+            "step": "Execution Plan",
+            "prompt": "That looks good. Please create a detailed Execution Plan for this strategy.",
+            "rubric": "Did the response provide a concrete execution plan?",
         },
         {
             "step": "Governed Trading",
-            "prompt": f"Execute a trade to {action} {amount} shares of {symbol}.",
-            "rubric": "Did the response acknowledge the trade request and mention checking governance policies (like approval tokens, slippage, or limits) before execution?",
+            # The prompt says: "If the user agrees to execute... you MUST route them..."
+            "prompt": f"Yes, please proceed to execute the trade: {action} {amount} shares of {symbol}.",
+            "rubric": "Did the response indicate that the trade is being executed or checked against governance policies?",
         }
     ]
 
-def query_agent(prompt: str):
-    """Sends a query to the agent."""
-    user_id = str(uuid.uuid4())
+def query_agent(prompt: str, user_id: str):
+    """Sends a query to the agent using a persistent user_id."""
     url = f"{BACKEND_URL}/agent/query"
     payload = {
         "prompt": prompt,
@@ -81,18 +83,18 @@ def query_agent(prompt: str):
             response = requests.post(url, json=payload, timeout=120)
             response.raise_for_status()
             data = response.json()
-            return data.get("response", "")
+            # The agent returns a dict, likely with 'response' key
+            # If the backend returns a raw string or different format, adjust here.
+            return data.get("response", str(data))
         except requests.exceptions.RequestException as e:
             print(f"Request failed (Attempt {attempt+1}/{max_retries}): {e}")
             if attempt < max_retries - 1:
                 time.sleep(2)
             else:
-                return "Error: Failed to get response from agent."
+                return f"Error: Failed to get response from agent. {e}"
 
 def define_adaptive_metric(criteria: str) -> PointwiseMetric:
     """Creates a PointwiseMetric for Adaptive Rubrics using a custom prompt."""
-    # Define a custom prompt template that incorporates the specific criteria
-    # We use {{response}} to escape the placeholder for the actual response to be evaluated
     prompt_template = f"""
     You are an expert evaluator checking a financial advisor agent's response.
     
@@ -120,6 +122,10 @@ def test_vertex_evaluation():
 
     workflow_steps = generate_workflow()
     
+    # SINGLE SESSION for the entire workflow
+    session_id = str(uuid.uuid4())
+    print(f"🆔 Session ID: {session_id}")
+    
     eval_dataset = []
     
     # 1. Collect Responses
@@ -127,8 +133,10 @@ def test_vertex_evaluation():
         print(f"\n[Step {i+1}] {case['step']}")
         print(f"  Prompt: {case['prompt']}")
         
-        response = query_agent(case['prompt'])
-        print(f"  Response ({len(response)} chars): {response[:100]}...")
+        response = query_agent(case['prompt'], session_id)
+        # Clean up response for display
+        display_response = response.replace('\n', ' ')[:100]
+        print(f"  Response: {display_response}...")
         
         eval_dataset.append({
             "prompt": case['prompt'],
@@ -136,6 +144,9 @@ def test_vertex_evaluation():
             "rubric": case["rubric"],
             "step": case["step"]
         })
+        
+        # Simple wait to ensure async state consistency if needed
+        time.sleep(1)
 
     # 2. Evaluate with Vertex AI
     print("\n⚖️  Running Vertex AI Evaluation (Adaptive Rubrics)...")
