@@ -1,7 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 
-from src.governed_financial_advisor.demo.pipeline_manager import submit_vertex_pipeline
+# from src.governed_financial_advisor.demo.pipeline_manager import submit_vertex_pipeline
 from src.governed_financial_advisor.demo.state import demo_state
 
 demo_router = APIRouter(prefix="/demo", tags=["demo"])
@@ -13,11 +13,11 @@ class ContextRequest(BaseModel):
     latency: float
     risk_profile: str = "Balanced"
 
-@demo_router.post("/pipeline")
-async def start_pipeline(req: PipelineRequest, background_tasks: BackgroundTasks):
-    """Starts the governance pipeline (Vertex AI Only) in the background."""
-    background_tasks.add_task(submit_vertex_pipeline, req.strategy)
-    return {"status": "started", "mode": "vertex", "message": "Submitting to Vertex AI..."}
+# @demo_router.post("/pipeline")
+# async def start_pipeline(req: PipelineRequest, background_tasks: BackgroundTasks):
+#     """Starts the governance pipeline (Vertex AI Only) in the background."""
+#     background_tasks.add_task(submit_vertex_pipeline, req.strategy)
+#     return {"status": "started", "mode": "vertex", "message": "Submitting to Vertex AI..."}
 
 @demo_router.get("/status")
 def get_status():

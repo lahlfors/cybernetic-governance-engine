@@ -49,3 +49,22 @@ decision = "MANUAL_REVIEW" if {
     input.amount <= 1000000
     input.currency != "BTC"
 }
+
+# --- Risk Profile Rules (Semantic Mapping) ---
+# Task C: Map "Aggressive" to Allowed (Growth strategy)
+decision = "ALLOW" if {
+    input.risk_profile == "Aggressive"
+}
+
+decision = "ALLOW" if {
+    input.risk_profile == "Moderate"
+}
+
+decision = "ALLOW" if {
+    input.risk_profile == "Conservative"
+}
+
+decision = "DENY" if {
+    input.risk_profile == "Speculative"
+    not input.trader_role == "senior"
+}

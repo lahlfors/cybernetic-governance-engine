@@ -48,6 +48,8 @@ spec:
               value: "${REDIS_HOST}"
             - name: REDIS_PORT
               value: "${REDIS_PORT}"
+            - name: REDIS_URL
+              value: "redis://${REDIS_HOST}:${REDIS_PORT}"
 
             # --- Model Configuration (Tiered) ---
             - name: MODEL_FAST

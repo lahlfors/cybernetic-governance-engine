@@ -47,6 +47,8 @@ Fetch real-time market sentiment and news using the 'get_market_sentiment_tool' 
 
 Expected Final Output (Structured Report):
 A comprehensive text report summarizing the sentiment and key news.
+The report MUST be formatted in Markdown.
+If no data is found, state that clearly.
 """
                     )
                 ]
@@ -73,10 +75,12 @@ async def get_market_sentiment_tool(ticker: str) -> str:
 
 from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
 
+from config.settings import Config
+
 def create_data_analyst_agent(model_name: str = MODEL_FAST) -> Agent:
     """Factory to create data analyst agent."""
     return Agent(
-        model=get_adk_model(model_name),
+        model=get_adk_model(model_name, api_base=Config.VLLM_FAST_API_BASE),
         name="data_analyst_agent",
         instruction=get_data_analyst_instruction(),
         output_key="market_data_analysis_output",
