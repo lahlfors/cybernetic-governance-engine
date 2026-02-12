@@ -1,20 +1,16 @@
 #!/bin/bash
-# Proxy localhost:8080 to the GKE UI service
-# Useful for local testing of the deployed UI.
+# Proxy script for Financial Advisor UI
 
-PORT=${PORT:-8080}
-NAMESPACE="governance-stack"
-SERVICE="service/financial-advisor-ui"
+echo "🔍 Finding UI Service in namespace 'governance-stack'..."
+POD=$(kubectl get pod -n governance-stack -l app=financial-advisor-ui -o jsonpath="{.items[0].metadata.name}")
 
-# Ensure kubectl is in path
-if ! command -v kubectl &> /dev/null; then
-    echo "❌ kubectl could not be found. Please install it."
+if [ -z "$POD" ]; then
+    echo "❌ UI Pod not found! Is it deployed?"
     exit 1
 fi
 
-echo "🚀 Starting Proxy to Financial Advisor UI on GKE..."
-echo "🔗 Local URL: http://localhost:$PORT"
-echo "ℹ️  Press Ctrl+C to stop."
+echo "✅ Found UI Pod: $POD"
+echo "🚀 Port-forwarding to http://localhost:8080..."
+echo "Press Ctrl+C to stop."
 
-# Port forward to service port 80
-kubectl port-forward -n $NAMESPACE $SERVICE $PORT:80
+kubectl port-forward -n governance-stack pod/$POD 8080:8501

@@ -9,16 +9,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy project files
-COPY . .
+# Copy dependency definition
+COPY pyproject.toml uv.lock ./
 
 # Install dependencies
 ENV PYTHONPATH="${PYTHONPATH}:/app:/app/src"
 RUN pip install uv keyring keyrings.google-artifactregistry-auth && \
     uv export --no-emit-project --no-dev --no-hashes --format requirements-txt > requirements.txt && \
     pip install kfp && \
-    pip install --no-cache-dir -r requirements.txt uvicorn fastapi "google-adk[extensions]" opentelemetry-api opentelemetry-sdk opentelemetry-exporter-gcp-trace opentelemetry-instrumentation-fastapi opentelemetry-instrumentation-requests && \
-    pip install -e .
+    pip install --no-cache-dir -r requirements.txt uvicorn fastapi "google-adk[extensions]" opentelemetry-api opentelemetry-sdk opentelemetry-exporter-gcp-trace opentelemetry-instrumentation-fastapi opentelemetry-instrumentation-requests
+
+# Copy project files
+COPY . .
+
+# Install project
+RUN pip install -e .
 
 # Expose the port
 ENV PORT=8080

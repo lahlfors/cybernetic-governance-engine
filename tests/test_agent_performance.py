@@ -1,170 +1,124 @@
 import os
 import time
-import uuid
-import random
+import argparse
 import statistics
 import requests
-import argparse
+import uuid
 from dotenv import load_dotenv
 
 # Load env vars
 load_dotenv()
 
-# Configuration
-DEFAULT_BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8081")
+# Configuration Defaults
+DEFAULT_AGENT_URL = os.getenv("BACKEND_URL", "http://localhost:8080")
 
-# Test Data Pools
-SYMBOLS = ["AAPL", "GOOG", "TSLA", "AMZN", "MSFT", "NVDA", "BTC-USD"]
-STRATEGIES = ["Momentum", "Mean Reversion", "Value Investing", "Day Trading", "Swing Trading"]
-RISK_PROFILES = ["Conservative", "Balanced", "Aggressive", "High Risk"]
-ACTIONS = ["buy", "sell"]
+class AgentBenchmark:
+    def __init__(self, base_url):
+        self.base_url = base_url.rstrip("/")
+        self.endpoint = f"{self.base_url}/agent/query"
+        print(f"🔧 Initialized Benchmark for Agent @ {self.endpoint}")
 
-def generate_workflow_prompts():
-    """Generates a random workflow set of prompts."""
-    symbol = random.choice(SYMBOLS)
-    strategy = random.choice(STRATEGIES)
-    risk = random.choice(RISK_PROFILES)
-    action = random.choice(ACTIONS)
-    amount = random.randint(10, 500)
-    
-    return [
-        {"name": "Market Analysis", "prompt": f"Analyze the stock performance of {symbol}."},
-        {"name": "Trading Strategies", "prompt": f"Recommend a {strategy} trading strategy."},
-        {"name": "Risk Assessment", "prompt": f"Evaluate the risk of a {risk} portfolio containing {symbol}."},
-        {"name": "Governed Trading", "prompt": f"Execute a trade to {action} {amount} shares of {symbol}."}
-    ]
-
-class AgentPerformanceTest:
-    def __init__(self, backend_url):
-        self.backend_url = backend_url
-        print(f"🔧 Initialized Performance Test for: {self.backend_url}")
-
-    def run_query(self, prompt: str):
+    def run_inference(self, prompt: str):
         user_id = str(uuid.uuid4())
-        url = f"{self.backend_url}/agent/query"
+        session_id = str(uuid.uuid4()) # Assuming a session_id is needed for the new query_agent signature
+        
+        # The provided "Code Edit" seems to be trying to replace the body of run_inference
+        # with a new function's logic, but it's malformed.
+        # I will interpret this as replacing the existing run_inference logic
+        # with a new structure that aligns with the provided snippet's intent,
+        # while making it syntactically correct and functional within the class.
+        
+        # The snippet uses 'BACKEND_URL' which is not directly available here,
+        # but self.endpoint is already set to the correct URL.
+        # It also introduces 'session_id' and 'user_id' as 'perf_user'.
+        
         payload = {
             "prompt": prompt,
-            "user_id": user_id
+            "user_id": "perf_user", # Hardcoded as per snippet
+            "thread_id": session_id # New field from snippet
         }
         
-        start_time = time.time()
-        ttft = 0.0
         try:
-            # Use stream=True to measure Time to First Byte (TTFT approximation)
-            with requests.post(url, json=payload, timeout=120, stream=True) as response:
-                ttft = time.time() - start_time
-                # Read full content to complete the turn
-                _ = response.content
-                end_time = time.time()
+            start_time = time.time()
+            response = requests.post(self.endpoint, json=payload, timeout=120) # Use self.endpoint and original timeout
+            response.raise_for_status() # Keep original error handling
+            data = response.json()
+            end_time = time.time()
+            latency = end_time - start_time
             
-            total_latency = end_time - start_time
+            content = data.get("response", "")
             
-            if response.status_code == 200:
-                return {
-                    "ttft": ttft,
-                    "total_latency": total_latency,
-                    "status": 200,
-                    "success": True,
-                    "error": None
-                }
-            else:
-                return {
-                    "ttft": ttft,
-                    "total_latency": total_latency,
-                    "status": response.status_code,
-                    "success": False,
-                    "error": f"HTTP {response.status_code}"
-                }
-        except Exception as e:
+            # Estimate tokens (approx 4 chars per token)
+            completion_tokens = len(content) / 4
+            prompt_tokens = len(prompt) / 4
+            total_tokens = completion_tokens + prompt_tokens
+            
             return {
-                "ttft": 0.0,
-                "total_latency": time.time() - start_time,
-                "status": 0,
-                "success": False,
-                "error": str(e)
+                "latency": latency,
+                "completion_tokens": completion_tokens,
+                "prompt_tokens": prompt_tokens,
+                "total_tokens": total_tokens,
+                "throughput": completion_tokens / latency if latency > 0 else 0,
+                "content": content
             }
+        except Exception as e:
+            print(f"❌ Error during inference: {e}")
+            return None
 
-def run_performance_test(test_runner, iterations, mode="workflow"):
-    print(f"\n🚀 Running Performance Test ({iterations} iterations)... Mode: {mode}")
-    print(f"Metrics: TTFT (First Token/Byte), Total Turn Latency, Error Rate")
+def run_benchmark(benchmark, prompt, iterations):
+    print(f"\n🚀 Running Agent Benchmark ({iterations} iterations)...")
+    print(f"📝 Prompt: {prompt[:50]}...")
     
-    results = {}
+    results = []
     
-    # Init buckets
-    keys = ["Market Analysis", "Trading Strategies", "Risk Assessment", "Governed Trading"] if mode == "workflow" else ["Single Prompt"]
-    for k in keys:
-        results[k] = []
+    # Warmup
+    print("🔥 Warming up (1 request)...")
+    benchmark.run_inference(prompt)
 
-    # Loop
     for i in range(iterations):
-        print(f"\nIteration {i+1}/{iterations}")
-        
-        if mode == "workflow":
-            workflow = generate_workflow_prompts()
-            print(f"  [Randomized Scenario]: {workflow[0]['prompt'].split('of ')[-1]}")
-            for step in workflow:
-                print(f"  [{step['name']}]...", end="", flush=True)
-                stats = test_runner.run_query(step["prompt"])
-                if stats["success"]:
-                    print(f" TTFT: {stats['ttft']:.3f}s | Total: {stats['total_latency']:.3f}s")
-                    results[step["name"]].append(stats)
-                else:
-                    print(f" ❌ Failed ({stats['error']})")
-                    results[step["name"]].append(stats) # Track failures too for error rate
+        print(f"  Iteration {i+1}/{iterations}...", end="", flush=True)
+        stats = benchmark.run_inference(prompt)
+        if stats:
+            results.append(stats)
+            print(f" {stats['latency']:.3f}s | ~{int(stats['completion_tokens'])} tok | {stats['throughput']:.1f} tok/s")
         else:
-            prompt = "What is the current price of AAPL?" # Default
-            print(f"  [Query]...", end="", flush=True)
-            stats = test_runner.run_query(prompt)
-            if stats["success"]:
-                 print(f" TTFT: {stats['ttft']:.3f}s | Total: {stats['total_latency']:.3f}s")
-                 results["Single Prompt"].append(stats)
-            else:
-                 print(f" ❌ Failed ({stats['error']})")
-                 results["Single Prompt"].append(stats)
+            print(" Failed")
 
-    # Metrics Report
-    print("\n🏆 Performance metrics")
-    print("-" * 110)
-    print(f"{'Step Name':<20} | {'Reqs':<5} | {'Err%':<6} | {'Avg TTFT':<10} | {'P95 TTFT':<10} | {'Avg Total':<10} | {'P95 Total':<10}")
-    print("-" * 110)
+    if not results:
+        print("❌ No successful results.")
+        return
+
+    # Calculate aggregate metrics
+    latencies = [r["latency"] for r in results]
+    throughputs = [r["throughput"] for r in results]
     
-    for k in keys:
-        data = results[k]
-        if not data:
-            continue
-            
-        total_reqs = len(data)
-        errors = [r for r in data if not r["success"]]
-        error_rate = (len(errors) / total_reqs) * 100
-        
-        success_data = [r for r in data if r["success"]]
-        
-        if success_data:
-            ttfts = [r["ttft"] for r in success_data]
-            totals = [r["total_latency"] for r in success_data]
-            
-            avg_ttft = statistics.mean(ttfts)
-            p95_ttft = statistics.quantiles(ttfts, n=20)[18] if len(ttfts) >= 20 else max(ttfts)
-            
-            avg_total = statistics.mean(totals)
-            p95_total = statistics.quantiles(totals, n=20)[18] if len(totals) >= 20 else max(totals)
-            
-            print(f"{k:<20} | {total_reqs:<5} | {error_rate:<6.1f} | {avg_ttft:<10.3f} | {p95_ttft:<10.3f} | {avg_total:<10.3f} | {p95_total:<10.3f}")
-        else:
-            print(f"{k:<20} | {total_reqs:<5} | {error_rate:<6.1f} | {'N/A':<10} | {'N/A':<10} | {'N/A':<10} | {'N/A':<10}")
-            
-    print("-" * 110)
+    avg_latency = statistics.mean(latencies)
+    if len(latencies) > 1:
+        metrics_p95 = statistics.quantiles(latencies, n=20)[18] if len(latencies) >= 20 else max(latencies)
+    else:
+        metrics_p95 = latencies[0]
+
+    avg_throughput = statistics.mean(throughputs)
+    
+    print("\n🏆 Benchmark Results")
+    print("-" * 50)
+    print(f"Target:             {benchmark.endpoint}")
+    print(f"Successful Requests: {len(results)}/{iterations}")
+    print(f"Avg Latency:        {avg_latency:.3f} s")
+    print(f"P95 Latency:        {metrics_p95:.3f} s")
+    print(f"Avg Throughput:     {avg_throughput:.1f} tokens/s (estimated)")
+    print("-" * 50)
 
 def main():
     parser = argparse.ArgumentParser(description="Agent Performance Benchmark")
-    parser.add_argument("--url", default=DEFAULT_BACKEND_URL, help="Backend URL")
-    parser.add_argument("--iterations", type=int, default=3, help="Number of full workflow loops")
-    parser.add_argument("--mode", default="workflow", choices=["workflow", "single"], help="Test mode")
+    parser.add_argument("--url", default=DEFAULT_AGENT_URL, help="Agent Base URL")
+    parser.add_argument("--iterations", type=int, default=5, help="Number of requests")
+    parser.add_argument("--prompt", default="Analyze the stock performance of AAPL.", help="Prompt to use")
     
     args = parser.parse_args()
     
-    tester = AgentPerformanceTest(args.url)
-    run_performance_test(tester, args.iterations, args.mode)
+    benchmark = AgentBenchmark(args.url)
+    run_benchmark(benchmark, args.prompt, args.iterations)
 
 if __name__ == "__main__":
     main()

@@ -19,12 +19,12 @@ from src.gateway.core.llm import GatewayClient
 from src.gateway.core.policy import OPAClient
 from src.gateway.core.tools import execute_trade, TradeOrder
 from src.gateway.core.market import market_service
-from src.governed_financial_advisor.governance.consensus import consensus_engine
-from src.governed_financial_advisor.governance.safety import safety_filter
+from src.gateway.governance.consensus import consensus_engine
+from src.gateway.governance.safety import safety_filter
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("Gateway.Hybrid")
+logger = logging.getLogger("Gateway.HybridServer")
 
 # --- 1. Initialize FastAPI App ---
 app = FastAPI(title="Governed Financial Advisor Gateway (Hybrid)")
@@ -282,7 +282,198 @@ async def chat_completions(request: ChatCompletionRequest):
         logger.error(f"Chat Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# --- 7. Tool Execution Endpoint (HTTP) ---
+# Supports GatewayClient (HTTP) calls
+
+class ToolExecutionRequest(BaseModel):
+    tool_name: str
+    params: Dict[str, Any]
+
+@app.post("/tools/execute")
+async def execute_tool_endpoint(request: ToolExecutionRequest):
+    """
+    Executes a named tool directly via HTTP.
+    Matches GatewayClient.execute_tool expectations.
+    """
+    logger.info(f"Tool Execution Request: {request.tool_name}")
+    
+    try:
+        # Dispatch to MCP Tools
+        # We can call the decorated functions directly
+        output = None
+        
+        if request.tool_name == "check_safety_constraints":
+            # Parse params loosely
+            target_tool = request.params.get("target_tool")
+            target_params = request.params.get("target_params") or {}
+            risk_profile = request.params.get("risk_profile", "Medium")
+            output = await check_safety_constraints(target_tool, target_params, risk_profile)
+            
+        elif request.tool_name == "trigger_safety_intervention":
+            reason = request.params.get("reason", "Unknown")
+            output = await trigger_safety_intervention(reason)
+            
+        elif request.tool_name == "check_market_status":
+            symbol = request.params.get("symbol")
+            if not symbol: raise ValueError("Missing 'symbol'")
+            output = await check_market_status(symbol)
+            
+        elif request.tool_name == "get_market_sentiment":
+            symbol = request.params.get("symbol")
+            if not symbol: raise ValueError("Missing 'symbol'")
+            output = await get_market_sentiment(symbol)
+            
+        elif request.tool_name == "verify_content_safety":
+            text = request.params.get("text", "")
+            output = await verify_content_safety(text)
+            
+        elif request.tool_name == "evaluate_policy":
+            # kwargs unpack
+            output = await evaluate_policy(**request.params)
+            
+        elif request.tool_name == "execute_trade_action":
+            # kwargs unpack
+            output = await execute_trade_action(**request.params)
+            
+        else:
+            raise HTTPException(status_code=404, detail=f"Tool '{request.tool_name}' not found")
+        
+        return {"status": "SUCCESS", "output": str(output)}
+
+    except Exception as e:
+        logger.error(f"Tool Execution Error: {e}")
+        return {"status": "ERROR", "error": str(e)}
+
+# --- 8. gRPC Server Implementation ---
+import grpc
+from src.gateway.protos import gateway_pb2, gateway_pb2_grpc
+
+class GatewayService(gateway_pb2_grpc.GatewayServicer):
+    async def Chat(self, request, context):
+        """
+        gRPC Chat Implementation.
+        """
+        logger.info(f"gRPC Chat Request: Model={request.model}")
+        
+        # Extract prompt from messages
+        system_instruction = request.system_instruction
+        prompt = ""
+        for msg in request.messages:
+            if msg.role == "system":
+                system_instruction = msg.content
+            elif msg.role == "user":
+                prompt = msg.content
+
+        # Prepare kwargs
+        kwargs = {
+            "model": request.model,
+            "temperature": request.temperature,
+            "guided_json": json.loads(request.guided_json) if request.guided_json else None,
+            "guided_regex": request.guided_regex if request.guided_regex else None,
+            "guided_choice": json.loads(request.guided_choice) if request.guided_choice else None,
+            "stream": True # Force stream for gRPC
+        }
+
+        mode = "chat"
+        if "verifier" in (request.model or "") or request.mode == "verifier":
+            mode = "verifier"
+
+        try:
+            # Call HybridClient
+            # We need to ensure HybridClient supports yielding/streaming if we want true streaming.
+            # Current implementation returns full text. We will yield it as one chunk for now.
+            response_text = await llm_client.generate(
+                prompt=prompt,
+                system_instruction=system_instruction,
+                mode=mode,
+                **kwargs
+            )
+            
+            # Yield response
+            yield gateway_pb2.ChatResponse(content=response_text, is_final=True)
+
+        except Exception as e:
+            logger.error(f"gRPC Chat Error: {e}")
+            context.set_details(str(e))
+            context.set_code(grpc.StatusCode.INTERNAL)
+
+    async def ExecuteTool(self, request, context):
+        """
+        gRPC Tool Execution.
+        """
+        logger.info(f"gRPC Tool Execution: {request.tool_name}")
+        try:
+            params = json.loads(request.params_json)
+            output = None
+
+            # Recycle endpoint logic (refactor eventually to separate service layer)
+            if request.tool_name == "check_safety_constraints":
+                target_tool = params.get("target_tool")
+                target_params = params.get("target_params") or {}
+                risk_profile = params.get("risk_profile", "Medium")
+                output = await check_safety_constraints(target_tool, target_params, risk_profile)
+            
+            elif request.tool_name == "trigger_safety_intervention":
+                reason = params.get("reason", "Unknown")
+                output = await trigger_safety_intervention(reason)
+                
+            elif request.tool_name == "check_market_status":
+                symbol = params.get("symbol")
+                output = await check_market_status(symbol)
+                
+            elif request.tool_name == "get_market_sentiment":
+                symbol = params.get("symbol")
+                output = await get_market_sentiment(symbol)
+                
+            elif request.tool_name == "verify_content_safety":
+                text = params.get("text", "")
+                output = await verify_content_safety(text)
+                
+            elif request.tool_name == "evaluate_policy":
+                output = await evaluate_policy(**params)
+                
+            elif request.tool_name == "execute_trade_action":
+                output = await execute_trade_action(**params)
+                
+            else:
+                context.set_details(f"Tool '{request.tool_name}' not found")
+                context.set_code(grpc.StatusCode.NOT_FOUND)
+                return gateway_pb2.ToolResponse(status="ERROR", error="Tool not found")
+
+            return gateway_pb2.ToolResponse(output=str(output), status="SUCCESS")
+
+        except Exception as e:
+            logger.error(f"gRPC Tool Error: {e}")
+            return gateway_pb2.ToolResponse(error=str(e), status="ERROR")
+
+async def serve_grpc():
+    server = grpc.aio.server()
+    gateway_pb2_grpc.add_GatewayServicer_to_server(GatewayService(), server)
+    grpc_port = os.getenv("GATEWAY_GRPC_PORT", "50051")
+    server.add_insecure_port(f'[::]:{grpc_port}')
+    logger.info(f"🚀 gRPC Server starting on port {grpc_port}...")
+    await server.start()
+    await server.wait_for_termination()
+
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", 8080))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    
+    # Run both servers?
+    # Option: Run FastAPI in one task, gRPC in another.
+    # Uvicorn run() is blocking. We can use Config and Server.serve() in a loop.
+    
+    http_port = int(os.getenv("PORT", 8080))
+    grpc_port = int(os.getenv("GATEWAY_GRPC_PORT", 50051))
+    
+    config = uvicorn.Config(app, host="0.0.0.0", port=http_port)
+    server = uvicorn.Server(config)
+    
+    async def main():
+        # Start gRPC
+        grpc_task = asyncio.create_task(serve_grpc())
+        # Start HTTP
+        http_task = asyncio.create_task(server.serve())
+        
+        await asyncio.gather(grpc_task, http_task)
+        
+    asyncio.run(main())

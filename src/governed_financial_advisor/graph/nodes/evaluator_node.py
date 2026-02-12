@@ -109,8 +109,17 @@ async def evaluator_node(state: AgentState) -> dict[str, Any]:
 
     logger.info(f"⚖️ Evaluator Verdict: {verdict} -> Routing to {next_step}")
 
+    # Explicitly set risk_status so adapters.py knows to inject feedback
+    risk_status = "REJECTED_REVISE" if not is_safe else "APPROVED"
+    
+    # Append user-friendly instruction if rejected
+    feedback_msg = safety_result_str
+    if not is_safe:
+        feedback_msg += "\n\n**Action Required:** The assessment indicates High Risk. Please LOWER the risk level or adjust parameters to proceed."
+
     return {
         "evaluation_result": eval_result,
         "next_step": next_step, # Used by conditional edge
-        "risk_feedback": safety_result_str if not is_safe else "Plan verified safe."
+        "risk_status": risk_status,
+        "risk_feedback": feedback_msg if not is_safe else "Plan verified safe."
     }

@@ -1,6 +1,8 @@
 # Governance Logic (Layer 3: Enforcement & Bridge)
 
-This directory contains the "Symbolic Control" layer that bridges Policy to Code and enforces Safety in Real-Time.
+**NOTE:** The core governance logic (Safety, Consensus, STPA) has been moved to the **Gateway Service** (`src/gateway/governance`) to enforce a stricter "Kernel Space" separation from the Agent.
+
+This directory now primarily contains **Client-Side Stubs** (`nemo_actions.py`) that delegate checks to the Gateway via gRPC, and the offline transpiler pipeline.
 
 ## Architecture Refactor: Offline Governance Pipeline
 

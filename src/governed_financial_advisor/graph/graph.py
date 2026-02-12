@@ -65,6 +65,10 @@ def create_graph(redis_url=None):
 
     # Conditional function to determine if parallel execution should start
     def route_from_planner(state):
+        # 1. Check if Planner requested a halt (e.g. Asking User)
+        if state.get("next_step") == "FINISH":
+            return END
+
         plan = state.get("execution_plan_output")
         # Safety Check: Do not execute if no plan exists or plan is empty
         if not plan or (isinstance(plan, dict) and not plan.get("steps")):
@@ -76,7 +80,8 @@ def create_graph(redis_url=None):
     # Planner -> [Evaluator, Executor] (Parallel Branches)
     workflow.add_conditional_edges("execution_analyst", route_from_planner, {
         "evaluator": "evaluator",
-        "governed_trader": "governed_trader"
+        "governed_trader": "governed_trader",
+        END: END
     })
 
     # Evaluator -> Check (Interrupt if unsafe) or Join
