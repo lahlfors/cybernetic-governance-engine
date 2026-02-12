@@ -27,7 +27,7 @@ This implementation adheres to the **Sovereign Stack** architecture, ensuring cl
 | Node | Model | Responsibility |
 |------|-------|----------------|
 | **Node A (The Brain)** | `DeepSeek-R1-Distill-Llama-8B` | Complex reasoning, planning, and analysis. High intelligence, higher latency. |
-| **Node B (The Police)** | `Llama-3.2-3B-Instruct` | Fast governance checks, FSM enforcement, JSON formatting. Ultra-low latency (<50ms). |
+| **Node B (The Police)** | `Meta-Llama-3.1-8B-Instruct` | Fast governance checks, FSM enforcement, JSON formatting. Ultra-low latency (<50ms). |
 
 👉 **See [ARCHITECTURE.md](ARCHITECTURE.md) for full architecture details.**
 
