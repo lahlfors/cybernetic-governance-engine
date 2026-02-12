@@ -99,6 +99,12 @@ spec:
             - name: COLD_TIER_GCS_PREFIX
               value: "${COLD_TIER_GCS_PREFIX}"
 
+            # --- Gateway Configuration ---
+            - name: GATEWAY_HOST
+              value: "${GATEWAY_HOST}"
+            - name: GATEWAY_GRPC_PORT
+              value: "${GATEWAY_GRPC_PORT}"
+
             # --- MCP Configuration ---
             - name: MCP_MODE
               value: "${MCP_MODE}"

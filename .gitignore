@@ -74,3 +74,11 @@ agent.pkl
 green_stack_pipeline.json
 dependencies.tar.gz
 eval_output_*.txt
+
+# Temporary Evaluation Files
+.eval_venv/
+test_import.py
+
+# Temporary Evaluation Files
+.eval_venv/
+test_import.py

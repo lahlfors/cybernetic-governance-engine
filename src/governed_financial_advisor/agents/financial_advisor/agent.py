@@ -17,6 +17,7 @@
 import logging
 
 from google.adk.agents import LlmAgent
+from google.adk.tools import FunctionTool
 
 from config.settings import MODEL_REASONING
 from src.governed_financial_advisor.tools.router import route_request
@@ -66,7 +67,7 @@ financial_coordinator = LlmAgent(
     ],
     # Expose ONLY the deterministic router tool.
     tools=[
-        route_request,
+        FunctionTool(route_request),
     ],
 )
 

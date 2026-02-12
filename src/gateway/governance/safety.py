@@ -1,10 +1,70 @@
-import logging
+import json
 from typing import Any
+# --- CACHING STATE ---
+_safety_params_cache: dict[str, Any] = {}
+_last_check_time: float = 0.0
+CACHE_TTL = 5.0  # Seconds
+
+import logging
+import os
+import time
+from typing import Any
+
+# --- STATIC CBF CONSTANTS ---
+SAFETY_PARAMS_FILE = "src/gateway/governance/safety_params.json"
+DEFAULT_DRAWDOWN_LIMIT = 0.05  # 5% default fallback
 
 from src.governed_financial_advisor.infrastructure.redis_client import redis_client
 from src.governed_financial_advisor.utils.telemetry import get_tracer
 
 logger = logging.getLogger("SafetyLayer")
+
+def _get_drawdown_limit() -> float:
+    """
+    Helper to safely read the dynamic drawdown limit from JSON.
+    Implements input sanitization, default fallback, and caching.
+    """
+    global _safety_params_cache, _last_check_time
+
+    now = time.time()
+
+    # Return cached value if within TTL
+    if _safety_params_cache and (now - _last_check_time < CACHE_TTL):
+        return _safety_params_cache.get("drawdown_limit", DEFAULT_DRAWDOWN_LIMIT)
+
+    try:
+        if not os.path.exists(SAFETY_PARAMS_FILE):
+            return DEFAULT_DRAWDOWN_LIMIT
+
+        with open(SAFETY_PARAMS_FILE) as f:
+            data = json.load(f)
+
+        limit = data.get("drawdown_limit")
+
+        # Schema Validation: 0.0 < limit < 1.0
+        if limit is None:
+            limit = DEFAULT_DRAWDOWN_LIMIT
+        elif not isinstance(limit, (int, float)):
+             logger.error(f"Invalid type for drawdown_limit: {type(limit)}")
+             limit = DEFAULT_DRAWDOWN_LIMIT
+        elif limit <= 0.0 or limit >= 1.0:
+            logger.error(f"Invalid value for drawdown_limit: {limit}. Must be between 0.0 and 1.0")
+            limit = DEFAULT_DRAWDOWN_LIMIT
+        else:
+            limit = float(limit)
+
+        # Update Cache
+        _safety_params_cache = {"drawdown_limit": limit}
+        _last_check_time = now
+
+        return limit
+
+    except json.JSONDecodeError:
+        logger.error(f"Corrupt safety params file: {SAFETY_PARAMS_FILE}")
+        return DEFAULT_DRAWDOWN_LIMIT
+    except Exception as e:
+        logger.error(f"Error reading safety params: {e}")
+        return DEFAULT_DRAWDOWN_LIMIT
 
 class ControlBarrierFunction:
     """
@@ -88,6 +148,22 @@ class ControlBarrierFunction:
              if is_bankruptcy:
                  span.set_attribute("event.bankruptcy", True)
                  span.set_attribute("safety.bankruptcy_deficit", abs(h_next))
+
+        # 5. Drawdown Check (Merged from Backend)
+        # Check if 'drawdown_pct' is in payload (e.g. from market data context)
+        if "drawdown_pct" in payload:
+            limit = _get_drawdown_limit()
+            raw_drawdown = float(payload.get("drawdown_pct", 0.0))
+            current_drawdown = raw_drawdown / 100.0
+            barrier_value = limit - current_drawdown
+            
+            if barrier_value < 0:
+                msg = f"UNSAFE: Drawdown Violation. {current_drawdown:.2%} > Limit {limit:.2%}"
+                logger.warning(f"⛔ {msg}")
+                if result == "SAFE":
+                    result = msg
+                else:
+                    result += f"; {msg}"
 
         return result
 

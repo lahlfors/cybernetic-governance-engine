@@ -15,6 +15,7 @@ class Config:
     # Node B: The Police (Governance/FSM)
     VLLM_FAST_API_BASE = os.getenv("VLLM_FAST_API_BASE", "http://vllm-governance:8000/v1")
     MODEL_FAST = os.getenv("MODEL_FAST", "meta-llama/Llama-3.2-3B-Instruct")
+    MODEL_CONSENSUS = os.getenv("MODEL_CONSENSUS", MODEL_REASONING)
 
     # --- INFRASTRUCTURE ---
     PORT = int(os.getenv("PORT", 8080))
@@ -29,6 +30,7 @@ class Config:
 MODEL_NAME = Config.DEFAULT_REASONING_MODEL
 MODEL_FAST = Config.MODEL_FAST
 MODEL_REASONING = Config.MODEL_REASONING
+MODEL_CONSENSUS = Config.MODEL_CONSENSUS
 VLLM_FAST_API_BASE = Config.VLLM_FAST_API_BASE
 VLLM_REASONING_API_BASE = Config.VLLM_REASONING_API_BASE
 PORT = Config.PORT

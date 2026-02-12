@@ -236,20 +236,8 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
             f.write(sa_content)
         run_command(["kubectl", "apply", "-f", str(sa_generated)])
 
-    # 5. Deploy Backend
-    print("\n--- ☸️ Deploying Backend to GKE ---")
-    deployment_tpl = Path("deployment/k8s/backend-deployment.yaml.tpl")
-    if not deployment_tpl.exists():
-        print(f"❌ Backend manifest template not found at {deployment_tpl}")
-        sys.exit(1)
-
-    with open(deployment_tpl) as f:
-        manifest_content = f.read()
-
-    # Substitute Variables from .env (single source of truth)
+    # 5. Define Substitutions (Moved up for Gateway)
     timestamp = str(int(time.time()))
-    
-    # Build substitution map from environment
     substitutions = {
         # Infrastructure
         "${IMAGE_URI}": image_uri,
@@ -291,6 +279,10 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         # MCP Configuration
         "${MCP_MODE}": os.environ.get("MCP_MODE", "stdio"),
         "${ALPHAVANTAGE_API_KEY}": os.environ.get("ALPHAVANTAGE_API_KEY", ""),
+        
+        # Gateway Configuration
+        "${GATEWAY_HOST}": "gateway.governance-stack.svc.cluster.local",
+        "${GATEWAY_GRPC_PORT}": "50051",
     }
     
     # Helper: strip surrounding quotes from .env values (they get re-quoted in YAML)
@@ -299,6 +291,44 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
             if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
                 return val[1:-1]
         return val
+
+    # 6. Deploy Gateway (Separate Service)
+    print("\n--- ⛩️ Deploying Gateway Service ---")
+    gateway_tpl = Path("deployment/k8s/gateway-deployment.yaml.tpl")
+    if gateway_tpl.exists():
+        with open(gateway_tpl) as f:
+            manifest_content = f.read()
+        
+        # Substitute
+        gateway_image = f"gcr.io/{project_id}/gateway:latest"
+        
+        # Reuse substitutions from backend, but ensure GATEWAY_IMAGE_URI is there
+        gw_substitutions = substitutions.copy()
+        gw_substitutions["${GATEWAY_IMAGE_URI}"] = gateway_image
+        
+        for placeholder, value in gw_substitutions.items():
+            manifest_content = manifest_content.replace(placeholder, str(strip_quotes(value)))
+            
+        generated_dir = Path("deployment/k8s/generated")
+        generated_dir.mkdir(parents=True, exist_ok=True)
+        generated_file = generated_dir / "gateway-deployment.yaml"
+        with open(generated_file, 'w') as f:
+            f.write(manifest_content)
+            
+        run_command(["kubectl", "apply", "-f", str(generated_file)])
+        print("✅ Gateway manifest applied.")
+    else:
+        print("⚠️ Gateway template not found. Skipping.")
+
+    # 7. Deploy Backend
+    print("\n--- ☸️ Deploying Backend to GKE ---")
+    deployment_tpl = Path("deployment/k8s/backend-deployment.yaml.tpl")
+    if not deployment_tpl.exists():
+        print(f"❌ Backend manifest template not found at {deployment_tpl}")
+        sys.exit(1)
+
+    with open(deployment_tpl) as f:
+        manifest_content = f.read()
     
     # Apply all substitutions (with quote stripping)
     for placeholder, value in substitutions.items():
@@ -362,6 +392,7 @@ def main():
     # Operational Flags
     parser.add_argument("--skip-build", action="store_true", help="Skip Docker build")
     parser.add_argument("--skip-ui", action="store_true", help="Skip UI deployment")
+    parser.add_argument("--skip-gateway", action="store_true", help="Skip Gateway build")
     parser.add_argument("--skip-k8s", action="store_true", help="Skip K8s manifests")
     parser.add_argument("--tf-managed", action="store_true", help="Deprecated: Implicitly true now")
 
@@ -399,7 +430,10 @@ def main():
         run_command(["gcloud", "builds", "submit", "--tag", image_uri, "--project", project_id, "."])
         
         # Build Gateway Image
-        build_gateway_image(project_id)
+        if not args.skip_gateway:
+            build_gateway_image(project_id)
+        else:
+            print("\n--- ⏭️ Skipping Gateway Build ---")
     else:
         print(f"\n--- ⏭️ Skipping Build ({image_uri}) ---")
 

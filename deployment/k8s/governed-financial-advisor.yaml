@@ -15,7 +15,7 @@ spec:
       labels:
         app: governed-financial-advisor
     spec:
-      serviceAccountName: advisor-sa # Explicit SA for Workload Identity
+      serviceAccountName: financial-advisor-sa # Explicit SA for Workload Identity
       volumes:
         - name: policy-volume
           secret:
@@ -59,8 +59,29 @@ spec:
               cpu: "1000m"
               memory: "2Gi"
 
-        # OPA Sidecar
-        - name: opa
+        # Gateway Sidecar
+        - name: gateway
+          image: gcr.io/laah-cybernetics/gateway:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 50051
+          env:
+            - name: PORT
+              value: "50051"
+            - name: GOOGLE_CLOUD_PROJECT
+              value: "laah-cybernetics"
+            - name: GOOGLE_CLOUD_LOCATION
+              value: "northamerica-northeast2"
+            - name: REDIS_URL
+              value: "redis://redis-master.governance-stack.svc.cluster.local:6379"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+
           image: openpolicyagent/opa:latest-static
           ports:
             - containerPort: 8181

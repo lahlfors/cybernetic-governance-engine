@@ -25,8 +25,8 @@ from src.gateway.core.tools import execute_trade, TradeOrder
 from src.gateway.core.market import market_service
 from src.gateway.governance import SymbolicGovernor, GovernanceError
 
-from src.governed_financial_advisor.governance.consensus import consensus_engine
-from src.governed_financial_advisor.governance.safety import safety_filter
+from src.gateway.governance.consensus import consensus_engine
+from src.gateway.governance.safety import safety_filter
 
 logger = logging.getLogger("Gateway.Server")
 

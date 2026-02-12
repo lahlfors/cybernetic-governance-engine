@@ -1,0 +1,5 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', 'gcr.io/laah-cybernetics/gateway:latest', '-f', 'src/gateway/Dockerfile', '.']
+images:
+- 'gcr.io/laah-cybernetics/gateway:latest'

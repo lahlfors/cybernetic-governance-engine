@@ -69,23 +69,35 @@ def supervisor_node(state):
                 print(f"--- [Graph] Intercepted Route Signal: {target} ---")
 
                 target_lower = target.lower()
-                if "data" in target_lower or "market" in target_lower:
+                target_lower = target.lower()
+                # 1. Market Analysis -> Data Analyst
+                if any(t in target_lower for t in ["data", "market", "analyze", "ticker", "stock"]):
                     next_step = "data_analyst"
-                elif "execution" in target_lower or "risk" in target_lower or "strategy" in target_lower or "plan" in target_lower:
+                
+                # 2. Risk Assessment -> Execution Analyst (Reasoning)
+                elif any(t in target_lower for t in ["risk", "portfolio", "evaluate", "assessment"]):
                     next_step = "execution_analyst"
-                elif "trade" in target_lower:
+
+                # 3. Trading Strategies -> Execution Analyst
+                elif any(t in target_lower for t in ["strategy", "recommend", "plan", "execution"]):
+                    next_step = "execution_analyst"
+                
+                # 4. Governed Trading -> Execution Analyst (Strict Rule)
+                elif any(t in target_lower for t in ["trade", "buy", "sell", "execute"]):
                     # STRICT RULE: Traders cannot be called directly. Must go through Planner.
                     next_step = "execution_analyst"
+                
                 elif "human" in target_lower or "review" in target_lower:
                     next_step = "human_review"
 
     # 2b. FALLBACK HEURISTICS (If LLM refuses to call tool but intent is clear)
+    # 2b. FALLBACK HEURISTICS (If LLM refuses to call tool but intent is clear)
     if next_step == "FINISH":
          last_msg_lower = last_msg_text.lower()
-         if "strategy" in last_msg_lower or "plan" in last_msg_lower:
+         if any(t in last_msg_lower for t in ["strategy", "plan", "trade", "buy", "sell", "execution", "risk", "evaluate"]):
              print("--- [Graph] Heuristic Route: Forcing Execution Analyst ---")
              next_step = "execution_analyst"
-         elif "analyze" in last_msg_lower or "price" in last_msg_lower:
+         elif any(t in last_msg_lower for t in ["analyze", "price", "stock", "ticker", "market"]):
              print("--- [Graph] Heuristic Route: Forcing Data Analyst ---")
              next_step = "data_analyst"
 

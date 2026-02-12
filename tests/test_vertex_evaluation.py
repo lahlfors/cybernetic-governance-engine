@@ -66,28 +66,21 @@ def generate_workflow():
         }
     ]
 
-def query_agent(prompt: str):
-    """Sends a query to the agent."""
-    user_id = str(uuid.uuid4())
+def query_agent(prompt: str, session_id: str):
+    """Sends a query to the agent backend."""
     url = f"{BACKEND_URL}/agent/query"
     payload = {
         "prompt": prompt,
-        "user_id": user_id
+        "user_id": "eval_user",
+        "thread_id": session_id
     }
-    
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            response = requests.post(url, json=payload, timeout=120)
-            response.raise_for_status()
-            data = response.json()
-            return data.get("response", "")
-        except requests.exceptions.RequestException as e:
-            print(f"Request failed (Attempt {attempt+1}/{max_retries}): {e}")
-            if attempt < max_retries - 1:
-                time.sleep(2)
-            else:
-                return "Error: Failed to get response from agent."
+    try:
+        response = requests.post(url, json=payload, timeout=60)
+        response.raise_for_status()
+        return response.json().get("response", "")
+    except Exception as e:
+        print(f"❌ Error querying agent: {e}")
+        return ""
 
 def define_adaptive_metric(criteria: str) -> PointwiseMetric:
     """Creates a PointwiseMetric for Adaptive Rubrics using a custom prompt."""
@@ -120,14 +113,51 @@ def test_vertex_evaluation():
 
     workflow_steps = generate_workflow()
     
+    # Generate a single session ID for the entire conversation
+    session_id = str(uuid.uuid4())
+    print(f"🆔 Session ID: {session_id}")
+    
     eval_dataset = []
     
-    # 1. Collect Responses
+    # 1. Collect Responses, handling Multi-Turn Interactions
     for i, case in enumerate(workflow_steps):
         print(f"\n[Step {i+1}] {case['step']}")
         print(f"  Prompt: {case['prompt']}")
         
-        response = query_agent(case['prompt'])
+        # Pass the same session_id to maintain context
+        response = query_agent(case['prompt'], session_id)
+        
+        # Interaction Loop (Handle Ticker and Profile requests)
+        max_turns = 5
+        for _ in range(max_turns):
+            if "Risk Tolerance" in response and "Time Frame" in response:
+                print(f"  ⚠️ Agent requested profile. Providing context...")
+                context_response = "Risk Tolerance: Moderate, Time Frame: Medium-Term"
+                if "Conservative" in case['prompt']:
+                    context_response = "Risk Tolerance: Conservative, Time Frame: Long-Term"
+                elif "Aggressive" in case['prompt']:
+                     context_response = "Risk Tolerance: Aggressive, Time Frame: Short-Term"
+            
+                print(f"  ➡️ User Follow-up: {context_response}")
+                response = query_agent(context_response, session_id)
+                continue
+
+            elif "Which stock ticker" in response or "stock ticker" in response:
+                print(f"  ⚠️ Agent requested Ticker. Providing context...")
+                symbol = "AAPL" # Default
+                for s in SYMBOLS:
+                    if s in case['prompt']:
+                        symbol = s
+                        break
+            
+                context_response = f"The ticker is {symbol}"
+                print(f"  ➡️ User Follow-up: {context_response}")
+                response = query_agent(context_response, session_id)
+                continue
+            
+            # If no interactive prompt found, break loop (we have the final answer)
+            break
+
         print(f"  Response ({len(response)} chars): {response[:100]}...")
         
         eval_dataset.append({
@@ -163,10 +193,17 @@ def test_vertex_evaluation():
             result = eval_task.evaluate()
             
             # Extract score and explanation
+            # Extract score and explanation
             # API returns a RunMetrics object
             metrics_table = result.metrics_table
-            score = metrics_table["adaptive_rubric_score"].iloc[0]
-            explanation = metrics_table["adaptive_rubric_score_explanation"].iloc[0]
+            try:
+                score = metrics_table["adaptive_rubric_score/score"].iloc[0]
+                explanation = metrics_table["adaptive_rubric_score/explanation"].iloc[0]
+            except KeyError:
+                print(f"  ⚠️ Warning: Metric key not found. Available columns: {metrics_table.columns.tolist()}")
+                # Fallback or strict fail
+                score = 0
+                explanation = f"Metric missing. Columns: {metrics_table.columns.tolist()}"
             
             results.append({
                 "step": item["step"],

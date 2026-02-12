@@ -155,6 +155,7 @@ def create_evaluator_agent(model_name: str = MODEL_REASONING) -> Agent:
         ],
         output_schema=EvaluationResult,
         generate_content_config={
-            "response_mime_type": "application/json"
+            "response_mime_type": "application/json",
+            "max_tokens": 4096
         }
     )

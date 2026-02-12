@@ -22,6 +22,7 @@ class GatewayClient:
             cls._instance = super().__new__(cls)
             cls._instance.channel = None
             cls._instance.stub = None
+            cls._instance._channel_loop = None
         return cls._instance
 
     async def close(self):
@@ -30,29 +31,44 @@ class GatewayClient:
             await self.channel.close()
             logger.info("GatewayClient gRPC channel closed.")
 
-    def connect(self, host=None, port=None):
-        if self.channel:
+    def _ensure_connection(self):
+        """
+        Ensures the gRPC channel exists and is bound to the current event loop.
+        """
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            logger.warning("No running event loop found during connection.")
             return
 
-        if not host:
+        # Check if we need to reconnect (No channel, or loop mismatch)
+        if self.channel is None or self._channel_loop != current_loop:
+            if self.channel:
+                logger.warning("GatewayClient detected loop mismatch or existing channel. Reconnecting...")
+                # We can't safely close the old channel from a new loop if it's bound to the old one,
+                # but we can dereference it. The GC will eventually handle it, or we leak a socket.
+                # Ideally, we'd schedule a close on the old loop, but we might not have access to it.
+                self.channel = None
+
             host = os.getenv("GATEWAY_HOST", "localhost")
-        if not port:
-            port = os.getenv("GATEWAY_PORT", "50051")
+            port = os.getenv("GATEWAY_GRPC_PORT", "50051")
+            target = f"{host}:{port}"
+            
+            logger.info(f"Connecting to Gateway (gRPC) at {target} on loop {id(current_loop)}...")
+            self.channel = grpc.aio.insecure_channel(target)
+            self.stub = gateway_pb2_grpc.GatewayStub(self.channel)
+            self._channel_loop = current_loop
+            logger.info("GatewayClient Connected.")
 
-        target = f"{host}:{port}"
-        logger.info(f"Connecting to Gateway (gRPC) at {target}...")
-
-        # Insecure for internal cluster traffic (efficient)
-        self.channel = grpc.aio.insecure_channel(target)
-        self.stub = gateway_pb2_grpc.GatewayStub(self.channel)
-        logger.info("GatewayClient Connected.")
+    def connect(self, host=None, port=None):
+        # Deprecated: alias to _ensure_connection but params are ignored as we prefer env vars or lazy load
+        self._ensure_connection()
 
     async def execute_tool(self, tool_name: str, params: dict) -> str:
         """
         Calls ExecuteTool via gRPC.
         """
-        if not self.stub:
-            self.connect()
+        self._ensure_connection()
 
         try:
             request = gateway_pb2.ToolRequest(
@@ -76,8 +92,10 @@ class GatewayClient:
         """
         Invokes LLM via gRPC Chat Endpoint.
         """
-        if not self.stub:
-            self.connect()
+        """
+        Invokes LLM via gRPC Chat Endpoint.
+        """
+        self._ensure_connection()
 
         # Build Message List
         messages = []
