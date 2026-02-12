@@ -8,6 +8,14 @@ class MarketService:
     def __init__(self):
         self.api_key = os.getenv("ALPHAVANTAGE_API_KEY")
         self.base_url = "https://www.alphavantage.co/query"
+        # Persistent clients to avoid TCP overhead
+        self.client = httpx.AsyncClient()
+        self.sync_client = httpx.Client()
+
+    async def close(self):
+        """Closes the underlying HTTP clients."""
+        await self.client.aclose()
+        self.sync_client.close()
 
     async def get_sentiment(self, symbol: str) -> str:
         """
@@ -25,10 +33,9 @@ class MarketService:
             }
             logger.info(f"Fetching AlphaVantage sentiment for {symbol}...")
             
-            async with httpx.AsyncClient() as client:
-                response = await client.get(self.base_url, params=params, timeout=10.0)
-                response.raise_for_status()
-                data = response.json()
+            response = await self.client.get(self.base_url, params=params, timeout=10.0)
+            response.raise_for_status()
+            data = response.json()
 
             if "feed" not in data:
                 # Handle cases where API returns error (e.g. rate limit)
@@ -58,10 +65,7 @@ class MarketService:
         Fetches real market status and price using AlphaVantage (Global Quote).
         API usage: 1 call.
         """
-        # Synchronous wrapper or implementation using httpx (sync) or requests if available.
-        # Since this method is called synchronously by legacy gRPC tools, we might need requests or sync httpx.
-        # But we removed requests frompyproject.toml? No, httpx is there. 
-        # Using httpx.Client() for sync.
+        # Synchronous implementation using persistent httpx.Client.
         
         if not self.api_key:
             return "ERROR: ALPHAVANTAGE_API_KEY not set."
@@ -73,9 +77,9 @@ class MarketService:
                 "apikey": self.api_key
             }
             
-            with httpx.Client() as client:
-                response = client.get(self.base_url, params=params, timeout=10.0)
-                data = response.json()
+            # Reuse persistent sync client
+            response = self.sync_client.get(self.base_url, params=params, timeout=10.0)
+            data = response.json()
             
             # Rate Limit Check
             if "Note" in data:
