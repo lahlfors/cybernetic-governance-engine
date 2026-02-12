@@ -91,6 +91,49 @@ To adopt this without disrupting the current workflow, we recommend a phased app
 
 The **Priority Handling** feature alone justifies the complexity, as it directly supports the "Neuro-Cybernetic" safety mandate: *Governance must always be available to block unsafe actions.* Using standard CPU scaling for the governance model is a safety risk during high load; the Inference Gateway mitigates this.
 
-**Next Steps:**
-1.  Refactor `GatewayClient` to support a unified endpoint configuration.
-2.  Create Kubernetes manifests (`infra/gke-inference-gateway/`) for the new resources.
+---
+
+## 5. Deployment & Configuration Guide
+
+To deploy the Inference Gateway and configure the application:
+
+### Step 1: Apply Kubernetes Manifests
+
+Apply the manifests located in `deployment/k8s/inference-gateway/`. This will create the `InferencePool`s, `Gateway`, and `HTTPRoute`s.
+
+```bash
+kubectl apply -f deployment/k8s/inference-gateway/
+```
+
+### Step 2: Retrieve the Gateway IP Address
+
+Wait for the Gateway controller to assign an IP address to the `llm-gateway`.
+
+```bash
+# Check the status of the Gateway
+kubectl get gateway llm-gateway -n default
+
+# Extract the IP address directly
+export GATEWAY_IP=$(kubectl get gateway llm-gateway -n default -o jsonpath='{.status.addresses[0].value}')
+echo "Gateway IP: $GATEWAY_IP"
+```
+
+*Note: Depending on your cluster configuration, this might be an internal IP (ClusterIP) or an external LoadBalancer IP.*
+
+### Step 3: Configure the Application
+
+Update your deployment configuration (e.g., in `deployment/k8s/gateway-deployment.yaml` or via ConfigMap) to set the `VLLM_GATEWAY_URL` environment variable using the retrieved IP.
+
+```yaml
+env:
+  - name: VLLM_GATEWAY_URL
+    value: "http://<GATEWAY_IP>/v1"  # Replace <GATEWAY_IP> with the actual IP
+```
+
+Or, if using a `.env` file locally (simulating gateway mode):
+
+```bash
+VLLM_GATEWAY_URL=http://<GATEWAY_IP>/v1
+```
+
+Once this variable is set, the `GatewayService` will automatically switch to **Gateway Mode**, routing all LLM requests through this single endpoint.
