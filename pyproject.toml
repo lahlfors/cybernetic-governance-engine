@@ -30,7 +30,6 @@ dependencies = [
     "openai>=1.0.0",
     "kfp>=2.6.0",
     "mcp>=0.1.0",
-    "fastmcp>=0.1.0",
     "sse-starlette>=1.0.0",
     "grpcio>=1.78.0",
     "outlines",
