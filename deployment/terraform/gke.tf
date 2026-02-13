@@ -2,9 +2,10 @@ resource "google_container_cluster" "primary" {
   name     = "governance-cluster"
   location = var.zone
 
+  deletion_protection = false
+
   remove_default_node_pool = true
   initial_node_count       = 1
-
   node_config {
     shielded_instance_config {
       enable_secure_boot          = true

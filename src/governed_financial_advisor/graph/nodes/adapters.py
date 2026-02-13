@@ -24,6 +24,9 @@ session_service = InMemorySessionService()
 
 logger = logging.getLogger("Graph.Adapters")
 
+
+
+
 def get_valid_last_message(state) -> str:
     """Retrieves the last non-empty message content from the state."""
     messages = state.get("messages", [])
@@ -36,6 +39,18 @@ def get_valid_last_message(state) -> str:
         if isinstance(content, list) and content:
              return content # Pass complex content through
     return "No content available."
+
+def get_market_data_from_history(state) -> str | None:
+    """
+    Scans the conversation history for the most recent Data Analyst output.
+    Returns the content if found, or None.
+    """
+    messages = state.get("messages", [])
+    for msg in reversed(messages):
+        content = getattr(msg, "content", "")
+        if isinstance(content, str) and "Data Analysis:" in content:
+            return content
+    return None
 
 # --- Dependency Injection Infrastructure ---
 
@@ -158,8 +173,10 @@ def execution_analyst_node(state):
     user_msg = get_valid_last_message(state)
 
     # 0. DATA CHECK: We need market data to form a specific strategy.
-    # If the message comes from Data Analyst, it starts with "Data Analysis:".
-    if "Data Analysis:" not in user_msg:
+    # We now look back in history, not just the immediate last message.
+    market_data_msg = get_market_data_from_history(state)
+    
+    if not market_data_msg:
         print("--- [Graph] Missing Market Data -> Asking User for Ticker ---")
         return {
             "messages": [("ai", "I can certainly help you develop a trading strategy. **Which stock ticker** would you like me to research first?")],
@@ -168,25 +185,23 @@ def execution_analyst_node(state):
             "execution_plan_output": None
         }
 
-    # 1. PROFILE CHECK: If direct request (not from Data Analyst), require profile.
-    # Note: If we have Data Analysis, we might still need profile, but usually we handle that in prompt or here.
-    # Let's check profile strictly as well, but Ticker is step 1.
-    if not state.get("risk_attitude") or not state.get("investment_period"):
-        print("--- [Graph] Missing Profile -> Asking User ---")
-        msg = (
-            "I have the market analysis. To tailor the strategy, please select your **Risk Tolerance** and **Time Frame**:\n\n"
-            "Stock trading strategies generally fall into three levels of aggressiveness:\n"
-            "- **Aggressive** (High Risk, High Growth): Maximizes returns with higher volatility exposure.\n"
-            "- **Moderate** (Balanced Risk/Reward): Balances growth and capital preservation.\n"
-            "- **Conservative** (Low Risk, Capital Preservation): Prioritizes stability and lower turnover.\n\n"
-            "Please copy and paste your choice (e.g., 'Aggressive') and specify your **Time Frame** (Short, Medium, or Long)."
-        )
-        return {
-            "messages": [("ai", msg)],
-            "next_step": "FINISH",
-            "risk_status": "UNKNOWN",
-            "execution_plan_output": None
-        }
+    # 1. PROFILE CHECK: DISABLED to allow Agent to extract it from context
+    # if not state.get("risk_attitude") or not state.get("investment_period"):
+    #     print("--- [Graph] Missing Profile -> Asking User ---")
+    #     msg = (
+    #         "I have the market analysis. To tailor the strategy, please select your **Risk Tolerance** and **Time Frame**:\n\n"
+    #         "Stock trading strategies generally fall into three levels of aggressiveness:\n"
+    #         "- **Aggressive** (High Risk, High Growth): Maximizes returns with higher volatility exposure.\n"
+    #         "- **Moderate** (Balanced Risk/Reward): Balances growth and capital preservation.\n"
+    #         "- **Conservative** (Low Risk, Capital Preservation): Prioritizes stability and lower turnover.\n\n"
+    #         "Please copy and paste your choice (e.g., 'Aggressive') and specify your **Time Frame** (Short, Medium, or Long)."
+    #     )
+    #     return {
+    #         "messages": [("ai", msg)],
+    #         "next_step": "FINISH",
+    #         "risk_status": "UNKNOWN",
+    #         "execution_plan_output": None
+    #     }
 
     # INJECT FEEDBACK if the loop pushed us back here
     if state.get("risk_status") == "REJECTED_REVISE":
@@ -198,22 +213,28 @@ def execution_analyst_node(state):
         )
         print("--- [Loop] Injecting Risk Feedback ---")
 
-    # PIPELINE LOGIC: If msg is from Data Analyst, explicitly ask for strategy
-    elif "Data Analysis:" in user_msg or (len(state.get("messages", [])) > 0 and state["messages"][-1].type == "ai" and "Data Analysis:" in state["messages"][-1].content):
-        # The user_msg might just be the analysis. We need to frame it.
+    # PIPELINE LOGIC: Construct the prompt with context
+    else:
         # Check if we already have risk attitude in state, if so, mention it.
         risk = state.get("risk_attitude", "moderate") # Default to moderate if unknown, or let agent ask
         period = state.get("investment_period", "medium-term")
 
+        # If the user just asked for a strategy (e.g. "Recommend a strategy"), we want to
+        # include the market data in the context so the agent doesn't hallucinate or ask for it again.
+        
+        # If the last message IS the data analysis, user_msg is already set to it.
+        # If the last message is a user prompt, we assume it's the trigger.
+        
         user_msg = (
-            f"CONTEXT: The following is the Market Analysis for the requested ticker.\n"
+            f"CONTEXT: The following is the Market Analysis we have already performed.\n"
             f"USER PROFILE: Risk Attitude: {risk}, Horizon: {period}\n"
-            f"TASK: Generate a suggested set of specific trading strategies (Execution Plan) tailored to this profile.\n"
+            f"CURRENT REQUEST: {user_msg}\n"
+            f"TASK: Generate a suggested set of specific trading strategies (Execution Plan) based on the analysis below.\n"
             f"Ensure the strategies are concrete, actionable, and aligned with the Risk/Time profile.\n\n"
             f"--- MARKET ANALYSIS ---\n"
-            f"{user_msg}"
+            f"{market_data_msg}"
         )
-        print("--- [Pipeline] Auto-prompting Strategy Generation ---")
+        print("--- [Pipeline] Auto-prompting Strategy Generation with Context ---")
 
     res = run_adk_agent(agent, user_msg)
 
@@ -259,7 +280,10 @@ def execution_analyst_node(state):
     return {
         "messages": [("ai", final_response)],
         "risk_status": "UNKNOWN",
-        "execution_plan_output": plan_output
+        "execution_plan_output": plan_output,
+        # Update State from Plan (Context Extraction)
+        "risk_attitude": plan_output.get("user_risk_attitude") if plan_output else None,
+        "investment_period": plan_output.get("user_investment_period") if plan_output else None
     }
 
 

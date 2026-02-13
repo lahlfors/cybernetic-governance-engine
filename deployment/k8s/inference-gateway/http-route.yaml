@@ -17,9 +17,9 @@ spec:
         name: "x-model-id"
         value: "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
     backendRefs:
-    - name: pool-reasoning
-      group: inference.networking.x-k8s.io
-      kind: InferencePool
+    - name: vllm-reasoning
+      namespace: governance-stack
+      kind: Service
       port: 8000
 
   # Routing Rule 2: Governance Model (Low Latency / High Priority)
@@ -32,7 +32,7 @@ spec:
         name: "x-model-id"
         value: "meta-llama/Llama-3.2-3B-Instruct"
     backendRefs:
-    - name: pool-governance
-      group: inference.networking.x-k8s.io
-      kind: InferencePool
+    - name: vllm-service
+      namespace: governance-stack
+      kind: Service
       port: 8000

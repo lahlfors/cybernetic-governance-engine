@@ -79,6 +79,5 @@ eval_output_*.txt
 .eval_venv/
 test_import.py
 
-# Temporary Evaluation Files
-.eval_venv/
-test_import.py
+# Backend Logs
+backend_logs*.txt

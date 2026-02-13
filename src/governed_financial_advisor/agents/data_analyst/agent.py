@@ -68,6 +68,13 @@ async def get_market_sentiment_tool(ticker: str) -> str:
     try:
         # Use GatewayClient to call the MCP tool
         result = await gateway_client.execute_tool("get_market_sentiment", {"symbol": ticker})
+        
+        # Truncate result to prevent Context Limit (4096 tokens)
+        # 6000 chars is roughly 1.5k tokens.
+        if len(str(result)) > 15000:
+            logger.warning(f"Truncating sentiment data for {ticker} (Len: {len(str(result))})")
+            return str(result)[:15000] + "... [TRUNCATED]"
+            
         return result
     except Exception as e:
         logger.error(f"Gateway Call Failed: {e}")

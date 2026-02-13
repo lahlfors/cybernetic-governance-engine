@@ -1,6 +1,7 @@
 import json
 import logging
 from openai import AsyncOpenAI
+from src.governed_financial_advisor.utils.telemetry import genai_span, record_completion, record_usage
 from config.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -46,32 +47,56 @@ class GatewayClient:
         client = self.gateway_client if self.mode == "gateway" else self.governance_client
         return client, target_model
 
+
     async def generate(self, prompt: str, system_instruction: str = None, mode: str = "chat", **kwargs) -> str:
         client, model = self._get_route(mode)
+        
+        # Use GenAI Span for Langfuse/OTLP Tracing
+        with genai_span(name=f"llm.generate.{mode}", prompt=prompt, model=model) as span:
 
-        # Handle FSM / Guided Generation
-        extra_body = {}
-        if "guided_json" in kwargs:
-            extra_body["guided_json"] = kwargs.pop("guided_json")
-        elif "guided_regex" in kwargs:
-            extra_body["guided_regex"] = kwargs.pop("guided_regex")
+            # Handle FSM / Guided Generation
+            extra_body = {}
+            if "guided_json" in kwargs:
+                extra_body["guided_json"] = kwargs.pop("guided_json")
+            elif "guided_regex" in kwargs:
+                extra_body["guided_regex"] = kwargs.pop("guided_regex")
+    
+            # In Gateway mode, we might want to pass priority headers in the future.
+            # For now, relying on the model name in the body is sufficient for GKE routing.
+    
+            if extra_body:
+                kwargs["extra_body"] = extra_body
+    
+            try:
+                response = await client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_instruction or "You are a helpful assistant."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    **kwargs
+                )
+                
+                # Capture Token Usage
+                if getattr(response, "usage", None):
+                    record_usage(span, response.usage)
 
-        # In Gateway mode, we might want to pass priority headers in the future.
-        # For now, relying on the model name in the body is sufficient for GKE routing.
+                content = response.choices[0].message.content
+                record_completion(span, content)
 
-        if extra_body:
-            kwargs["extra_body"] = extra_body
-
-        try:
-            response = await client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_instruction or "You are a helpful assistant."},
-                    {"role": "user", "content": prompt}
-                ],
-                **kwargs
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            logger.error(f"LLM Generation Failed (Mode={mode}, Gateway={self.mode == 'gateway'}): {e}")
-            raise
+                # Partition reasoning if present for better logging
+                if "<think>" in content:
+                    parts = content.split("</think>")
+                    if len(parts) > 1:
+                        reasoning = parts[0].replace("<think>", "").strip()
+                        logger.info(f"🧠 [Reasoning]: {reasoning}")
+                    else:
+                        logger.info(f"🧠 [Reasoning] (Unterminated): {content[:500]}...")
+                else:
+                     logger.info(f"ℹ️ [Response]: {content[:200]}...")
+    
+                return content
+            except Exception as e:
+                logger.error(f"LLM Generation Failed (Mode={mode}, Gateway={self.mode == 'gateway'}): {e}")
+                # Span automatically records exception via context manager if we re-raise
+                raise

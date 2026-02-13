@@ -91,7 +91,9 @@ To adopt this without disrupting the current workflow, we recommend a phased app
 
 The **Priority Handling** feature alone justifies the complexity, as it directly supports the "Neuro-Cybernetic" safety mandate: *Governance must always be available to block unsafe actions.* Using standard CPU scaling for the governance model is a safety risk during high load; the Inference Gateway mitigates this.
 
----
+**Next Steps:**
+1.  Refactor `GatewayClient` to support a unified endpoint configuration.
+2.  Create Kubernetes manifests (`infra/gke-inference-gateway/`) for the new resources.
 
 ## 5. Deployment & Configuration Guide
 
@@ -99,7 +101,7 @@ To deploy the Inference Gateway and configure the application:
 
 ### Step 1: Apply Kubernetes Manifests
 
-Apply the manifests located in `deployment/k8s/inference-gateway/`. This will create the `InferencePool`s, `Gateway`, and `HTTPRoute`s.
+Apply the manifests located in `deployment/k8s/inference-gateway/`. This will create the `Gateway`, `HTTPRoute`s, and `ReferenceGrant`.
 
 ```bash
 kubectl apply -f deployment/k8s/inference-gateway/
@@ -122,18 +124,17 @@ echo "Gateway IP: $GATEWAY_IP"
 
 ### Step 3: Configure the Application
 
-Update your deployment configuration (e.g., in `deployment/k8s/gateway-deployment.yaml` or via ConfigMap) to set the `VLLM_GATEWAY_URL` environment variable using the retrieved IP.
-
-```yaml
-env:
-  - name: VLLM_GATEWAY_URL
-    value: "http://<GATEWAY_IP>/v1"  # Replace <GATEWAY_IP> with the actual IP
-```
-
-Or, if using a `.env` file locally (simulating gateway mode):
+Update your `.env` file to set the `VLLM_GATEWAY_URL` environment variable using the retrieved IP. This ensures configuration is managed centrally and securely.
 
 ```bash
+# In your .env file
 VLLM_GATEWAY_URL=http://<GATEWAY_IP>/v1
+```
+
+Then, redeploy the application stack using the deployment script. This will inject the new environment variable into the Gateway Service container.
+
+```bash
+python3 deployment/deploy_sw.py --project-id <YOUR_PROJECT_ID> --skip-build
 ```
 
 Once this variable is set, the `GatewayService` will automatically switch to **Gateway Mode**, routing all LLM requests through this single endpoint.
