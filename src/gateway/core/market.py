@@ -8,6 +8,10 @@ class MarketService:
     def __init__(self):
         self.api_key = os.getenv("ALPHAVANTAGE_API_KEY")
         self.base_url = "https://www.alphavantage.co/query"
+        # Bolt Optimization: Reuse clients for connection pooling (Keep-Alive)
+        # Avoids SSL handshake overhead (100-300ms) per call.
+        self.async_client = httpx.AsyncClient()
+        self.sync_client = httpx.Client()
 
     async def get_sentiment(self, symbol: str) -> str:
         """
@@ -25,10 +29,9 @@ class MarketService:
             }
             logger.info(f"Fetching AlphaVantage sentiment for {symbol}...")
             
-            async with httpx.AsyncClient() as client:
-                response = await client.get(self.base_url, params=params, timeout=10.0)
-                response.raise_for_status()
-                data = response.json()
+            response = await self.async_client.get(self.base_url, params=params, timeout=10.0)
+            response.raise_for_status()
+            data = response.json()
 
             if "feed" not in data:
                 # Handle cases where API returns error (e.g. rate limit)
@@ -73,9 +76,8 @@ class MarketService:
                 "apikey": self.api_key
             }
             
-            with httpx.Client() as client:
-                response = client.get(self.base_url, params=params, timeout=10.0)
-                data = response.json()
+            response = self.sync_client.get(self.base_url, params=params, timeout=10.0)
+            data = response.json()
             
             # Rate Limit Check
             if "Note" in data:
@@ -93,5 +95,13 @@ class MarketService:
         except Exception as e:
             logger.error(f"Market Data Error: {e}")
             return f"ERROR: Market data unavailable: {e}"
+
+    async def shutdown(self):
+        """Closes the async client."""
+        await self.async_client.aclose()
+
+    def shutdown_sync(self):
+        """Closes the sync client."""
+        self.sync_client.close()
 
 market_service = MarketService()
