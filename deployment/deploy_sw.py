@@ -256,11 +256,15 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         # vLLM Endpoints
         "${VLLM_BASE_URL}": os.environ.get("VLLM_BASE_URL", "http://vllm-service.governance-stack.svc.cluster.local:8000/v1"),
         "${VLLM_API_KEY}": os.environ.get("VLLM_API_KEY", "EMPTY"),
-        "${VLLM_FAST_API_BASE}": os.environ.get("VLLM_FAST_API_BASE", os.environ.get("VLLM_BASE_URL", "")),
-        "${VLLM_REASONING_API_BASE}": os.environ.get("VLLM_REASONING_API_BASE", os.environ.get("VLLM_BASE_URL", "")),
+        # Fix: Use the value of VLLM_BASE_URL from above if env var is not set, not os.environ.get which returns empty
+        "${VLLM_FAST_API_BASE}": os.environ.get("VLLM_FAST_API_BASE", os.environ.get("VLLM_BASE_URL", "http://vllm-service.governance-stack.svc.cluster.local:8000/v1")),
+        "${VLLM_REASONING_API_BASE}": os.environ.get("VLLM_REASONING_API_BASE", os.environ.get("VLLM_BASE_URL", "http://vllm-service.governance-stack.svc.cluster.local:8000/v1")),
         
         # Policy Engine
         "${OPA_URL}": os.environ.get("OPA_URL", "http://localhost:8181/v1/data/finance/allow"),
+
+        # Inference Gateway
+        "${VLLM_GATEWAY_URL}": os.environ.get("VLLM_GATEWAY_URL", ""),
         
         # Langfuse (Hot Tier)
         "${LANGFUSE_PUBLIC_KEY}": os.environ.get("LANGFUSE_PUBLIC_KEY", ""),
@@ -402,6 +406,10 @@ def main():
     config = load_config()
     config["args"] = vars(args)
 
+    # Sync Model Config from Env (Single Source of Truth)
+    # Validating Config Source (Env wins)
+    print(f"🔍 DEBUG: Config Model before overwrite: {config.get('model', {})}")
+
     project_id = args.project_id
     region = args.region
     zone = args.zone
@@ -422,6 +430,29 @@ def main():
     print(f"🌍 Region: {region} | 📍 Zone: {zone or 'Not Set'}")
     if args.cluster_name:
         print(f"🏢 Cluster: {args.cluster_name}")
+
+    # Sync Model Config from Env (Targeting vllm-inference -> MODEL_FAST)
+    model_fast = os.environ.get("MODEL_FAST")
+    print(f"🔍 DEBUG: MODEL_FAST from env: '{model_fast}'")
+    
+    if model_fast:
+        config.setdefault("model", {})["name"] = model_fast
+        # Clear quantization by default for Fast model (usually small) unless specified in name
+        if not any(q in model_fast for q in ["AWQ", "GPTQ", "BNB", "Int8"]):
+            config["model"]["quantization"] = None
+        
+        # Quantization logic for Fast model (if needed in future)
+        if "AWQ" in model_fast or "GPTQ" in model_fast:
+             config["model"]["quantization"] = "awq" # Example default
+        
+        # Optimize memory for 7B model on L4 (leave room for activations/FSM)
+        if "7B" in model_fast or "8B" in model_fast:
+             # Since we enforce node isolation (1 GPU per model), we can use more memory.
+             # 0.7 was too low for 8k context.
+             config["model"]["gpu_memory_utilization"] = 0.9
+             print(f"ℹ️ Optimized gpu_memory_utilization to 0.9 for {model_fast}")
+    
+    print(f"🔍 DEBUG: Final Config Model (Inference): {config.get('model', {})}")
 
     # Build Container
     image_uri = f"gcr.io/{project_id}/financial-advisor:latest"

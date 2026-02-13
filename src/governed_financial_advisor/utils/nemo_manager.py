@@ -3,10 +3,12 @@ Factory for creating NeMo Guardrails manager with vLLM/Llama support.
 """
 import logging
 import os
-from typing import Any
+from typing import Any, List, Optional, AsyncIterator
 
 import nest_asyncio
-from langchain_core.language_models.llms import LLM
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import BaseMessage, AIMessageChunk, AIMessage
+from langchain_core.outputs import ChatGenerationChunk, ChatResult, ChatGeneration
 from nemoguardrails import LLMRails, RailsConfig
 from nemoguardrails.context import streaming_handler_var
 from nemoguardrails.llm.providers import register_llm_provider
@@ -20,75 +22,129 @@ from src.governed_financial_advisor.infrastructure.config_manager import config_
 logger = logging.getLogger("NeMoManager")
 tracer = trace.get_tracer(__name__)
 
-class VLLMLLM(LLM):
+class VLLMLLM(BaseChatModel):
     """Custom LangChain-compatible wrapper for vLLM using LiteLLM."""
 
-    model: str = config_manager.get("GUARDRAILS_MODEL_NAME", "meta-llama/Meta-Llama-3.1-8B-Instruct")
+    model_name: str = config_manager.get("GUARDRAILS_MODEL_NAME", "meta-llama/Meta-Llama-3.1-8B-Instruct")
     api_base: str = config_manager.get("VLLM_BASE_URL", "http://localhost:8000/v1")
     api_key: str = config_manager.get("VLLM_API_KEY", "EMPTY")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        print(f"DEBUG: VLLMLLM initialized with model={self.model}, base={self.api_base}")
+        print(f"DEBUG: VLLMLLM initialized with model={self.model_name}, base={self.api_base}")
 
     @property
     def _llm_type(self) -> str:
         return "vllm"
 
-    def _call(self, prompt: str, stop: list[str] | None = None, **kwargs: Any) -> str:
+    def _generate(self, messages: List[BaseMessage], stop: list[str] | None = None, run_manager: Any = None, **kwargs: Any) -> ChatResult:
         """Call the vLLM model via LiteLLM."""
         try:
             import litellm
             
             # Ensure model has openai/ prefix if needed by litellm for generic vLLM
-            # But usually for vLLM we can just use the model name if we pass api_base.
-            # However, litellm recommends 'openai/<model_name>' for generic openai-compatible endpoints.
-            model_id = self.model
-            if not model_id.startswith("openai/"):
+            model_id = self.model_name
+            if not model_id.startswith("openai/") and "gpt" not in model_id:
                 model_id = f"openai/{model_id}"
 
             print(f"DEBUG: Calling vLLM via litellm... model={model_id} base={self.api_base}")
             
+            # Format messages for litellm
+            formatted_messages = [{"role": m.type if m.type != "ai" else "assistant", "content": m.content} for m in messages]
+            # Map 'human' to 'user' if needed, though 'user' is standard. BaseMessage usually has 'human', 'ai', 'system'.
+            for m in formatted_messages:
+                if m["role"] == "human": m["role"] = "user"
+
             response = litellm.completion(
                 model=model_id,
                 api_base=self.api_base,
                 api_key=self.api_key,
-                messages=[{"role": "user", "content": prompt}],
+                messages=formatted_messages,
                 stop=stop,
                 **kwargs
             )
-            return response.choices[0].message.content
+
+            content = response.choices[0].message.content
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
+
         except Exception as e:
             logger.error(f"Failed to call vLLM: {e}")
-            return f"Error calling vLLM: {e}"
+            raise e
 
-    async def _acall(self, prompt: str, stop: list[str] | None = None, **kwargs: Any) -> str:
+    async def _acall(self, messages: List[BaseMessage], stop: Optional[List[str]] = None, run_manager: Any = None, **kwargs: Any) -> str:
+        """NeMo 0.10.0+ Compat: Wraps _agenerate to return string."""
+        if not messages:
+            return ""
+            
+        result = await self._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
+        return result.generations[0].message.content
+
+    async def _agenerate(self, messages: List[BaseMessage], stop: list[str] | None = None, run_manager: Any = None, **kwargs: Any) -> ChatResult:
         """Async call to the vLLM model via LiteLLM."""
         try:
             import litellm
             
-            model_id = self.model
-            if not model_id.startswith("openai/"):
+            model_id = self.model_name
+            if not model_id.startswith("openai/") and "gpt" not in model_id:
                 model_id = f"openai/{model_id}"
 
             print(f"DEBUG: Async Calling vLLM via litellm... model={model_id} base={self.api_base}")
             
+            formatted_messages = [{"role": m.type if m.type != "ai" else "assistant", "content": m.content} for m in messages]
+            for m in formatted_messages:
+                if m["role"] == "human": m["role"] = "user"
+
             response = await litellm.acompletion(
                 model=model_id,
                 api_base=self.api_base,
                 api_key=self.api_key,
-                messages=[{"role": "user", "content": prompt}],
+                messages=formatted_messages,
                 stop=stop,
                 **kwargs
             )
-            return response.choices[0].message.content
+            content = response.choices[0].message.content
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
         except Exception as e:
             logger.error(f"Failed to call vLLM (async): {e}")
-            return f"Error calling vLLM: {e}"
+            raise e
+
+    async def _astream(self, messages: List[BaseMessage], stop: Optional[List[str]] = None, run_manager: Any = None, **kwargs: Any) -> AsyncIterator[ChatGenerationChunk]:
+        """
+        Enables Optimistic Streaming for NeMo Guardrails.
+        """
+        import litellm
+
+        model_id = self.model_name
+        if not model_id.startswith("openai/") and "gpt" not in model_id:
+            model_id = f"openai/{model_id}"
+
+        formatted_messages = [{"role": m.type if m.type != "ai" else "assistant", "content": m.content} for m in messages]
+        for m in formatted_messages:
+            if m["role"] == "human": m["role"] = "user"
+
+        # Use litellm with stream=True
+        stream = await litellm.acompletion(
+            model=model_id,
+            messages=formatted_messages,
+            api_base=self.api_base,
+            api_key=self.api_key,
+            stream=True,
+            stop=stop,
+            **kwargs
+        )
+
+        async for chunk in stream:
+            content = chunk.choices[0].delta.content
+            if content:
+                # Yield it as a LangChain Chunk for NeMo
+                yield ChatGenerationChunk(message=AIMessageChunk(content=content))
+                # Optional: Notify callbacks
+                if run_manager:
+                    await run_manager.on_llm_new_token(content)
 
     @property
     def _identifying_params(self) -> dict:
-        return {"model": self.model, "api_base": self.api_base}
+        return {"model": self.model_name, "api_base": self.api_base}
 
 
 def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
@@ -146,6 +202,10 @@ def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
 
 def load_rails() -> LLMRails:
     """Wrapper to maintain consistency with new design."""
+    return create_nemo_manager()
+
+def initialize_rails() -> LLMRails:
+    """Wrapper for unified gateway."""
     return create_nemo_manager()
 
 async def validate_with_nemo(user_input: str, rails: LLMRails) -> tuple[bool, str]:

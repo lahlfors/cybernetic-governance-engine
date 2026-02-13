@@ -48,7 +48,10 @@ from config.settings import Config
 
 financial_coordinator = LlmAgent(
     name="financial_coordinator",
-    model=get_adk_model(MODEL_REASONING, api_base=Config.VLLM_REASONING_API_BASE),
+    model=get_adk_model(
+        MODEL_REASONING, 
+        api_base=Config.VLLM_GATEWAY_URL or Config.VLLM_REASONING_API_BASE
+    ),
     description=(
         "guide users through a structured process to receive financial "
         "advice by orchestrating a series of expert subagents. help them "

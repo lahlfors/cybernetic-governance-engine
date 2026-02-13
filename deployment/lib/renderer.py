@@ -37,19 +37,29 @@ def generate_vllm_manifest(accelerator, config):
     model_name = model_conf.get("name", "meta-llama/Meta-Llama-3.1-8B-Instruct")
     quantization = model_conf.get("quantization")
 
+    tool_parser = "llama3_json"
+    if "Qwen" in model_name or "DeepSeek" in model_name:
+        tool_parser = "hermes"
+
     # Base settings
     vllm_args_list = [
         '            - "--model"',
         f'            - "{model_name}"',
+        f'            - "--served-model-name"',  # Fixed duplicate arg key
         f'            - "{model_name}"',
         '            - "--enable-auto-tool-choice"',
         '            - "--tool-call-parser"',
-        '            - "llama3_json"'
+        f'            - "{tool_parser}"'
     ]
 
     if quantization:
         vllm_args_list.append('            - "--quantization"')
         vllm_args_list.append(f'            - "{quantization}"')
+
+    load_format = model_conf.get("load_format")
+    if load_format:
+        vllm_args_list.append('            - "--load-format"')
+        vllm_args_list.append(f'            - "{load_format}"')
 
     max_model_len = model_conf.get("max_model_len")
     if max_model_len:
@@ -81,6 +91,66 @@ def generate_vllm_manifest(accelerator, config):
     node_selector_list = [f'        cloud.google.com/gke-accelerator: {acc_type_full}']
     node_selector = "\n".join(node_selector_list)
 
+    content = content.replace("${IMAGE_NAME}", image_name)
+    content = content.replace("${RESOURCE_LIMITS}", resource_limits)
+    content = content.replace("${RESOURCE_REQUESTS}", resource_requests)
+    content = content.replace("${ENV_VARS}", env_vars)
+    content = content.replace("${ARGS}", vllm_args)
+    content = content.replace("${NODE_SELECTOR}", node_selector)
+    # Add Pod Anti-Affinity to avoid sharing node with vllm-reasoning
+    affinity = """
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - vllm-reasoning
+            topologyKey: "kubernetes.io/hostname"
+    """
+    
+    # We need to inject this into the template. 
+    # The current template uses ${TOLERATIONS} and ${NODE_SELECTOR}.
+    # Let's append it to specs or replace a placeholder if exists. 
+    # The template (vllm-deployment.yaml.tpl) doesn't have an ${AFFINITY} placeholder.
+    # It has:
+    #       nodeSelector:
+    # ${NODE_SELECTOR}
+    #       tolerations:
+    # ${TOLERATIONS}
+    
+    # We can inject it after tolerations. 
+    # But strictly speaking, we should just insert it.
+    # Let's append it to tolerations variable if we can't change template easily, 
+    # OR better: Add ${AFFINITY} to template and renderer.
+    
+    # Quick fix: Append to tolerations string since it's just indented text injection in the template
+    # Warning: Tolerations is at the end of spec. 
+    
+    # Let's inspect the template again.
+    # It ends with:
+    #       tolerations:
+    # ${TOLERATIONS}
+    
+    # So if we append affinity text to tolerations, it might work if indentation is correct.
+    # tolerations block indentation is 6 spaces? No, 8 spaces?
+    # Spec is 6 spaces.
+    # Layout:
+    # spec:
+    #   template:
+    #     spec:
+    #       metrics...
+    #       nodeSelector: ...
+    #       tolerations:
+    # ${TOLERATIONS}
+    
+    # If I add affinity, I need to add it at `spec.template.spec` level.
+    # Replacing ${TOLERATIONS} with "tolerations content\n      affinity: ..." might work.
+    
+    tolerations += "\n" + affinity
+    
     content = content.replace("${IMAGE_NAME}", image_name)
     content = content.replace("${RESOURCE_LIMITS}", resource_limits)
     content = content.replace("${RESOURCE_REQUESTS}", resource_requests)

@@ -26,6 +26,11 @@ class Config:
     OPA_AUTH_TOKEN = os.getenv("OPA_AUTH_TOKEN")
     SANDBOX_URL = os.getenv("SANDBOX_URL", "http://localhost:8081/execute")
 
+    # --- NEW: GKE INFERENCE GATEWAY ---
+    # If this is set, GatewayClient will route all requests here.
+    # Otherwise, it falls back to the split-brain URLs above.
+    VLLM_GATEWAY_URL = os.getenv("VLLM_GATEWAY_URL")
+
 # Backward compatibility & Module-level access
 MODEL_NAME = Config.DEFAULT_REASONING_MODEL
 MODEL_FAST = Config.MODEL_FAST
@@ -33,6 +38,7 @@ MODEL_REASONING = Config.MODEL_REASONING
 MODEL_CONSENSUS = Config.MODEL_CONSENSUS
 VLLM_FAST_API_BASE = Config.VLLM_FAST_API_BASE
 VLLM_REASONING_API_BASE = Config.VLLM_REASONING_API_BASE
+VLLM_GATEWAY_URL = Config.VLLM_GATEWAY_URL
 PORT = Config.PORT
 REDIS_URL = Config.REDIS_URL
 OPA_URL = Config.OPA_URL

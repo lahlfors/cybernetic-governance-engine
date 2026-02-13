@@ -26,6 +26,9 @@ from src.gateway.governance.safety import safety_filter
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Gateway.HybridServer")
 
+from src.governed_financial_advisor.utils.telemetry import configure_telemetry
+configure_telemetry()
+
 # --- 1. Initialize FastAPI App ---
 app = FastAPI(title="Governed Financial Advisor Gateway (Hybrid)")
 

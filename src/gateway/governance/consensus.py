@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from src.gateway.core.llm import GatewayClient
 from opentelemetry import trace
 
 from config.settings import MODEL_CONSENSUS
@@ -19,14 +19,13 @@ class ConsensusEngine:
     def __init__(self, threshold: float = 10000.0, model_name: str = MODEL_CONSENSUS):
         self.threshold = threshold
         self.model_name = model_name
+        self.client = GatewayClient()
 
     async def _get_critic_vote(self, role: str, action: str, amount: float, symbol: str) -> str:
         """
         Consults an LLM with a specific critic persona.
         """
         try:
-            llm = ChatGoogleGenerativeAI(model=self.model_name, temperature=0.0)
-
             prompt = f"""
             You are a {role} for a financial institution.
             Review the following trade proposal:
@@ -43,8 +42,17 @@ class ConsensusEngine:
             Example: APPROVE - Standard equity purchase.
             """
 
-            response = await llm.ainvoke(prompt)
-            content = response.content.strip()
+            # Use GatewayClient for vLLM / OpenAI-compatible inference
+            # Mode "verifier" can be used to route to a specific model if configured in GatewayClient
+            response_text = await self.client.generate(
+                prompt=prompt,
+                system_instruction=f"You are a strict {role}.",
+                mode="verifier", 
+                model=self.model_name,
+                temperature=0.0
+            )
+            
+            content = response_text.strip()
 
             if "APPROVE" in content:
                 return "APPROVE"

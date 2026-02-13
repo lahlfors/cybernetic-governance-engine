@@ -40,6 +40,8 @@ spec:
               value: "${REDIS_HOST}"
             - name: REDIS_URL
               value: "redis://${REDIS_HOST}:${REDIS_PORT}"
+            - name: VLLM_GATEWAY_URL
+              value: "${VLLM_GATEWAY_URL}"
           resources:
             requests:
               cpu: "250m"

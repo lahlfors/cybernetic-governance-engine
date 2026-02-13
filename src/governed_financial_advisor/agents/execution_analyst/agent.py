@@ -62,8 +62,8 @@ Your role is to translate high-level user intent into a concrete, machine-verifi
 
 **Input Context:**
 - `market_data_analysis_output`: Use this to justify your strategy.
-- `user_risk_attitude`: Conservative / Moderate / Aggressive.
-- `user_investment_period`: Short / Medium / Long Term.
+- `user_risk_attitude`: Conservative / Moderate / Aggressive (Look in Chat History if not provided).
+- `user_investment_period`: Short / Medium / Long Term (Look in Chat History if not provided).
 
 **Output Requirement:**
 You must output a valid JSON object matching the `ExecutionPlan` schema.

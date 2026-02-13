@@ -141,7 +141,48 @@ def configure_telemetry():
                     otlp_exporter = OTLPSpanExporter(endpoint=otel_endpoint, headers=otel_headers)
                     cold_processor = BatchSpanProcessor(otlp_exporter)
                     logger.info(f"✅ OpenTelemetry: OTLP Exporter configured at {otel_endpoint}")
+                
+                # Langfuse Integration (Automatic if Env Vars present)
+                langfuse_pk = os.getenv("LANGFUSE_PUBLIC_KEY")
+                langfuse_sk = os.getenv("LANGFUSE_SECRET_KEY")
+                langfuse_host = os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com")
+                
+                if langfuse_pk and langfuse_sk:
+                    try:
+                        # 1. Configure Tracing (OTLP to Langfuse)
+                        # Remove 'https://' from host for basic auth construction if needed, but OTLP usually takes full URL
+                        # Langfuse OTLP endpoint: /api/public/otel/v1/traces
+                        langfuse_otlp_endpoint = f"{langfuse_host.rstrip('/')}/api/public/otel/v1/traces"
+                        
+                        # Ensure no whitespace
+                        pk = langfuse_pk.strip()
+                        sk = langfuse_sk.strip()
+                        
+                        # Auth Header: Basic base64(pk:sk)
+                        auth_str = f"{pk}:{sk}"
+                        auth_bytes = auth_str.encode("ascii")
+                        base64_auth = base64.b64encode(auth_bytes).decode("ascii")
+                        
+                        # Set Env Vars for OTLP (Standard way)
+                        os.environ["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] = langfuse_otlp_endpoint
+                        os.environ["OTEL_EXPORTER_OTLP_TRACES_HEADERS"] = f"Authorization=Basic {base64_auth}"
+                        
+                        from opentelemetry.exporter.otlp.proto.http.trace_exporter import Compression
+
+                        # Use default constructor which reads env vars
+                        langfuse_exporter = OTLPSpanExporter(
+                            compression=Compression.NoCompression
+                        )
+                        # Add as a separate processor
+                        provider.add_span_processor(BatchSpanProcessor(langfuse_exporter))
+                        logger.info(f"✅ Langfuse: Tracing configured at {langfuse_otlp_endpoint}")
+
+                    except Exception as e:
+                        logger.warning(f"⚠️ Langfuse configuration failed: {e}")
                 else:
+                    logger.info("ℹ️ Langfuse: Credentials not found, skipping integration.")
+                
+                if not cold_processor:
                     logger.info("ℹ️ OpenTelemetry: OTEL_EXPORTER_OTLP_ENDPOINT not set. Using NoOp Cold Tier.")
                     # Define lightweight NoOp processor to satisfy optimizer contract
                     class NoOpSpanProcessor:
@@ -264,3 +305,41 @@ def record_completion(span, completion: str):
     """Helper to add completion to the current span."""
     if span:
         span.set_attribute("gen_ai.content.completion", completion)
+
+def record_usage(span, usage):
+    """
+    Helper to add token usage stats to the current span.
+    Handles both Pydantic objects (OpenAI) and dictionaries.
+    Terms mapped to GenAI Semantic Conventions:
+    - prompt_tokens -> gen_ai.usage.input_tokens
+    - completion_tokens -> gen_ai.usage.output_tokens
+    - total_tokens -> gen_ai.usage.total_tokens
+    """
+    if not span or not usage:
+        return
+
+    prompt_tokens = None
+    completion_tokens = None
+    total_tokens = None
+
+    # Handle Pydantic model (OpenAI) or dict
+    if hasattr(usage, "prompt_tokens"):
+        prompt_tokens = getattr(usage, "prompt_tokens", 0)
+        completion_tokens = getattr(usage, "completion_tokens", 0)
+        total_tokens = getattr(usage, "total_tokens", 0)
+    elif isinstance(usage, dict):
+        prompt_tokens = usage.get("prompt_tokens")
+        completion_tokens = usage.get("completion_tokens")
+        total_tokens = usage.get("total_tokens")
+
+    if prompt_tokens is not None:
+        span.set_attribute("gen_ai.usage.input_tokens", prompt_tokens)
+        # Also set prompt_tokens for broader compatibility if needed
+        span.set_attribute("gen_ai.usage.prompt_tokens", prompt_tokens)
+        
+    if completion_tokens is not None:
+        span.set_attribute("gen_ai.usage.output_tokens", completion_tokens)
+        span.set_attribute("gen_ai.usage.completion_tokens", completion_tokens)
+        
+    if total_tokens is not None:
+        span.set_attribute("gen_ai.usage.total_tokens", total_tokens)

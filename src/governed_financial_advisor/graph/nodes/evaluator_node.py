@@ -68,7 +68,9 @@ async def evaluator_node(state: AgentState) -> dict[str, Any]:
 
         # Call the meta-tool exposed in Gateway
         # Extract risk profile from state, default to 'Moderate'
-        risk_profile = state.get("risk_attitude", "Moderate").capitalize()
+    
+        raw_risk = state.get("risk_attitude")
+        risk_profile = raw_risk.capitalize() if raw_risk else "Moderate"
         safety_result_str = await check_safety_constraints(target_tool, target_params, risk_profile)
 
         latency = (time.time() - start_time) * 1000

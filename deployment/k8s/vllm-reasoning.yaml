@@ -10,6 +10,8 @@ spec:
   selector:
     matchLabels:
       app: vllm-reasoning
+  strategy:
+    type: Recreate
   template:
     metadata:
       labels:
@@ -38,18 +40,24 @@ spec:
         command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
         args:
         - "--model"
-        - "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
+        - "casperhansen/deepseek-r1-distill-qwen-32b-awq"
+        - "--served-model-name"
+        - "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
         - "--max-model-len"
-        - "16384"
+        - "8192"
+        - "--quantization"
+        - "awq"
+        - "--dtype"
+        - "half"
         - "--enforce-eager"
         - "--trust-remote-code"
         - "--enable-auto-tool-choice"
         - "--tool-call-parser"
-        - "llama3_json"
+        - "hermes"
         - "--port"
         - "8000"
         - "--gpu-memory-utilization"
-        - "0.95"
+        - "0.99"
         env:
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
@@ -59,12 +67,12 @@ spec:
         resources:
           limits:
             nvidia.com/gpu: 1
-            memory: "16Gi"
-            cpu: "4"
+            memory: "32Gi"
+            cpu: "8"
           requests:
             nvidia.com/gpu: 1
             memory: "16Gi"
-            cpu: "4"
+            cpu: "2"
         volumeMounts:
         - name: dshm
           mountPath: /dev/shm

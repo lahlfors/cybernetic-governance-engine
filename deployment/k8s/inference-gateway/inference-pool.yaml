@@ -1,0 +1,19 @@
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferencePool
+metadata:
+  name: pool-reasoning
+  namespace: default
+spec:
+  selector:
+    app: vllm-reasoning
+  targetPortNumber: 8000
+---
+apiVersion: inference.networking.x-k8s.io/v1alpha2
+kind: InferencePool
+metadata:
+  name: pool-governance
+  namespace: default
+spec:
+  selector:
+    app: vllm-governance
+  targetPortNumber: 8000

@@ -72,6 +72,8 @@ spec:
               value: "${VLLM_FAST_API_BASE}"
             - name: VLLM_REASONING_API_BASE
               value: "${VLLM_REASONING_API_BASE}"
+            - name: VLLM_GATEWAY_URL
+              value: "${VLLM_GATEWAY_URL}"
 
             # --- Policy Engine ---
             - name: OPA_URL
