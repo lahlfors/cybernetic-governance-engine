@@ -23,7 +23,7 @@ It enforces strict governance policies at the infrastructure level, ensuring tha
 3.  **Safety Enforcement (The "Immune System"):**
     *   Manages the **Redis Interrupt** mechanism for parallel execution.
     *   Exposes meta-tools for safety validation (`check_safety_constraints`).
-    *   **NeMo Guardrails:** Acts as a gRPC **Client** to the backend NeMo service to perform semantic safety checks.
+    *   **NeMo Guardrails:** Validates content safety via in-process library calls (no gRPC).
 
 ---
 
@@ -45,9 +45,7 @@ Executes a specific capability under strict governance.
     *   `status`: `SUCCESS`, `BLOCKED`, `ERROR`
     *   `output`: Result string or error message.
 
-### Service: `NeMo Backend (gRPC)`
-
-The Gateway communicates with the internal NeMo service via gRPC on port 8000.
+The Gateway integrates NeMo Guardrails directly as a library, eliminating the need for a separate backend service. All checks are performed locally within the Gateway pod.
 
 #### Supported Tools
 
@@ -55,7 +53,7 @@ The Gateway communicates with the internal NeMo service via gRPC on port 8000.
 | :--- | :--- | :--- |
 | `execute_trade` | Executes a financial transaction via Broker API. | **Full:** STPA, OPA, CBF, SR 11-7, Redis Interrupt |
 | `check_market_status` | Fetches market data. | **Light:** Basic validation. |
-| `verify_content_safety` | Checks text via NeMo Guardrails (gRPC call). | **NeMo:** Semantic checks. |
+| `verify_content_safety` | Checks text via NeMo Guardrails (In-Process). | **NeMo:** Semantic checks. |
 | `check_safety_constraints` | **Meta-Tool**: Runs a dry-run of the Governor on a proposed action. Used by Evaluator. | **Full (Dry Run)** |
 | `trigger_safety_intervention` | **Meta-Tool**: Sets the global `safety_violation` flag to stop execution. | **Audit Log Only** |
 
@@ -65,7 +63,7 @@ The Gateway communicates with the internal NeMo service via gRPC on port 8000.
 
 The Gateway integrates the `SymbolicGovernor` which orchestrates:
 *   **OPA Client:** Policy checks (HTTP).
-*   **NeMo Stub:** Semantic checks (gRPC).
+*   **NeMo Manager:** Semantic checks (In-Process).
 *   **Safety Filter:** Control Barrier Functions (CBF).
 *   **Consensus Engine:** Multi-agent agreement.
 *   **STPA Validator:** Deterministic UCA checks.

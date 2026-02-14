@@ -16,60 +16,55 @@ class GatewayClient:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance.client = None
-            cls._instance.base_url = None
+            cls._instance._base_url = None
         return cls._instance
 
-    def _ensure_client(self):
-        """
-        Ensures the HTTP client exists.
-        """
-        if self.client is None:
-            host = os.getenv("GATEWAY_HOST", "localhost")
-            port = os.getenv("GATEWAY_PORT", "8080")
-            # Determine protocol (http vs https)
-            protocol = "http"
-            if "https" in host: # simple heuristic
-                protocol = "https"
+    def _get_base_url(self) -> str:
+        """Constructs the base URL if not already cached."""
+        if self._base_url:
+            return self._base_url
             
-            # Construct base URL
-            # If host already has protocol, use it
-            if "://" in host:
-                self.base_url = f"{host}:{port}"
-            else:
-                self.base_url = f"{protocol}://{host}:{port}"
-
-            logger.info(f"Initializing Gateway Client (HTTP) at {self.base_url}...")
-            # Use distinct client for long-lived connection pooling
-            self.client = httpx.AsyncClient(base_url=self.base_url, timeout=60.0)
-
-    async def close(self):
-        """Closes the HTTP client."""
-        if self.client:
-            await self.client.aclose()
-            self.client = None
-            logger.info("GatewayClient HTTP connection closed.")
+        host = os.getenv("GATEWAY_HOST", "localhost")
+        port = os.getenv("GATEWAY_PORT", "8080")
+        
+        # Determine protocol (http vs https)
+        protocol = "http"
+        if "https" in host: # simple heuristic
+            protocol = "https"
+        
+        # Construct base URL
+        # If host already has protocol, use it
+        if "://" in host:
+            base_url = f"{host}:{port}"
+        else:
+            base_url = f"{protocol}://{host}:{port}"
+            
+        logger.info(f"Gateway URL: {base_url}")
+        self._base_url = base_url
+        return base_url
 
     async def execute_tool(self, tool_name: str, params: dict) -> str:
         """
         Calls ExecuteTool via HTTP POST /tools/execute.
+        Uses a fresh client per request to avoid asyncio loop mismatch.
         """
-        self._ensure_client()
+        base_url = self._get_base_url()
 
         try:
-            payload = {
-                "tool_name": tool_name,
-                "params": params
-            }
+            async with httpx.AsyncClient(base_url=base_url, timeout=60.0) as client:
+                payload = {
+                    "tool_name": tool_name,
+                    "params": params
+                }
 
-            response = await self.client.post("/tools/execute", json=payload)
-            response.raise_for_status()
+                response = await client.post("/tools/execute", json=payload)
+                response.raise_for_status()
 
-            data = response.json()
-            if data.get("status") == "SUCCESS":
-                return data.get("output")
-            else:
-                return f"BLOCKED: {data.get('error') or data.get('output')}"
+                data = response.json()
+                if data.get("status") == "SUCCESS":
+                    return data.get("output")
+                else:
+                    return f"BLOCKED: {data.get('error') or data.get('output')}"
 
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP Tool Execution Failed: {e.response.text}")
@@ -83,7 +78,7 @@ class GatewayClient:
         Invokes LLM via HTTP Chat Endpoint (/v1/chat/completions).
         Currently supports non-streaming.
         """
-        self._ensure_client()
+        base_url = self._get_base_url()
 
         # Build Messages
         messages = []
@@ -104,15 +99,18 @@ class GatewayClient:
         }
 
         try:
-            response = await self.client.post("/v1/chat/completions", json=payload)
-            response.raise_for_status()
+            async with httpx.AsyncClient(base_url=base_url, timeout=120.0) as client:
+                response = await client.post("/v1/chat/completions", json=payload)
+                response.raise_for_status()
 
-            data = response.json()
-            # OpenAI Format
-            if "choices" in data and len(data["choices"]) > 0:
-                return data["choices"][0]["message"]["content"]
-            else:
-                return ""
+                data = response.json()
+                # OpenAI Format
+                if "choices" in data and len(data["choices"]) > 0:
+                    return data["choices"][0]["message"]["content"]
+                elif "content" in data: # Fallback
+                     return data["content"]
+                else:
+                    return ""
 
         except Exception as e:
             logger.error(f"HTTP Chat Failed: {e}")

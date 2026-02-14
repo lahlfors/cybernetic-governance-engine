@@ -28,34 +28,65 @@ async def evaluator_node(state: AgentState) -> dict[str, Any]:
         # No plan to evaluate, so no race.
         return {"next_step": "execution_analyst", "risk_feedback": "No plan provided."}
 
+    # Guard: Reject unstructured plans — cannot verify safety of free-text plans
+    if not isinstance(plan, dict):
+        logger.warning(f"⚠️ Evaluator: Plan is not structured (type={type(plan).__name__}). Cannot verify safety.")
+        return {
+            "evaluation_result": {
+                "verdict": "REJECTED",
+                "reasoning": f"Unstructured plan cannot be safety-verified (type={type(plan).__name__}).",
+                "simulation_logs": [],
+                "policy_check": "FAILED",
+                "semantic_check": "SKIPPED"
+            },
+            "next_step": "execution_analyst",
+            "risk_status": "REJECTED_REVISE",
+            "risk_feedback": "Plan must be structured (dict with 'steps') for safety verification."
+        }
+
     # Extract details for checks
-    target_tool = "execute_trade"
+    target_tool = None
     target_params = {}
 
-    if isinstance(plan, dict):
-        # Check if plan implies no action (Analysis Only)
-        if not plan.get("steps") and plan.get("reasoning"):
-            logger.info("ℹ️ Evaluator: Plan has no steps but contains reasoning. Treating as Analysis/Safe.")
-            # Route to explainer directly
-            return {
-                "evaluation_result": {
-                    "verdict": "APPROVED",
-                    "reasoning": "Plan involves no actions (Analysis Only).",
-                    "simulation_logs": [],
-                    "policy_check": "SKIPPED",
-                    "semantic_check": "SKIPPED"
-                },
-                "next_step": "explainer",
-                "risk_feedback": "Plan verified safe (No-op)."
-            }
+    # Check if plan implies no action (Analysis Only)
+    if not plan.get("steps") and plan.get("reasoning"):
+        logger.info("ℹ️ Evaluator: Plan has no steps but contains reasoning. Treating as Analysis/Safe.")
+        # Route to explainer directly
+        return {
+            "evaluation_result": {
+                "verdict": "APPROVED",
+                "reasoning": "Plan involves no actions (Analysis Only).",
+                "simulation_logs": [],
+                "policy_check": "SKIPPED",
+                "semantic_check": "SKIPPED"
+            },
+            "next_step": "explainer",
+            "risk_feedback": "Plan verified safe (No-op)."
+        }
 
-        if "steps" in plan:
-            for step in plan["steps"]:
-                if "trade" in step.get("action", "") or "execute" in step.get("action", ""):
-                    target_params = step.get("parameters", {})
-                    target_tool = step.get("action", "execute_trade")
-                    if target_tool == "execute_buy": target_tool = "execute_trade"
-                    break
+    if "steps" in plan:
+        for step in plan["steps"]:
+            if "trade" in step.get("action", "") or "execute" in step.get("action", ""):
+                target_params = step.get("parameters", {})
+                target_tool = step.get("action", "execute_trade")
+                if target_tool == "execute_buy": target_tool = "execute_trade"
+                break
+
+    # If no trade/execute tool found, consider it safe (Analysis)
+    if not target_tool:
+        step_actions = [s.get("action", "unknown") for s in plan.get("steps", [])]
+        logger.warning(f"⚠️ Evaluator: No trade/execute action found in steps {step_actions}. Treating as Analysis/Safe.")
+        return {
+            "evaluation_result": {
+                "verdict": "APPROVED",
+                "reasoning": "Plan contains no risky actions.",
+                "simulation_logs": [],
+                "policy_check": "SKIPPED",
+                "semantic_check": "SKIPPED"
+            },
+            "next_step": "explainer",
+            "risk_feedback": "Plan verified safe."
+        }
 
     # --- SAFETY CONSTRAINT CHECK (The "Monitor" Phase) ---
     # We check safety constraints in parallel (logically) with execution.
@@ -67,10 +98,24 @@ async def evaluator_node(state: AgentState) -> dict[str, Any]:
         logger.info(f"🛡️ Evaluator: Monitoring execution for {target_tool}")
 
         # Call the meta-tool exposed in Gateway
-        # Extract risk profile from state, default to 'Moderate'
+        # Extract risk profile from state, default to 'Conservative' (fail-closed)
     
         raw_risk = state.get("risk_attitude")
-        risk_profile = raw_risk.capitalize() if raw_risk else "Moderate"
+        risk_profile = raw_risk.capitalize() if raw_risk else "Conservative"
+
+        # Fail-closed defaults: missing params use restrictive values that trip safety thresholds
+        if "latency_ms" not in target_params:
+            logger.warning("⚠️ No latency_ms in plan params — defaulting to high value for fail-closed")
+            target_params["latency_ms"] = 999.0  # Fail-closed: will trip STPA threshold
+
+        if "trader_role" not in target_params:
+            logger.warning("⚠️ No trader_role in plan params — defaulting to 'junior' for fail-closed")
+            target_params["trader_role"] = "junior"  # Fail-closed: lowest privilege
+
+        if "confidence" not in target_params:
+            logger.warning("⚠️ No confidence in plan params — defaulting to 0.0 for fail-closed")
+            target_params["confidence"] = 0.0  # Fail-closed: trips SR 11-7 threshold
+
         safety_result_str = await check_safety_constraints(target_tool, target_params, risk_profile)
 
         latency = (time.time() - start_time) * 1000

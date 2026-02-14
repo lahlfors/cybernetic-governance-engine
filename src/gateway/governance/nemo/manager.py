@@ -35,7 +35,7 @@ class VLLMLLM(BaseChatModel):
         self.model_name = os.getenv("GUARDRAILS_MODEL_NAME", self.model_name)
         self.api_base = os.getenv("VLLM_BASE_URL", self.api_base)
         self.api_key = os.getenv("VLLM_API_KEY", self.api_key)
-        print(f"DEBUG: VLLMLLM initialized with model={self.model_name}, base={self.api_base}")
+        logger.debug(f"VLLMLLM initialized: model={self.model_name}, base={self.api_base}")
 
     @property
     def _llm_type(self) -> str:
@@ -51,7 +51,7 @@ class VLLMLLM(BaseChatModel):
             if not model_id.startswith("openai/") and "gpt" not in model_id:
                 model_id = f"openai/{model_id}"
 
-            print(f"DEBUG: Calling vLLM via litellm... model={model_id} base={self.api_base}")
+            logger.debug(f"Calling vLLM via litellm: model={model_id} base={self.api_base}")
             
             # Format messages for litellm
             formatted_messages = [{"role": m.type if m.type != "ai" else "assistant", "content": m.content} for m in messages]
@@ -92,7 +92,7 @@ class VLLMLLM(BaseChatModel):
             if not model_id.startswith("openai/") and "gpt" not in model_id:
                 model_id = f"openai/{model_id}"
 
-            print(f"DEBUG: Async Calling vLLM via litellm... model={model_id} base={self.api_base}")
+            logger.debug(f"Async calling vLLM via litellm: model={model_id} base={self.api_base}")
             
             formatted_messages = [{"role": m.type if m.type != "ai" else "assistant", "content": m.content} for m in messages]
             for m in formatted_messages:
@@ -177,7 +177,7 @@ def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"NeMo Guardrails config not found at: {config_path}")
 
-    print(f"DEBUG: Loading NeMo config from {config_path}")
+    logger.info(f"Loading NeMo config from {config_path}")
     config = RailsConfig.from_path(config_path)
     
     rails = LLMRails(config)
@@ -251,6 +251,6 @@ async def validate_with_nemo(user_input: str, rails: LLMRails) -> tuple[bool, st
             logger.error(f"NeMo Validation Error: {e}")
             span.record_exception(e)
             span.set_status(Status(StatusCode.ERROR))
-            return True, ""
+            return False, f"BLOCKED: Safety validation unavailable ({e})"
         finally:
             streaming_handler_var.reset(token)

@@ -21,7 +21,7 @@ class CircuitBreaker:
     """
     Implements a Fail-Fast Circuit Breaker pattern.
     """
-    def __init__(self, failure_threshold: int = 5, recovery_timeout: int = 30, max_latency_budget: int = 3000):
+    def __init__(self, failure_threshold: int = 5, recovery_timeout: int = 30, max_latency_budget: int = 6000):
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
         self.max_latency_budget = max_latency_budget

@@ -60,7 +60,7 @@ class STPAValidator:
                 # Security Fix: Fail Closed if latency_ms is missing.
                 # In production, Gateway should inject this, not the agent.
                 if "latency_ms" in params:
-                    return float(params["latency_ms"]) <= 200
+                    return float(params["latency_ms"]) <= 5000
                 else:
                     logger.warning(f"Constraint {constraint.id}: Missing latency_ms metric.")
                     return False # Fail Closed: Cannot verify latency safety

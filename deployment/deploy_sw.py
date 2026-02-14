@@ -94,6 +94,8 @@ images:
 
     return gateway_image_uri
 
+
+
 def deploy_ui_service(project_id, region, ui_service_name, backend_url, skip_ui=False):
     """
     Deploys UI service to GKE.
@@ -324,6 +326,8 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
     else:
         print("⚠️ Gateway template not found. Skipping.")
 
+
+
     # 7. Deploy Backend
     print("\n--- ☸️ Deploying Backend to GKE ---")
     deployment_tpl = Path("deployment/k8s/backend-deployment.yaml.tpl")
@@ -460,7 +464,6 @@ def main():
         print("\n--- 🏗️ Building Backend Image ---")
         run_command(["gcloud", "builds", "submit", "--tag", image_uri, "--project", project_id, "."])
         
-        # Build Gateway Image
         if not args.skip_gateway:
             build_gateway_image(project_id)
         else:

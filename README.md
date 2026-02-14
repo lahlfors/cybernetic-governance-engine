@@ -15,7 +15,7 @@ This implementation adheres to the **Agentic DevOps** philosophy, reframing the 
 👉 **See [ARCHITECTURE.md](ARCHITECTURE.md) for the full architectural analysis.**
 
 *   **The Advisor (LLM):** The "Brain" that reasons about financial strategy (DeepSeek R1 Distill).
-*   **The Policy Governor:** The "Sentry" that enforces absolute boundaries ("The Wall"). Uses an **OPA Sidecar** for policy and **NeMo Guardrails Service** for semantic safety (gRPC).
+*   **The Policy Governor:** The "Sentry" that enforces absolute boundaries ("The Wall"). Uses an **OPA Sidecar** for policy and **NeMo Guardrails (In-Process)** for semantic safety.
     *   **New:** See **[Neuro-Symbolic Governance](docs/NEURO_SYMBOLIC_GOVERNANCE.md)** for the architectural combination of **Residual-Based Control (RBC)** and **Optimization-Based Control (OPC)**.
 *   **The Currency Broker (GatewayClient):** Manages the "Latency as Currency" budget, enforcing a strict Bankruptcy Protocol if reasoning takes too long.
 *   **The Foundry (Pipelines):** Offline factories that compile STAMP hazards into Rego policies.
@@ -32,7 +32,7 @@ This implementation adheres to the **Sovereign Stack** architecture, ensuring cl
 👉 **See [ARCHITECTURE.md](ARCHITECTURE.md) for full architecture details.**
 
 *   **Cloud Agnostic:** Runs on local Docker/K8s with vLLM. No dependence on proprietary cloud APIs.
-*   **Local Governance:** Policy (OPA) runs as a Sidecar, NeMo Guardrails runs as a backend gRPC Service.
+*   **Local Governance:** Policy (OPA) runs as a Sidecar, NeMo Guardrails runs in-process within the Gateway.
 *   **Gateway Client:** A smart client in the Gateway routes traffic between Node A and Node B based on task complexity.
 
 ## Governance & Safety (Green Stack)

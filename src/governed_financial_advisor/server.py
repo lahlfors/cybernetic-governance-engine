@@ -100,7 +100,11 @@ async def query_agent(req: QueryRequest, request: Request):
         # 2. Graph Execution (Calls Existing Agents)
         logger.debug(f"Invoking Graph with prompt '{req.prompt}'")
         res = await request.app.state.graph.ainvoke(
-            {"messages": [("user", req.prompt)]},
+            {
+                "messages": [("user", req.prompt)],
+                "user_id": req.user_id,
+                "risk_attitude": None  # Let Supervisor extract from conversation context
+            },
             {"recursion_limit": 20, "configurable": {"thread_id": req.thread_id}}
         )
         logger.debug(f"Graph result messages keys: {res.keys() if res else 'None'}")

@@ -29,9 +29,8 @@ from src.gateway.core.market import market_service
 from src.gateway.governance.consensus import consensus_engine
 from src.gateway.governance.safety import safety_filter
 
-# NeMo gRPC
-from src.gateway.protos import nemo_pb2
-from src.gateway.protos import nemo_pb2_grpc
+# NeMo Integration (In-Process)
+from src.gateway.governance.nemo.manager import create_nemo_manager, validate_with_nemo
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO)
@@ -49,18 +48,21 @@ opa_client = OPAClient()
 # We initialize HybridClient lazily or globally
 llm_client = GatewayClient() # Uses env vars
 
-# Initialize NeMo Client (Lazy)
-nemo_url = os.getenv("NEMO_URL", "nemo:8000")
-nemo_channel = None
-nemo_stub = None
+# Initialize NeMo Guardrails (Lazy)
+rails_config_path = os.getenv("RAILS_CONFIG_PATH", "config/rails")
+nemo_manager = None
 
-def get_nemo_stub():
-    global nemo_channel, nemo_stub
-    if not nemo_stub:
-        logger.info(f"Connecting to NeMo Guardrails at {nemo_url}...")
-        nemo_channel = grpc.aio.insecure_channel(nemo_url)
-        nemo_stub = nemo_pb2_grpc.NeMoGuardrailsStub(nemo_channel)
-    return nemo_stub
+def get_nemo_manager():
+    global nemo_manager
+    if not nemo_manager:
+        logger.info(f"initializing NeMo Guardrails from {rails_config_path}...")
+        try:
+             nemo_manager = create_nemo_manager(rails_config_path)
+             logger.info("✅ NeMo Guardrails initialized successfully")
+        except Exception as e:
+             logger.error(f"❌ Failed to initialize NeMo: {e}")
+             return None
+    return nemo_manager
 
 # --- 3. Governance Logic (Shared) ---
 # Initialize Neuro-Symbolic Governor
@@ -137,26 +139,21 @@ async def verify_content_safety(text: str) -> str:
     if "jailbreak" in text.lower() or "ignore previous" in text.lower():
          return "BLOCKED: Semantic Safety Violation (Jailbreak Pattern)"
 
-    # 2. Remote NeMo Check via gRPC
-    try:
-        stub = get_nemo_stub()
-        request = nemo_pb2.VerifyRequest(input=text)
-        # Timeout to prevent hanging
-        response = await asyncio.wait_for(stub.Verify(request), timeout=5.0)
+    # 2. Integrated NeMo Check
+    manager = get_nemo_manager()
+    if not manager:
+         return "BLOCKED: Safety Service Unavailable (Init Failed)"
 
-        if response.status == "SUCCESS":
-             # If NeMo returns SUCCESS, we assume it's safe, or we check response content if needed.
-             # NeMo might return a modified safe response.
+    try:
+        # validate_with_nemo returns (is_safe: bool, response_text: str)
+        # Note: In our P0 fix, validate_with_nemo returns False on error.
+        is_safe, response_text = await validate_with_nemo(text, manager)
+
+        if is_safe:
              return "SAFE"
         else:
-             return f"BLOCKED: {response.response}"
+             return f"BLOCKED: {response_text}"
 
-    except asyncio.TimeoutError:
-        logger.error("NeMo Service Timeout")
-        return "BLOCKED: Safety Service Timeout"
-    except grpc.RpcError as e:
-        logger.error(f"NeMo gRPC Failed: {e}")
-        return "BLOCKED: Safety Service Unavailable"
     except Exception as e:
          logger.error(f"NeMo Verification Error: {e}")
          return f"BLOCKED: Safety Error {e}"
