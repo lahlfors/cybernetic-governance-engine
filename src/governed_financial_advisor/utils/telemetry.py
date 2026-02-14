@@ -1,6 +1,6 @@
 """
 Telemetry configuration for GCP Cloud Logging and Cloud Trace.
-Refactored for Lightweight Mode (AgentSight compatibility).
+Refactored for Hybrid Observability (LangSmith Async + AgentSight).
 """
 import contextlib
 import logging
@@ -53,8 +53,9 @@ _telemetry_configured = False
 
 def configure_telemetry():
     """
-    Configures OpenTelemetry tracing (Lightweight Mode).
-    Removes application-level heavy payload capture in favor of system-level observability.
+    Configures OpenTelemetry tracing (Hybrid Mode).
+    Uses standard async BatchSpanProcessors to capture payloads for LangSmith,
+    while AgentSight handles system-level correlation via HTTP headers.
     """
     global _telemetry_configured
     if _telemetry_configured:
@@ -72,7 +73,6 @@ def configure_telemetry():
         trace.set_tracer_provider(provider)
 
         # 1. Hot Tier: Cloud Trace (or OTLP fallback)
-        # We now send ALL spans here, but they are lightweight (no prompts/completions).
         try:
             from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
             gcp_project = os.environ.get("GOOGLE_CLOUD_PROJECT")
@@ -83,9 +83,7 @@ def configure_telemetry():
         except Exception:
             pass
 
-        # 2. Cold Tier / LangSmith (Lightweight Tracing only)
-        # We still support OTLP if configured (e.g. for Jaeger or LangSmith)
-        # But we rely on 'genai_span' NOT adding heavy attributes.
+        # 2. Cold Tier / LangSmith (Standard Async Tracing)
         otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
         if otel_endpoint:
              otel_headers = {}
@@ -106,9 +104,6 @@ def configure_telemetry():
         if langsmith_key:
             try:
                 langsmith_otlp_endpoint = f"{langsmith_endpoint.rstrip('/')}/otel/v1/traces"
-                # We construct exporter directly to avoid env var pollution if possible,
-                # but OTLPSpanExporter reads env vars by default.
-                # We'll set headers manually in constructor.
                 
                 langsmith_exporter = OTLPSpanExporter(
                     endpoint=langsmith_otlp_endpoint,
@@ -116,7 +111,7 @@ def configure_telemetry():
                     compression=Compression.NoCompression
                 )
                 provider.add_span_processor(BatchSpanProcessor(langsmith_exporter))
-                logger.info(f"✅ LangSmith: Lightweight Tracing configured at {langsmith_otlp_endpoint}")
+                logger.info(f"✅ LangSmith: Async Tracing configured at {langsmith_otlp_endpoint}")
             except Exception as e:
                 logger.warning(f"⚠️ LangSmith configuration failed: {e}")
 
@@ -131,7 +126,7 @@ def configure_telemetry():
             pass
 
         _telemetry_configured = True
-        logger.info("✅ Telemetry configuration complete (Lightweight Mode).")
+        logger.info("✅ Telemetry configuration complete (Hybrid Mode).")
 
     except ImportError as e:
         logger.warning(f"⚠️ Telemetry dependencies not available: {e}")
@@ -152,9 +147,8 @@ def get_tracer():
 @contextlib.contextmanager
 def genai_span(name: str, prompt: str = None, model: str = None):
     """
-    Context manager for GenAI Semantic Conventions (Lightweight).
-    Does NOT capture full prompts/completions to reduce overhead.
-    AgentSight or eBPF sidecars are expected to capture payloads if needed.
+    Context manager for GenAI Semantic Conventions (Hybrid).
+    Captures prompt content for LangSmith (async), while AgentSight captures raw traffic.
     """
     tracer = get_tracer()
     if tracer is None:
@@ -164,14 +158,13 @@ def genai_span(name: str, prompt: str = None, model: str = None):
     try:
         from opentelemetry import trace as otel_trace
         with tracer.start_as_current_span(name) as span:
-            # OPTIMIZATION: Do NOT set prompt content by default.
-            # Only set metadata like model name.
+            # HYBRID: We restore payload capture here for LangSmith utility.
+            # The 'BatchSpanProcessor' ensures this is handled asynchronously.
+            if prompt:
+                span.set_attribute("gen_ai.content.prompt", prompt)
+
             if model:
                 span.set_attribute("gen_ai.request.model", model)
-
-            # We can optionally log that a prompt occurred without the content
-            if prompt:
-                span.set_attribute("gen_ai.content.prompt_length", len(prompt))
 
             try:
                 yield span
@@ -184,12 +177,10 @@ def genai_span(name: str, prompt: str = None, model: str = None):
 
 
 def record_completion(span, completion: str):
-    """Helper to record completion metadata (Lightweight)."""
-    if span:
-        # OPTIMIZATION: Do NOT set completion content.
-        # Only set length for stats.
-        if completion:
-             span.set_attribute("gen_ai.content.completion_length", len(completion))
+    """Helper to record completion metadata (Hybrid)."""
+    if span and completion:
+        # HYBRID: We restore payload capture here for LangSmith utility.
+        span.set_attribute("gen_ai.content.completion", completion)
 
 def record_usage(span, usage):
     """

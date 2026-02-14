@@ -24,37 +24,46 @@ This document analyzes the benefits and tradeoffs of adopting **AgentSight** (an
 -   **Blind Spots:** Cannot observe system-level side effects (e.g., direct syscalls via `subprocess` or `os.system` that bypass instrumentation).
 -   **Semantic Gap:** Sees "Intent" (prompts) but misses the "Action" (actual system behavior) unless manually instrumented.
 
-## Proposed Implementation (AgentSight)
+## Proposed Implementation (Hybrid Observability)
 
-**Mechanism:**
--   **Instrumentation:** eBPF (kernel probes) on syscalls (`openat`, `execve`, etc.) and SSL/TLS traffic (`SSL_read`, `SSL_write`).
--   **Payload Handling:** Captures encrypted traffic at the kernel/library boundary (OpenSSL), correlating it with process lineage.
--   **Trace Correlation:** Uses process lineage (fork/exec) and temporal proximity to link Intent to Action.
+**Strategy: "Skinny Payload" + Header Correlation + AgentSight**
+
+Instead of turning off Python payloads entirely (which breaks LangSmith), we adopt a hybrid approach:
+
+1.  **Application Tracing (LangSmith):**
+    -   Use **Native LangSmith Tracing** (via OTel `BatchSpanProcessor`) to capture execution trees and core application context (User ID, Session ID).
+    -   Utilize background threads (the default in modern OTel exporters) to minimize blocking on the main loop.
+    -   Avoid custom synchronous processors (`GenAICostOptimizerProcessor`) that introduce latency.
+    -   **Aggressive Sampling:** In Production, sample LangSmith traces (e.g., 1-5%) to reduce overhead, while running 100% in Dev/Staging.
+
+2.  **System-Level Observability (AgentSight):**
+    -   Use **AgentSight (eBPF)** to capture *raw* traffic (prompts/completions) and system actions (syscalls) at the kernel level.
+    -   This provides full fidelity and security visibility without burdening the application process.
+
+3.  **Correlation:**
+    -   Inject the **OTel Trace ID** as an HTTP header (`X-Trace-Id`) into every LLM API request.
+    -   AgentSight intercepts this header along with the payload, allowing seamless correlation between the high-level Application Trace (LangSmith) and the low-level System Trace (AgentSight).
 
 **Pros:**
--   **Zero Instrumentation:** Requires no code changes in the Python application.
--   **Performance:**
-    -   **Low Overhead:** Offloads heavy payload capturing to the kernel/sidecar (<3% overhead claimed).
-    -   **Parallelism:** Does not block the application's event loop.
--   **Security:** Detects unauthorized system calls (e.g., shell commands) that application-level tracing might miss.
--   **Bridging the Semantic Gap:** Automatically correlates high-level Intent (Prompt) with low-level Action (Syscall).
+-   **Best of Both Worlds:** Retains LangSmith for prompt engineering/evaluation while leveraging AgentSight for performance and security.
+-   **Low Latency:** Offloads heavy inspection to the kernel/sidecar while keeping application tracing lightweight (metadata + essential context).
+-   **Security:** Detects unauthorized system calls that application tracing misses.
 
 **Cons:**
--   **Complexity:** Requires privileged access (`CAP_SYS_ADMIN`) and kernel headers, which can be challenging in managed environments (e.g., GKE Autopilot).
--   **Loss of Application Context:** May lose internal application variables unless they are exposed via network headers or logs.
--   **External Dependency:** Relies on the AgentSight daemon being present and healthy.
+-   **Complexity:** Requires maintaining both LangSmith integration and the AgentSight daemon.
+-   **Privileged Access:** AgentSight requires `CAP_SYS_ADMIN` capabilities.
 
 ## Recommendation
 
-**Adopt AgentSight principles and Remove Application-Level Payload Capture.**
+**Adopt Hybrid Observability.**
 
-To improve system latency and reduce complexity, we should remove the custom `GenAICostOptimizerProcessor` and `ParquetSpanExporter`. Instead, we should rely on:
-
-1.  **Lightweight Tracing:** Keep standard OTel tracing for timing and causal links (`trace_id`, `span_id`), but **stop capturing heavy payloads** (prompts/completions) in the Python process.
-2.  **System-Level Observability:** Delegate payload capture and security monitoring to AgentSight (or a similar sidecar) running alongside the application.
+1.  **Remove Custom Payload Processors:** Delete `genai_cost_optimizer.py` and `parquet_exporter.py` (Completed).
+2.  **Restore Standard Tracing:** Use standard OTel `BatchSpanProcessor` to send traces to LangSmith/Jaeger asynchronously.
+3.  **Inject Trace ID:** Modify the LLM client to inject `X-Trace-Id` headers.
+4.  **Deploy AgentSight:** Run the AgentSight daemon alongside the application to capture full payloads and system actions.
 
 **Action Plan:**
-1.  Remove `src/governed_financial_advisor/infrastructure/telemetry/processors/genai_cost_optimizer.py`.
-2.  Remove `src/governed_financial_advisor/infrastructure/telemetry/exporters/parquet_exporter.py`.
-3.  Simplify `src/governed_financial_advisor/utils/telemetry.py` to use standard OTLP/Cloud Trace exporters without payload capture.
-4.  Remove heavy dependencies (`pandas`, `pyarrow`, `fastparquet`) from `pyproject.toml`.
+1.  Remove redundant files (Done).
+2.  Update `telemetry.py` to restore payload capture using efficient background processors.
+3.  Update `llm.py` to inject `X-Trace-Id` headers.
+4.  Update Docker Compose configuration (Done).
