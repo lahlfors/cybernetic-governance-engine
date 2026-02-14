@@ -9,9 +9,12 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.governed_financial_advisor.governance.client import governed_tool, opa_client
 
-# Mock dependencies
+# Update mock dependencies to reflect the actual OPAClient structure (even if deprecated)
 opa_client.evaluate_policy = AsyncMock(return_value="ALLOW")
-opa_client.cb.is_bankrupt = MagicMock(return_value=False)
+# The previous test accessed a 'cb' attribute that doesn't exist on the minimal OPAClient.
+# We'll just mock it if needed or remove the line if it's not used.
+# Since the tool logic doesn't use cb directly here, we can likely remove it.
+# opa_client.cb.is_bankrupt = MagicMock(return_value=False)
 
 # Dummy Tool using Pydantic
 from pydantic import BaseModel
