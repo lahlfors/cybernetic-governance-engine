@@ -1,68 +1,40 @@
-# Gateway Architecture & API
+# Gateway Architecture: Sovereign Edition
 
 ## Overview
 
-The **Gateway Service** (`src/gateway/server/main.py`) acts as the "Central Nervous System" of the Neuro-Cybernetic Bank. It is a high-performance gRPC service that mediates all interactions between Agents (the "Brain") and the external world (Markets, Databases, Tools).
+The Gateway acts as the central orchestrator and compliance enforcement point for the AI financial advisor. It implements a "Split-Brain" architecture, routing tasks between a high-capacity Reasoning Model (Llama 3.1 8B) and a low-latency Governance Model (Llama 3.2 3B).
 
-It enforces strict governance policies at the infrastructure level, ensuring that no agent can bypass safety controls.
+## Core Components
 
----
+1.  **Hybrid Gateway Service (FastAPI + FastMCP):**
+    *   Exposes a unified HTTP/MCP interface.
+    *   Handles tool execution requests (`execute_trade`, `search_market`).
+    *   Enforces neuro-symbolic policies via OPA and the Symbolic Governor.
 
-## Core Responsibilities
+2.  **Sovereign vLLM Cluster:**
+    *   **Node A (Reasoning):** Handles planning, complex analysis, and chain-of-thought generation.
+    *   **Node B (Governance):** Handles rapid policy checks, safety filtering, and content moderation.
 
-1.  **Tool Execution & Governance:**
-    *   Receives tool calls from agents.
-    *   Routes them through the **Symbolic Governor**.
-    *   Executes the tool only if all checks pass.
+3.  **Observability Layer (Hybrid):**
+    *   **Application Tracing (LangSmith):** Captures the execution graph, prompt templates, and tool inputs/outputs. Uses asynchronous batch processing to minimize latency.
+    *   **System Monitoring (AgentSight):** An eBPF sidecar daemon that intercepts:
+        *   **Encrypted Traffic (OpenSSL):** Captures raw LLM payloads at the network boundary.
+        *   **System Calls (Kernel):** Monitors process creation (`execve`), file access (`openat`), and network connections (`connect`).
+    *   **Correlation:** The Gateway injects the OpenTelemetry `trace_id` as an `X-Trace-Id` HTTP header into every LLM request. AgentSight uses this header to link high-level intent (LangSmith trace) with low-level system actions.
 
-2.  **LLM Proxy:**
-    *   Proxies requests to vLLM (Reasoning Engine).
-    *   Injects system prompts and context.
+## Data Flow
 
-3.  **Safety Enforcement (The "Immune System"):**
-    *   Manages the **Redis Interrupt** mechanism for parallel execution.
-    *   Exposes meta-tools for safety validation (`check_safety_constraints`).
+1.  **User Request:** Incoming HTTP/gRPC request to the Gateway.
+2.  **Policy Check (Pre-Execution):** OPA validates the request against regulatory policies.
+3.  **Routing:** GatewayClient determines the target model (Reasoning vs. Governance).
+4.  **Header Injection:** The client generates a trace ID and injects `X-Trace-Id`.
+5.  **LLM Call:** Request is sent to vLLM. AgentSight intercepts this call.
+6.  **Tool Execution:** If the model requests a tool, the Gateway executes it. AgentSight monitors the resulting system calls (e.g., network request to Alpaca API).
+7.  **Logging:**
+    *   Application metadata is sent asynchronously to LangSmith.
+    *   System events are displayed in the AgentSight Dashboard.
 
----
+## Deployment Topology
 
-## API Reference (gRPC)
-
-### Service: `Gateway`
-
-#### `ExecuteTool(ToolRequest) -> ToolResponse`
-Executes a specific capability.
-
-*   **Request:**
-    *   `tool_name`: String (e.g., `execute_trade`, `check_market_status`)
-    *   `params_json`: JSON String of arguments.
-
-*   **Response:**
-    *   `status`: `SUCCESS`, `BLOCKED`, `ERROR`
-    *   `output`: Result string or error message.
-
-#### Supported Tools
-
-| Tool Name | Description | Governance Checks |
-| :--- | :--- | :--- |
-| `execute_trade` | Executes a financial transaction via Broker API. | **Full:** STPA, OPA, CBF, SR 11-7, Redis Interrupt |
-| `check_market_status` | Fetches market data. | **Light:** Basic validation. |
-| `verify_content_safety` | Checks text via NeMo Guardrails. | **NeMo:** Semantic checks. |
-| `check_safety_constraints` | **Meta-Tool**: Runs a dry-run of the Governor on a proposed action. Used by Evaluator. | **Full (Dry Run)** |
-| `trigger_safety_intervention` | **Meta-Tool**: Sets the global `safety_violation` flag to stop execution. | **Audit Log Only** |
-
----
-
-## Neuro-Symbolic Integration
-
-The Gateway integrates the `SymbolicGovernor` which orchestrates:
-*   **OPA Client:** Policy checks.
-*   **Safety Filter:** Control Barrier Functions (CBF).
-*   **Consensus Engine:** Multi-agent agreement.
-*   **STPA Validator:** Deterministic UCA checks.
-
-## Telemetry
-
-All Gateway actions are traced via OpenTelemetry with semantic conventions for GenAI (Module 4). Spans include:
-*   `genai.tool.name`
-*   `governance.verdict`
-*   `safety.violation.reason`
+*   **Production (GKE):** Gateway runs as a service behind an Ingress. AgentSight runs as a DaemonSet or sidecar container in the same pod.
+*   **Local (Docker Compose):** All components run in a shared network. See `deployment/agentsight/docker-compose.agentsight.yaml`.
