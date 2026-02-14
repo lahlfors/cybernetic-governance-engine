@@ -1,0 +1,17 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: vllm-reasoning-scaler
+  namespace: governance-stack
+spec:
+  scaleTargetRef:
+    name: vllm-reasoning
+  minReplicaCount: 0
+  maxReplicaCount: 1
+  triggers:
+  - type: prometheus 
+    metadata:
+      serverAddress: http://frontend.gmp-system.svc.cluster.local:9090
+      query: sum(rate(http_requests_total{app="vllm-reasoning"}[2m]))
+      threshold: "0.1"
+      activationThreshold: "0.1"

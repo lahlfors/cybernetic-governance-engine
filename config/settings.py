@@ -6,7 +6,7 @@ load_dotenv()
 class Config:
     # --- MODEL IDENTIFIERS ---
     # FORCE DeepSeek as the default for Reasoning
-    DEFAULT_REASONING_MODEL = "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
+    DEFAULT_REASONING_MODEL = "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
     
     # Node A: The Brain (Reasoning/Planner)
     VLLM_REASONING_API_BASE = os.getenv("VLLM_REASONING_API_BASE", "http://vllm-reasoning:8000/v1")
@@ -14,7 +14,7 @@ class Config:
 
     # Node B: The Police (Governance/FSM)
     VLLM_FAST_API_BASE = os.getenv("VLLM_FAST_API_BASE", "http://vllm-governance:8000/v1")
-    MODEL_FAST = os.getenv("MODEL_FAST", "meta-llama/Llama-3.2-3B-Instruct")
+    MODEL_FAST = os.getenv("MODEL_FAST", "Qwen/Qwen2.5-7B-Instruct")
     MODEL_CONSENSUS = os.getenv("MODEL_CONSENSUS", MODEL_REASONING)
 
     # --- INFRASTRUCTURE ---
