@@ -106,6 +106,8 @@ spec:
               value: "${GATEWAY_HOST}"
             - name: GATEWAY_GRPC_PORT
               value: "${GATEWAY_GRPC_PORT}"
+            - name: GATEWAY_PORT
+              value: "8080"
 
             # --- MCP Configuration ---
             - name: MCP_MODE

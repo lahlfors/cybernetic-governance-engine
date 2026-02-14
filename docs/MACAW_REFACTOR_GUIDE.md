@@ -42,8 +42,8 @@ This aligns with **ISO/IEC 42001 (AIMS)** and **SR 11-7 (Model Risk Management)*
 *   **Action:** If a violation is detected, it triggers the `trigger_safety_intervention` tool, which sets the `safety_violation` flag, stopping the Executor.
 
 ### 3.4. The Gateway (Infrastructure Enforcement)
-*   **Component:** `src/gateway/server/main.py`
-*   **Role:** Central enforcement point.
+*   **Component:** `src/gateway/server/hybrid_server.py`
+*   **Role:** Central enforcement point (HTTP/MCP).
 *   **Tools:**
     *   `execute_trade`: Checks Redis for interrupts.
     *   `check_safety_constraints`: Used by Evaluator for dry-run validation.

@@ -25,7 +25,7 @@ The **Governed Financial Advisor** is a high-reliability agentic system designed
 *   **Evaluator-Driven**: Governance is no longer a sidecar "middleware" but an active **Agentic Step**.
 *   **Tools**:
     *   `verify_policy_opa`: Wraps OPA for regulatory checks.
-    *   `verify_semantic_nemo`: Wraps NeMo for semantic checks.
+    *   `verify_content_safety`: Wraps NeMo for semantic checks (gRPC).
     *   `check_market_status`: Mock simulation tool.
 
 ## 3. Component Wiring Diagram (MACAW)

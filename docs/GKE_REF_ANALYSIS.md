@@ -24,8 +24,8 @@ This report analyzes the feasibility and steps required to consolidate the Gover
 *   **`deployment/k8s/`**: Contains complete manifests for `gateway`, `nemo`, and `governed-financial-advisor` (backend).
 
 ### 2.2. Application Code
-*   **Gateway (`src/gateway/server/main.py`)**: Contains a comment `# Configure JSON Logging for Cloud Run`. It uses `PORT` env var (Cloud Run convention), which is also standard in K8s containers.
-*   **NeMo (`src/governance/nemo_server.py`)**: Standard FastAPI app. No specific Cloud Run dependencies.
+*   **Gateway (`src/gateway/server/hybrid_server.py`)**: HTTP/MCP Server. It uses `PORT` env var (Cloud Run convention).
+*   **NeMo (`src/gateway/governance/nemo/server.py`)**: gRPC Server. No specific Cloud Run dependencies.
 
 ### 2.3. Discrepancies
 *   **Documentation vs. Code**: `deployment/README.md` explicitly describes a "Single Cloud Run Service" architecture with an OPA sidecar. The actual code (`deploy_all.py` + K8s manifests) deploys a distributed microservices architecture on GKE.
@@ -54,7 +54,7 @@ To "remove all usage of Cloud Run" and finalize the GKE shift, the following ste
 
 ### Phase 2: Code Cleanup
 1.  **Update Gateway Logging**: Remove explicit "Cloud Run" logging comments/formatters if they are too specific (though JSON logging is good for GKE too).
-2.  **Standardize Ports**: Ensure K8s manifests and `Dockerfile`s agree on ports (50051 for Gateway, 8000 for NeMo) without relying on injected `$PORT` unless preferred.
+2.  **Standardize Ports**: Ensure K8s manifests and `Dockerfile`s agree on ports (8080 for Gateway HTTP, 8000 for NeMo gRPC) without relying on injected `$PORT` unless preferred.
 
 ### Phase 3: Documentation Overhaul
 1.  **Rewrite `deployment/README.md`**: Remove "Cloud Run" architecture. Describe the GKE Microservices architecture (Agent -> Gateway -> vLLM/NeMo).

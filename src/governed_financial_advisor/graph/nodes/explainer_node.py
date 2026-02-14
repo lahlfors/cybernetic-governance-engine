@@ -22,6 +22,6 @@ async def explainer_node(state: AgentState) -> dict[str, Any]:
 
     # The Explainer's text is the final answer
     return {
-        "messages": response.messages, # Assuming ADK returns messages list or similar
+        "messages": [("ai", response.answer)],
         "next_step": "FINISH"
     }

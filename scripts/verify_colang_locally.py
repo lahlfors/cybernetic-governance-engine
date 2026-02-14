@@ -5,7 +5,12 @@ import sys
 # Add project root to path
 sys.path.append(os.getcwd())
 
-from src.utils.nemo_manager import load_rails
+# Updated import path for NeMo Manager
+try:
+    from src.gateway.governance.nemo.manager import create_nemo_manager as load_rails
+except ImportError:
+    print("❌ Could not import create_nemo_manager from src.gateway.governance.nemo.manager")
+    sys.exit(1)
 
 def test_colang_syntax():
     print("🔍 Verifying Colang syntax in config/rails/...")

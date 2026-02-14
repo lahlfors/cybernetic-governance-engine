@@ -42,13 +42,19 @@ spec:
               value: "redis://${REDIS_HOST}:${REDIS_PORT}"
             - name: VLLM_GATEWAY_URL
               value: "${VLLM_GATEWAY_URL}"
+            - name: VLLM_BASE_URL
+              value: "${VLLM_BASE_URL}"
+            - name: GUARDRAILS_MODEL_NAME
+              value: "${MODEL_FAST}"
+            - name: RAILS_CONFIG_PATH
+              value: "config/rails"
           resources:
             requests:
-              cpu: "250m"
-              memory: "512Mi"
-            limits:
               cpu: "500m"
               memory: "1Gi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
 ---
 apiVersion: v1
 kind: Service

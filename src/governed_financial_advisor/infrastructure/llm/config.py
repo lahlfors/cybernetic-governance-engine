@@ -6,7 +6,7 @@ from google.adk.models.lite_llm import LiteLlm
 import litellm
 
 # Default values suitable for the vLLM setup
-DEFAULT_VLLM_BASE_URL = "http://localhost:8000/v1"
+DEFAULT_VLLM_BASE_URL = "http://vllm-service.governance-stack.svc.cluster.local:8000/v1"
 DEFAULT_MODEL_NAME = "openai/meta-llama/Meta-Llama-3.1-8B-Instruct"
 
 logger = logging.getLogger(__name__)
