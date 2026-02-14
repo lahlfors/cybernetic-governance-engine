@@ -16,7 +16,7 @@ This document maps the **Neuro-Cybernetic Governance** implementation to the cla
 ### Clause 8: Operation
 *   **8.1 Operational planning and control:**
     *   **Implementation:** The **Gateway Service** acts as the operational control point, enforcing policies on all AI actions.
-    *   **Code:** `src/gateway/server/main.py`
+    *   **Code:** `src/gateway/server/hybrid_server.py`
 *   **8.2 AI Risk Assessment:**
     *   **Implementation:** The **Symbolic Governor** performs real-time risk assessment (STPA, CBF) on every tool call.
     *   **Code:** `src/gateway/governance/symbolic_governor.py`

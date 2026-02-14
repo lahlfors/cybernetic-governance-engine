@@ -82,7 +82,7 @@ The primary divergence is in the **ARPaCCino Pattern** (Module 6), where the sys
     *   **Evidence:** `src/graph/graph.py` defines the `StateGraph` and `supervisor` workflow.
 *   **Concept:** **Decision Logic (NeMo & OPA)**
     *   **Implementation:**
-        *   **NeMo:** `src/governance/nemo_server.py` and `config/rails/`.
+        *   **NeMo:** `src/gateway/governance/nemo/server.py` and `config/rails/`.
         *   **OPA:** `deployment/k8s/opa_config.yaml` and `src/governance/policy/finance_policy.rego`.
 
 ---
