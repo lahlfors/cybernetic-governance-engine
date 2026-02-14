@@ -142,45 +142,35 @@ def configure_telemetry():
                     cold_processor = BatchSpanProcessor(otlp_exporter)
                     logger.info(f"✅ OpenTelemetry: OTLP Exporter configured at {otel_endpoint}")
                 
-                # Langfuse Integration (Automatic if Env Vars present)
-                langfuse_pk = os.getenv("LANGFUSE_PUBLIC_KEY")
-                langfuse_sk = os.getenv("LANGFUSE_SECRET_KEY")
-                langfuse_host = os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com")
-                
-                if langfuse_pk and langfuse_sk:
+                # LangSmith Integration (Automatic if Env Vars present)
+                langsmith_key = os.getenv("LANGSMITH_API_KEY")
+                langsmith_endpoint = os.environ.get("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
+
+                if langsmith_key:
                     try:
-                        # 1. Configure Tracing (OTLP to Langfuse)
-                        # Remove 'https://' from host for basic auth construction if needed, but OTLP usually takes full URL
-                        # Langfuse OTLP endpoint: /api/public/otel/v1/traces
-                        langfuse_otlp_endpoint = f"{langfuse_host.rstrip('/')}/api/public/otel/v1/traces"
-                        
-                        # Ensure no whitespace
-                        pk = langfuse_pk.strip()
-                        sk = langfuse_sk.strip()
-                        
-                        # Auth Header: Basic base64(pk:sk)
-                        auth_str = f"{pk}:{sk}"
-                        auth_bytes = auth_str.encode("ascii")
-                        base64_auth = base64.b64encode(auth_bytes).decode("ascii")
-                        
+                        # 1. Configure Tracing (OTLP to LangSmith)
+                        # LangSmith OTLP endpoint: /otel/v1/traces
+                        langsmith_otlp_endpoint = f"{langsmith_endpoint.rstrip('/')}/otel/v1/traces"
+
                         # Set Env Vars for OTLP (Standard way)
-                        os.environ["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] = langfuse_otlp_endpoint
-                        os.environ["OTEL_EXPORTER_OTLP_TRACES_HEADERS"] = f"Authorization=Basic {base64_auth}"
-                        
+                        # LangSmith uses "x-api-key" header
+                        os.environ["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] = langsmith_otlp_endpoint
+                        os.environ["OTEL_EXPORTER_OTLP_TRACES_HEADERS"] = f"x-api-key={langsmith_key.strip()}"
+
                         from opentelemetry.exporter.otlp.proto.http.trace_exporter import Compression
 
                         # Use default constructor which reads env vars
-                        langfuse_exporter = OTLPSpanExporter(
+                        langsmith_exporter = OTLPSpanExporter(
                             compression=Compression.NoCompression
                         )
                         # Add as a separate processor
-                        provider.add_span_processor(BatchSpanProcessor(langfuse_exporter))
-                        logger.info(f"✅ Langfuse: Tracing configured at {langfuse_otlp_endpoint}")
+                        provider.add_span_processor(BatchSpanProcessor(langsmith_exporter))
+                        logger.info(f"✅ LangSmith: Tracing configured at {langsmith_otlp_endpoint}")
 
                     except Exception as e:
-                        logger.warning(f"⚠️ Langfuse configuration failed: {e}")
+                        logger.warning(f"⚠️ LangSmith configuration failed: {e}")
                 else:
-                    logger.info("ℹ️ Langfuse: Credentials not found, skipping integration.")
+                    logger.info("ℹ️ LangSmith: Credentials not found, skipping integration.")
                 
                 if not cold_processor:
                     logger.info("ℹ️ OpenTelemetry: OTEL_EXPORTER_OTLP_ENDPOINT not set. Using NoOp Cold Tier.")

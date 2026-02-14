@@ -14,6 +14,16 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
+# LangSmith Deep Integration
+try:
+    from langsmith import traceable
+except ImportError:
+    # No-op decorator if langsmith is not installed (e.g., during minimal tests)
+    def traceable(**kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
 # Import Factory Functions
 from src.governed_financial_advisor.agents.data_analyst.agent import create_data_analyst_agent
 from src.governed_financial_advisor.agents.execution_analyst.agent import create_execution_analyst_agent
@@ -89,6 +99,7 @@ class AgentResponse:
         self.answer = answer
         self.function_calls = function_calls or []
 
+@traceable(run_type="chain", name="ADK Agent Runner")
 def run_adk_agent(agent_instance, user_msg: str, session_id: str = "default", user_id: str = "default_user"):
     """
     Wraps the ADK Agent Runner to execute a turn and return the result object.
