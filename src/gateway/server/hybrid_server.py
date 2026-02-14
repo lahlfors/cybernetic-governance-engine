@@ -4,6 +4,7 @@ import json
 import os
 import sys
 from typing import List, Optional, Dict, Any, Union
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -30,7 +31,13 @@ from src.governed_financial_advisor.utils.telemetry import configure_telemetry
 configure_telemetry()
 
 # --- 1. Initialize FastAPI App ---
-app = FastAPI(title="Governed Financial Advisor Gateway (Hybrid)")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await market_service.shutdown()
+    market_service.shutdown_sync()
+
+app = FastAPI(title="Governed Financial Advisor Gateway (Hybrid)", lifespan=lifespan)
 
 # --- 2. Initialize MCP Server ---
 mcp = FastMCP("Governed Gateway")

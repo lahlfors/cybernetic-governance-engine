@@ -237,8 +237,12 @@ async def serve():
     server.add_insecure_port(f'[::]:{port}')
     logger.info(f"🚀 Gateway Server (gRPC) starting on port {port}...")
 
-    await server.start()
-    await server.wait_for_termination()
+    try:
+        await server.start()
+        await server.wait_for_termination()
+    finally:
+        await market_service.shutdown()
+        market_service.shutdown_sync()
 
 if __name__ == '__main__':
     asyncio.run(serve())
