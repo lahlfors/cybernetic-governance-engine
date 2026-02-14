@@ -1,11 +1,12 @@
 import logging
+import os
 from typing import Any
 
 from nemoguardrails.streaming import StreamingHandler
 from opentelemetry import trace
 
 logger = logging.getLogger("NeMoOTelExporter")
-tracer = trace.get_tracer("src.governance.nemo")
+tracer = trace.get_tracer("gateway.governance.nemo")
 
 class NeMoOTelCallback(StreamingHandler):
     """

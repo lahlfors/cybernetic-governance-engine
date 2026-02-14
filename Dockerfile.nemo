@@ -5,30 +5,29 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install system dependencies
-# curl for healthchecks
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies
-# We install uvicorn, fastapi, nemoguardrails explicitly
-# In a real setup, we might copy pyproject.toml, but for sidecar, keeping it simple
+# We install dependencies needed for NeMo Guardrails + gRPC + OpenTelemetry
 RUN pip install --no-cache-dir \
-    uvicorn \
-    fastapi \
     nemoguardrails \
+    grpcio \
+    grpcio-tools \
+    protobuf \
+    opentelemetry-api \
+    opentelemetry-sdk \
+    litellm \
+    nest_asyncio \
+    google-cloud-aiplatform \
     langchain-google-genai \
     langchain-google-vertexai
 
 # Copy source code
 COPY src /app/src
 COPY config /app/config
-# Copy policies if referenced? Not strictly needed for NeMo unless python modules are shared.
 
 # Expose port
 EXPOSE 8000
 
-# Healthcheck
-HEALTHCHECK --interval=5s --timeout=3s \
-  CMD curl -f http://localhost:8000/health || exit 1
-
-# Command to run the application
-CMD ["uvicorn", "src.governance.nemo_server:app", "--host", "0.0.0.0", "--port", "8000"]
+# Command to run the application (gRPC Server)
+CMD ["python", "src/gateway/governance/nemo/server.py"]

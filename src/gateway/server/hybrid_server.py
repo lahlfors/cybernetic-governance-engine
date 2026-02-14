@@ -1,3 +1,9 @@
+"""
+Refactored Gateway Server (HTTP/MCP Only)
+- Removes gRPC Server (depreciated)
+- Retains gRPC Client (NeMo)
+- Exposes MCP/HTTP Tools
+"""
 import asyncio
 import logging
 import json
@@ -8,6 +14,7 @@ from typing import List, Optional, Dict, Any, Union
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
+import grpc
 
 # Adjust path so we can import from src
 sys.path.append(".")
@@ -22,6 +29,10 @@ from src.gateway.core.market import market_service
 from src.gateway.governance.consensus import consensus_engine
 from src.gateway.governance.safety import safety_filter
 
+# NeMo gRPC
+from src.gateway.protos import nemo_pb2
+from src.gateway.protos import nemo_pb2_grpc
+
 # Configure Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Gateway.HybridServer")
@@ -30,13 +41,26 @@ from src.governed_financial_advisor.utils.telemetry import configure_telemetry
 configure_telemetry()
 
 # --- 1. Initialize FastAPI App ---
-app = FastAPI(title="Governed Financial Advisor Gateway (Hybrid)")
+app = FastAPI(title="Governed Financial Advisor Gateway (HTTP/MCP)")
 
 # --- 2. Initialize MCP Server ---
 mcp = FastMCP("Governed Gateway")
 opa_client = OPAClient()
 # We initialize HybridClient lazily or globally
 llm_client = GatewayClient() # Uses env vars
+
+# Initialize NeMo Client (Lazy)
+nemo_url = os.getenv("NEMO_URL", "nemo:8000")
+nemo_channel = None
+nemo_stub = None
+
+def get_nemo_stub():
+    global nemo_channel, nemo_stub
+    if not nemo_stub:
+        logger.info(f"Connecting to NeMo Guardrails at {nemo_url}...")
+        nemo_channel = grpc.aio.insecure_channel(nemo_url)
+        nemo_stub = nemo_pb2_grpc.NeMoGuardrailsStub(nemo_channel)
+    return nemo_stub
 
 # --- 3. Governance Logic (Shared) ---
 # Initialize Neuro-Symbolic Governor
@@ -72,15 +96,6 @@ async def check_safety_constraints(target_tool: str, target_params: dict, risk_p
     """
     logger.info(f"🔍 Evaluator verifying proposed action: {target_tool} (Risk: {risk_profile})")
     
-    # Inject risk profile into params for OPA to see
-    # The Governor's 'verify' method eventually calls OPA.
-    # We need to ensure 'risk_profile' is in the payload OPA receives.
-    # We might need to patch attributes or pass it via context if SymbolicGovernor supports it.
-    # For now, let's inject it into target_params as metadata if possible, 
-    # or rely on OPAClient updates if we modify SymbolicGovernor.
-    
-    # Reviewing SymbolicGovernor.verify: it calls opa_client.evaluate_policy(params)
-    # So we should add risk_profile to target_params for the check.
     verification_params = target_params.copy()
     verification_params["risk_profile"] = risk_profile
     
@@ -115,11 +130,36 @@ async def get_market_sentiment(symbol: str) -> str:
 
 @mcp.tool()
 async def verify_content_safety(text: str) -> str:
-    """Verifies if the provided text content is safe (Jailbreak detection)."""
+    """Verifies if the provided text content is safe (Jailbreak detection) using NeMo Guardrails."""
     logger.info("Tool Call: verify_content_safety")
+
+    # 1. Basic Heuristic Check
     if "jailbreak" in text.lower() or "ignore previous" in text.lower():
          return "BLOCKED: Semantic Safety Violation (Jailbreak Pattern)"
-    return "SAFE"
+
+    # 2. Remote NeMo Check via gRPC
+    try:
+        stub = get_nemo_stub()
+        request = nemo_pb2.VerifyRequest(input=text)
+        # Timeout to prevent hanging
+        response = await asyncio.wait_for(stub.Verify(request), timeout=5.0)
+
+        if response.status == "SUCCESS":
+             # If NeMo returns SUCCESS, we assume it's safe, or we check response content if needed.
+             # NeMo might return a modified safe response.
+             return "SAFE"
+        else:
+             return f"BLOCKED: {response.response}"
+
+    except asyncio.TimeoutError:
+        logger.error("NeMo Service Timeout")
+        return "BLOCKED: Safety Service Timeout"
+    except grpc.RpcError as e:
+        logger.error(f"NeMo gRPC Failed: {e}")
+        return "BLOCKED: Safety Service Unavailable"
+    except Exception as e:
+         logger.error(f"NeMo Verification Error: {e}")
+         return f"BLOCKED: Safety Error {e}"
 
 @mcp.tool()
 async def evaluate_policy(action: str, description: str = None, dry_run: bool = True, **kwargs) -> str:
@@ -181,7 +221,7 @@ app.mount("/mcp", mcp.sse_app())
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "mode": "hybrid"}
+    return {"status": "ok", "mode": "http-mcp"}
 
 # --- 6. Chat Endpoint (OpenAI Compatible) ---
 
@@ -347,136 +387,14 @@ async def execute_tool_endpoint(request: ToolExecutionRequest):
         logger.error(f"Tool Execution Error: {e}")
         return {"status": "ERROR", "error": str(e)}
 
-# --- 8. gRPC Server Implementation ---
-import grpc
-from src.gateway.protos import gateway_pb2, gateway_pb2_grpc
-
-class GatewayService(gateway_pb2_grpc.GatewayServicer):
-    async def Chat(self, request, context):
-        """
-        gRPC Chat Implementation.
-        """
-        logger.info(f"gRPC Chat Request: Model={request.model}")
-        
-        # Extract prompt from messages
-        system_instruction = request.system_instruction
-        prompt = ""
-        for msg in request.messages:
-            if msg.role == "system":
-                system_instruction = msg.content
-            elif msg.role == "user":
-                prompt = msg.content
-
-        # Prepare kwargs
-        kwargs = {
-            "model": request.model,
-            "temperature": request.temperature,
-            "guided_json": json.loads(request.guided_json) if request.guided_json else None,
-            "guided_regex": request.guided_regex if request.guided_regex else None,
-            "guided_choice": json.loads(request.guided_choice) if request.guided_choice else None,
-            "stream": True # Force stream for gRPC
-        }
-
-        mode = "chat"
-        if "verifier" in (request.model or "") or request.mode == "verifier":
-            mode = "verifier"
-
-        try:
-            # Call HybridClient
-            # We need to ensure HybridClient supports yielding/streaming if we want true streaming.
-            # Current implementation returns full text. We will yield it as one chunk for now.
-            response_text = await llm_client.generate(
-                prompt=prompt,
-                system_instruction=system_instruction,
-                mode=mode,
-                **kwargs
-            )
-            
-            # Yield response
-            yield gateway_pb2.ChatResponse(content=response_text, is_final=True)
-
-        except Exception as e:
-            logger.error(f"gRPC Chat Error: {e}")
-            context.set_details(str(e))
-            context.set_code(grpc.StatusCode.INTERNAL)
-
-    async def ExecuteTool(self, request, context):
-        """
-        gRPC Tool Execution.
-        """
-        logger.info(f"gRPC Tool Execution: {request.tool_name}")
-        try:
-            params = json.loads(request.params_json)
-            output = None
-
-            # Recycle endpoint logic (refactor eventually to separate service layer)
-            if request.tool_name == "check_safety_constraints":
-                target_tool = params.get("target_tool")
-                target_params = params.get("target_params") or {}
-                risk_profile = params.get("risk_profile", "Medium")
-                output = await check_safety_constraints(target_tool, target_params, risk_profile)
-            
-            elif request.tool_name == "trigger_safety_intervention":
-                reason = params.get("reason", "Unknown")
-                output = await trigger_safety_intervention(reason)
-                
-            elif request.tool_name == "check_market_status":
-                symbol = params.get("symbol")
-                output = await check_market_status(symbol)
-                
-            elif request.tool_name == "get_market_sentiment":
-                symbol = params.get("symbol")
-                output = await get_market_sentiment(symbol)
-                
-            elif request.tool_name == "verify_content_safety":
-                text = params.get("text", "")
-                output = await verify_content_safety(text)
-                
-            elif request.tool_name == "evaluate_policy":
-                output = await evaluate_policy(**params)
-                
-            elif request.tool_name == "execute_trade_action":
-                output = await execute_trade_action(**params)
-                
-            else:
-                context.set_details(f"Tool '{request.tool_name}' not found")
-                context.set_code(grpc.StatusCode.NOT_FOUND)
-                return gateway_pb2.ToolResponse(status="ERROR", error="Tool not found")
-
-            return gateway_pb2.ToolResponse(output=str(output), status="SUCCESS")
-
-        except Exception as e:
-            logger.error(f"gRPC Tool Error: {e}")
-            return gateway_pb2.ToolResponse(error=str(e), status="ERROR")
-
-async def serve_grpc():
-    server = grpc.aio.server()
-    gateway_pb2_grpc.add_GatewayServicer_to_server(GatewayService(), server)
-    grpc_port = os.getenv("GATEWAY_GRPC_PORT", "50051")
-    server.add_insecure_port(f'[::]:{grpc_port}')
-    logger.info(f"🚀 gRPC Server starting on port {grpc_port}...")
-    await server.start()
-    await server.wait_for_termination()
-
 if __name__ == "__main__":
     import uvicorn
     
-    # Run both servers?
-    # Option: Run FastAPI in one task, gRPC in another.
-    # Uvicorn run() is blocking. We can use Config and Server.serve() in a loop.
-    
     http_port = int(os.getenv("PORT", 8080))
-    grpc_port = int(os.getenv("GATEWAY_GRPC_PORT", 50051))
+    # Removed gRPC Server initialization
     
     config = uvicorn.Config(app, host="0.0.0.0", port=http_port)
     server = uvicorn.Server(config)
     
-    async def main():
-        # Start gRPC
-        grpc_task = asyncio.create_task(serve_grpc())
-        # Start HTTP
-        http_task = asyncio.create_task(server.serve())
-        
-        await asyncio.gather(grpc_task, http_task)
-        
-    asyncio.run(main())
+    # Run only HTTP server
+    asyncio.run(server.serve())

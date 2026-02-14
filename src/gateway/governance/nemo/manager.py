@@ -1,5 +1,6 @@
 """
 Factory for creating NeMo Guardrails manager with vLLM/Llama support.
+Moved to src/gateway/governance/nemo/manager.py
 """
 import logging
 import os
@@ -15,22 +16,25 @@ from nemoguardrails.llm.providers import register_llm_provider
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
-from src.governed_financial_advisor.infrastructure.telemetry.nemo_exporter import NeMoOTelCallback
-from src.governed_financial_advisor.infrastructure.config_manager import config_manager
+from src.gateway.governance.nemo.exporter import NeMoOTelCallback
 
 # Configure Logging
-logger = logging.getLogger("NeMoManager")
-tracer = trace.get_tracer(__name__)
+logger = logging.getLogger("Gateway.NeMoManager")
+tracer = trace.get_tracer("gateway.governance.nemo")
 
 class VLLMLLM(BaseChatModel):
     """Custom LangChain-compatible wrapper for vLLM using LiteLLM."""
 
-    model_name: str = config_manager.get("GUARDRAILS_MODEL_NAME", "meta-llama/Meta-Llama-3.1-8B-Instruct")
-    api_base: str = config_manager.get("VLLM_BASE_URL", "http://localhost:8000/v1")
-    api_key: str = config_manager.get("VLLM_API_KEY", "EMPTY")
+    model_name: str = os.getenv("GUARDRAILS_MODEL_NAME", "meta-llama/Meta-Llama-3.1-8B-Instruct")
+    api_base: str = os.getenv("VLLM_BASE_URL", "http://localhost:8000/v1")
+    api_key: str = os.getenv("VLLM_API_KEY", "EMPTY")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        # Re-fetch env vars to be safe if they changed or were set after import
+        self.model_name = os.getenv("GUARDRAILS_MODEL_NAME", self.model_name)
+        self.api_base = os.getenv("VLLM_BASE_URL", self.api_base)
+        self.api_key = os.getenv("VLLM_API_KEY", self.api_key)
         print(f"DEBUG: VLLMLLM initialized with model={self.model_name}, base={self.api_base}")
 
     @property
@@ -51,7 +55,7 @@ class VLLMLLM(BaseChatModel):
             
             # Format messages for litellm
             formatted_messages = [{"role": m.type if m.type != "ai" else "assistant", "content": m.content} for m in messages]
-            # Map 'human' to 'user' if needed, though 'user' is standard. BaseMessage usually has 'human', 'ai', 'system'.
+            # Map 'human' to 'user' if needed
             for m in formatted_messages:
                 if m["role"] == "human": m["role"] = "user"
 
@@ -180,7 +184,7 @@ def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
 
     # Explicitly register actions
     try:
-        from src.governed_financial_advisor.governance.nemo_actions import (
+        from src.gateway.governance.nemo.actions import (
             check_approval_token,
             check_data_latency,
             check_drawdown_limit,
@@ -197,16 +201,6 @@ def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
         logger.warning(f"⚠️ Could not import NeMo actions: {e}")
 
     return rails
-
-# --- Adapters ---
-
-def load_rails() -> LLMRails:
-    """Wrapper to maintain consistency with new design."""
-    return create_nemo_manager()
-
-def initialize_rails() -> LLMRails:
-    """Wrapper for unified gateway."""
-    return create_nemo_manager()
 
 async def validate_with_nemo(user_input: str, rails: LLMRails) -> tuple[bool, str]:
     """

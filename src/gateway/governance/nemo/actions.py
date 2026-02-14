@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-logger = logging.getLogger("NeMo.Actions")
+logger = logging.getLogger("Gateway.NeMo.Actions")
 
 # --- STUBBED ACTIONS ---
 # Governance logic has been moved to src/gateway/governance/
