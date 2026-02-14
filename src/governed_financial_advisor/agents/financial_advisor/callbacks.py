@@ -40,7 +40,7 @@ def otel_interceptor_callback(
         if hasattr(llm_response, 'text') and llm_response.text:
             span.set_attribute("gen_ai.content.completion", str(llm_response.text)[:1000])
 
-        # Capture Metadata (Gemini Specifics)
+        # Capture Metadata (Model Specifics)
         # Capture usage data if available in the LlmResponse
         if hasattr(llm_response, 'usage_metadata'):
              # Check specific attributes of usage_metadata

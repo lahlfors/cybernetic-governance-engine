@@ -112,7 +112,7 @@ def create_execution_analyst_agent(model_name: str = MODEL_REASONING) -> Agent:
         instruction=get_execution_analyst_instruction(),
         output_key="execution_plan_output",
         tools=[],
-        # Configure JSON mode for Gemini using ADK's output_schema
+        # Configure JSON mode using ADK's output_schema
         output_schema=ExecutionPlan,
         generate_content_config={
             "response_mime_type": "application/json",

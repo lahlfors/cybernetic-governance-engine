@@ -6,11 +6,7 @@ This document outlines the performance strategy for the Cybernetic Governance En
 
 Every safe generation incurs a latency penalty:
 1.  **Semantic Guardrails (NeMo):** ~150-300ms (Input/Output checks).
-<<<<<<< HEAD
-2.  **Policy Evaluation (OPA):** ~20-60ms (Remote Service network hop + Rego eval).
-=======
 2.  **Policy Evaluation (OPA):** ~10-50ms (Sidecar network hop + Rego eval).
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
 3.  **Syntactic Enforcement (vLLM FSM):** ~50ms (with Prefix Caching).
 
 To maintain a responsive user experience (Total Response Time < 2s for simple queries), the underlying inference engine must be exceptionally fast.
@@ -21,11 +17,7 @@ We utilize a dedicated, self-hosted inference node for structure enforcement, op
 
 ### Hardware: NVIDIA L4 (24GB VRAM)
 *   **Why:** The L4 is the most cost-effective GPU for models < 20B parameters.
-<<<<<<< HEAD
-*   **Capacity:** A single L4 can comfortably host `google/gemma-2-9b-it` (Require ~18GB VRAM in bfloat16) with room for KV cache.
-=======
-*   **Capacity:** A single L4 can comfortably host `meta-llama/Llama-3.1-8B-Instruct` (~16GB VRAM in float16) with room for KV cache.
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
+*   **Capacity:** A single L4 can comfortably host `Qwen/Qwen2.5-7B-Instruct` (~16GB VRAM in float16) with room for KV cache.
 *   **Throughput:** Capable of high token-per-second generation for JSON structures.
 
 ### Software: vLLM + Prefix Caching
@@ -41,18 +33,14 @@ We use **vLLM** with **Prefix Caching** enabled (`--enable-prefix-caching`).
 
 | Component | Model | Hosted On | Optimization |
 |---|---|---|---|
-| **Reasoning** | `gemini-2.5-pro` | Vertex AI (SaaS) | Deep semantic understanding. |
-<<<<<<< HEAD
-| **Governance** | `gemma-2-9b-it` | GKE (NVIDIA L4) | Prefix Caching + Guided JSON. |
-=======
-| **Governance** | `Llama-3.1-8B-Instruct` | GKE (NVIDIA L4) | Prefix Caching + Guided JSON. |
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
+| **Reasoning** | `DeepSeek-R1-Distill-Qwen-32B` | GKE (NVIDIA L4) | Deep semantic understanding. |
+| **Governance** | `Qwen2.5-7B-Instruct` | GKE (NVIDIA L4) | Prefix Caching + Guided JSON. |
 
 ## Latency Budget Example
 
 **Scenario:** Risk Analyst generates a formal assessment.
 
-1.  **Agent Reasoning (Gemini):** 1.5s (Thinking time)
+1.  **Agent Reasoning (DeepSeek):** 3.0s (Thinking time)
 2.  **Tool Call (Governance Client):**
     *   Network RTT: 10ms
     *   **vLLM TTFT (Cached):** 40ms

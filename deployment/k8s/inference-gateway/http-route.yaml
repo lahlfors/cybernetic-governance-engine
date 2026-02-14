@@ -15,7 +15,7 @@ spec:
       headers:
       - type: Exact
         name: "x-model-id"
-        value: "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
+        value: "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
     backendRefs:
     - name: vllm-reasoning
       namespace: governance-stack
@@ -30,9 +30,9 @@ spec:
       headers:
       - type: Exact
         name: "x-model-id"
-        value: "meta-llama/Llama-3.2-3B-Instruct"
+        value: "Qwen/Qwen2.5-7B-Instruct"
     backendRefs:
-    - name: vllm-service
+    - name: vllm-inference
       namespace: governance-stack
       kind: Service
       port: 8000

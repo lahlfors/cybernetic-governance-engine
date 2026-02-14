@@ -26,8 +26,8 @@ This implementation adheres to the **Sovereign Stack** architecture, ensuring cl
 
 | Node | Model | Responsibility |
 |------|-------|----------------|
-| **Node A (The Brain)** | `DeepSeek-R1-Distill-Llama-8B` | Complex reasoning, planning, and analysis. High intelligence, higher latency. |
-| **Node B (The Police)** | `Meta-Llama-3.1-8B-Instruct` | Fast governance checks, FSM enforcement, JSON formatting. Ultra-low latency (<50ms). |
+| **Node A (The Brain)** | `DeepSeek-R1-Distill-Qwen-32B` | Complex reasoning, planning, and analysis. High intelligence, higher latency. |
+| **Node B (The Police)** | `Qwen2.5-7B-Instruct` | Fast governance checks, FSM enforcement, JSON formatting. Ultra-low latency (<50ms). |
 
 👉 **See [ARCHITECTURE.md](ARCHITECTURE.md) for full architecture details.**
 
@@ -78,11 +78,11 @@ Ensure `.env` points to your local or K8s vLLM services:
 
 ```bash
 # Node A: The Brain
-MODEL_REASONING=deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+MODEL_REASONING=deepseek-ai/DeepSeek-R1-Distill-Qwen-32B
 VLLM_REASONING_API_BASE=http://localhost:8000/v1
 
 # Node B: The Police
-MODEL_FAST=meta-llama/Llama-3.2-3B-Instruct
+MODEL_FAST=Qwen/Qwen2.5-7B-Instruct
 VLLM_FAST_API_BASE=http://localhost:8001/v1
 
 # Governance

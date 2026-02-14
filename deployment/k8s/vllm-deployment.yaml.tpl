@@ -21,7 +21,8 @@ spec:
             medium: Memory
             sizeLimit: "16Gi"  # vLLM requires large shared memory
         - name: model-cache
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: model-cache-fast-pvc
       containers:
         - name: vllm
           image: ${IMAGE_NAME}

@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debug-downloader-fix
+  namespace: governance-stack
+spec:
+  containers:
+  - name: downloader
+    image: python:3.9-slim
+    command: ["/bin/sh", "-c"]
+    args:
+    - |
+      pip install --upgrade huggingface_hub
+      echo "Checking hf-cli..."
+      which huggingface-cli
+      huggingface-cli --version || echo "huggingface-cli failed"
+      python3 -m huggingface_hub.cli --help || echo "python module exec failed"
+      sleep 600
+    volumeMounts:
+    - name: model-cache
+      mountPath: /model-cache
+    env:
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: hf-token-secret
+          key: token
+  restartPolicy: Never
+  volumes:
+  - name: model-cache
+    persistentVolumeClaim:
+      claimName: model-cache-fast-pvc

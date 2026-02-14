@@ -266,10 +266,11 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         # Inference Gateway
         "${VLLM_GATEWAY_URL}": os.environ.get("VLLM_GATEWAY_URL", ""),
         
-        # Langfuse (Hot Tier)
-        "${LANGFUSE_PUBLIC_KEY}": os.environ.get("LANGFUSE_PUBLIC_KEY", ""),
-        "${LANGFUSE_SECRET_KEY}": os.environ.get("LANGFUSE_SECRET_KEY", ""),
-        "${LANGFUSE_HOST}": os.environ.get("LANGFUSE_HOST", ""),
+        # LangSmith (Hot Tier) - Replaces Langfuse
+        "${LANGSMITH_TRACING}": os.environ.get("LANGSMITH_TRACING", "true"),
+        "${LANGSMITH_ENDPOINT}": os.environ.get("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com"),
+        "${LANGSMITH_API_KEY}": os.environ.get("LANGSMITH_API_KEY", ""),
+        "${LANGSMITH_PROJECT}": os.environ.get("LANGSMITH_PROJECT", "financial-advisor"),
         
         # OpenTelemetry (Cold Tier)
         "${OTEL_EXPORTER_OTLP_ENDPOINT}": os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
