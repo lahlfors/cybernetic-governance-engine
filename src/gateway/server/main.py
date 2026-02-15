@@ -237,13 +237,20 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
 async def serve():
     port = os.getenv("PORT", "50051")
     server = grpc.aio.server(futures.ThreadPoolExecutor(max_workers=10))
-    gateway_pb2_grpc.add_GatewayServicer_to_server(GatewayService(), server)
+
+    service = GatewayService()
+    gateway_pb2_grpc.add_GatewayServicer_to_server(service, server)
 
     server.add_insecure_port(f'[::]:{port}')
     logger.info(f"🚀 Gateway Server (gRPC) starting on port {port}...")
 
     await server.start()
-    await server.wait_for_termination()
+    try:
+        await server.wait_for_termination()
+    finally:
+        logger.info("Shutting down Gateway Server...")
+        await service.opa_client.close()
+        await service.llm_client.close()
 
 if __name__ == '__main__':
     asyncio.run(serve())

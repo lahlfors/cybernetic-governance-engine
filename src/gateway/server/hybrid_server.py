@@ -29,14 +29,28 @@ logger = logging.getLogger("Gateway.HybridServer")
 from src.governed_financial_advisor.utils.telemetry import configure_telemetry
 configure_telemetry()
 
-# --- 1. Initialize FastAPI App ---
-app = FastAPI(title="Governed Financial Advisor Gateway (Hybrid)")
-
-# --- 2. Initialize MCP Server ---
-mcp = FastMCP("Governed Gateway")
+# --- 1. Initialize Components ---
 opa_client = OPAClient()
 # We initialize HybridClient lazily or globally
 llm_client = GatewayClient() # Uses env vars
+
+# --- 2. Initialize FastAPI App ---
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("Starting up Hybrid Gateway...")
+    yield
+    # Shutdown
+    logger.info("Shutting down Hybrid Gateway...")
+    await opa_client.close()
+    await llm_client.close()
+
+app = FastAPI(title="Governed Financial Advisor Gateway (Hybrid)", lifespan=lifespan)
+
+# --- 3. Initialize MCP Server ---
+mcp = FastMCP("Governed Gateway")
 
 # --- 3. Governance Logic (Shared) ---
 # Initialize Neuro-Symbolic Governor

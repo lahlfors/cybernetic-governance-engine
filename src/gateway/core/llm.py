@@ -48,6 +48,14 @@ class GatewayClient:
         client = self.gateway_client if self.mode == "gateway" else self.governance_client
         return client, target_model
 
+    async def close(self):
+        """Closes the underlying AsyncOpenAI clients."""
+        if self.mode == "gateway":
+            await self.gateway_client.close()
+        else:
+            await self.reasoning_client.close()
+            await self.governance_client.close()
+        logger.info("GatewayClient (LLM) closed.")
 
     async def generate(self, prompt: str, system_instruction: str = None, mode: str = "chat", **kwargs) -> str:
         client, model = self._get_route(mode)
