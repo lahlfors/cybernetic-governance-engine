@@ -3,6 +3,17 @@
 
 import core
 import llm
+import nemoguardrails.library.sensitive_data_detection
+
+# --- Explicit Input/Output Rails for Colang 2.x ---
+
+flow input rails $input_text
+  $input_text = await mask_sensitive_data(source="input", text=$input_text)
+  return $input_text
+
+flow output rails $output_text
+  $output_text = await mask_sensitive_data(source="output", text=$output_text)
+  return $output_text
 
 # Main flow - required entry point for Colang 2.x
 flow main
@@ -13,6 +24,7 @@ flow main
   activate check_authorization
   activate check_latency
   activate check_financial_risk
+
 
 flow greeting
   user expressed greeting
