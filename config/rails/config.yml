@@ -13,4 +13,23 @@ instructions:
       You are a helpful financial advisor assistant.
       You must adhere to strict safety guidelines.
 
+rails:
+  config:
+    sensitive_data_detection:
+      include_rails: true
+      input:
+        entities:
+          - EMAIL_ADDRESS
+          - PHONE_NUMBER
+          - PERSON
+          - CREDIT_CARD
+          - US_SSN
+      output:
+        entities:
+          - EMAIL_ADDRESS
+          - PHONE_NUMBER
+          - PERSON
+          - CREDIT_CARD
+          - US_SSN
+
 # Actions are registered programmatically in nemo_manager.py

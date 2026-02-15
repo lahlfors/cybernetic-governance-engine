@@ -15,13 +15,15 @@ sys.path.append(".")
 
 from src.gateway.protos import nemo_pb2
 from src.gateway.protos import nemo_pb2_grpc
+from src.gateway.governance.nemo.manager import create_nemo_manager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("NeMoSidecar")
 
 # Load Rails Config
-RAILS_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "rails")
+# Config is located in config/rails relative to project root (from src/gateway/governance/nemo)
+RAILS_CONFIG_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../config/rails"))
 
 class NeMoService(nemo_pb2_grpc.NeMoGuardrailsServicer):
     def __init__(self):
@@ -30,12 +32,13 @@ class NeMoService(nemo_pb2_grpc.NeMoGuardrailsServicer):
 
     def _load_rails(self):
         try:
+            # Use create_nemo_manager to ensure actions and LLM providers are registered
             if os.path.exists(RAILS_CONFIG_PATH):
-                config = RailsConfig.from_path(RAILS_CONFIG_PATH)
-                self.rails = LLMRails(config)
+                self.rails = create_nemo_manager(RAILS_CONFIG_PATH)
                 logger.info(f"✅ NeMo Guardrails loaded from {RAILS_CONFIG_PATH}")
             else:
                 logger.warning(f"⚠️ Rails config not found at {RAILS_CONFIG_PATH}")
+                # Fallback? No.
         except Exception as e:
             logger.error(f"❌ Failed to load NeMo Guardrails: {e}")
             self.rails = None
