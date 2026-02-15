@@ -71,12 +71,12 @@ The `GatewayClient` (`src/gateway/core/llm.py`) routes traffic between two speci
 
 1.  **Node A: The Brain (Reasoning Plane)**
     *   **Use Case:** High-order reasoning, Planning (System 4), and Evaluation (System 3).
-    *   **Model:** `deepseek-ai/DeepSeek-R1-Distill-Llama-8B` (Hosted on GKE with NVIDIA L4).
+    *   **Model:** `deepseek-ai/DeepSeek-R1-Distill-Qwen-32B` (Hosted on GKE with NVIDIA L4).
     *   **Why:** Provides advanced reasoning capabilities for complex financial analysis.
 
 2.  **Node B: The Police (Governance Plane)**
     *   **Use Case:** Fast Governance Checks, JSON Formatting (FSM), and Simple Execution (System 1).
-    *   **Model:** `meta-llama/Llama-3.2-3B-Instruct` (Hosted on Shared GPU).
+    *   **Model:** `Qwen/Qwen2.5-7B-Instruct` (Hosted on Shared GPU).
     *   **Role:**
         *   Used by the **Executor** and **Evaluator** for deterministic tasks.
         *   Enforces JSON schemas via `outlines` (FSM), ensuring the "Dumb Executor" never hallucinates malformed tool calls.

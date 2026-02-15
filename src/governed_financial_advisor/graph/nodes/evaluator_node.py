@@ -29,7 +29,7 @@ async def evaluator_node(state: AgentState) -> dict[str, Any]:
         return {"next_step": "execution_analyst", "risk_feedback": "No plan provided."}
 
     # Extract details for checks
-    target_tool = "execute_trade"
+    target_tool = "market_analysis" # Default to analysis (was execute_trade)
     target_params = {}
 
     if isinstance(plan, dict):

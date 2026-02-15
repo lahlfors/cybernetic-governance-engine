@@ -14,6 +14,16 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
+# LangSmith Deep Integration
+try:
+    from langsmith import traceable
+except ImportError:
+    # No-op decorator if langsmith is not installed (e.g., during minimal tests)
+    def traceable(**kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
 # Import Factory Functions
 from src.governed_financial_advisor.agents.data_analyst.agent import create_data_analyst_agent
 from src.governed_financial_advisor.agents.execution_analyst.agent import create_execution_analyst_agent
@@ -89,6 +99,7 @@ class AgentResponse:
         self.answer = answer
         self.function_calls = function_calls or []
 
+@traceable(run_type="chain", name="ADK Agent Runner")
 def run_adk_agent(agent_instance, user_msg: str, session_id: str = "default", user_id: str = "default_user"):
     """
     Wraps the ADK Agent Runner to execute a turn and return the result object.
@@ -205,16 +216,31 @@ def execution_analyst_node(state):
 
     # INJECT FEEDBACK if the loop pushed us back here
     if state.get("risk_status") == "REJECTED_REVISE":
+        # 1. CIRCUIT BREAKER: Check recursion depth
+        current_loop = state.get("loop_count", 0) or 0
+        if current_loop >= 3:
+             print(f"🛑 [Circuit Breaker] Max Loops ({current_loop}) reached. Terminating recursion.")
+             return {
+                "messages": [("ai", "I cannot recommend a trade at this time due to persistent safety policy violations. Please adjust your risk profile or select a different asset.")],
+                "next_step": "FINISH",
+                "risk_status": "UNKNOWN",
+                "execution_plan_output": None
+            }
+        
+        # 2. Increment Loop Count
         feedback = state.get("risk_feedback")
         user_msg = (
             f"CRITICAL: Your previous strategy was REJECTED by Risk Management.\n"
             f"Feedback: {feedback}\n"
             f"Task: Generate a REVISED, SAFER strategy based on this feedback."
         )
-        print("--- [Loop] Injecting Risk Feedback ---")
-
+        print(f"--- [Loop {current_loop+1}] Injecting Risk Feedback ---")
+    
     # PIPELINE LOGIC: Construct the prompt with context
     else:
+        # Reset Loop Count on fresh start
+        state["loop_count"] = 0
+        current_loop = 0
         # Check if we already have risk attitude in state, if so, mention it.
         risk = state.get("risk_attitude", "moderate") # Default to moderate if unknown, or let agent ask
         period = state.get("investment_period", "medium-term")
@@ -277,14 +303,22 @@ def execution_analyst_node(state):
         final_response = res.answer
 
     # Reset status so we can potentially loop again or proceed
-    return {
+    # Reset status so we can potentially loop again or proceed
+    updates = {
         "messages": [("ai", final_response)],
         "risk_status": "UNKNOWN",
         "execution_plan_output": plan_output,
-        # Update State from Plan (Context Extraction)
-        "risk_attitude": plan_output.get("user_risk_attitude") if plan_output else None,
-        "investment_period": plan_output.get("user_investment_period") if plan_output else None
+        "loop_count": (state.get("loop_count", 0) or 0) + 1 if state.get("risk_status") == "REJECTED_REVISE" else 0,
     }
+    
+    # Update State from Plan (Context Extraction) ONLY if present in output
+    if plan_output:
+        if plan_output.get("user_risk_attitude"):
+            updates["risk_attitude"] = plan_output.get("user_risk_attitude")
+        if plan_output.get("user_investment_period"):
+            updates["investment_period"] = plan_output.get("user_investment_period")
+            
+    return updates
 
 
 def governed_trader_node(state):

@@ -44,12 +44,12 @@ spec:
         - "--served-model-name"
         - "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
         - "--max-model-len"
-        - "8192"
+        - "4096"
         - "--quantization"
-        - "awq"
+        - "awq_marlin"
         - "--dtype"
         - "half"
-        - "--enforce-eager"
+
         - "--trust-remote-code"
         - "--enable-auto-tool-choice"
         - "--tool-call-parser"
@@ -57,7 +57,7 @@ spec:
         - "--port"
         - "8000"
         - "--gpu-memory-utilization"
-        - "0.99"
+        - "0.95"
         env:
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
@@ -76,11 +76,16 @@ spec:
         volumeMounts:
         - name: dshm
           mountPath: /dev/shm
+        - name: model-cache
+          mountPath: /root/.cache/huggingface
       volumes:
       - name: dshm
         emptyDir:
           medium: Memory
           sizeLimit: "4Gi"
+      - name: model-cache
+        persistentVolumeClaim:
+          claimName: model-cache-reasoning-pvc
 ---
 apiVersion: v1
 kind: Service

@@ -1,0 +1,41 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: vllm-inference-scaler
+  namespace: governance-stack
+spec:
+  scaleTargetRef:
+    name: vllm-inference
+  minReplicaCount: 0
+  maxReplicaCount: 1
+  triggers:
+  # Using Google Cloud Monitoring (Stackdriver) since we are on GKE
+  # This avoids needing a separate Prometheus instance for basic metrics
+  - type: gcp-stackdriver
+    metadata:
+      projectId: ${PROJECT_ID}
+      filter: |
+        metric.type="kubernetes.io/container/cpu/core_usage_time"
+        resource.type="k8s_container"
+        resource.label."cluster_name"="governance-cluster"
+        resource.label."namespace_name"="governance-stack"
+        resource.label."pod_name"=~"vllm-inference-.*"
+      # If CPU usage > 0, scale up? No, that doesn't work for scale-from-zero.
+      # Scale-from-zero requires an external metric (like Queue depth or HTTP requests).
+      # KEDA HTTP Add-on is best, but requires installing another controller.
+      # GKE Ingress/Gateway metrics usually appear in Stackdriver.
+      # Let's try to query the Gateway metrics if available.
+      # FALLBACK: For now, we use a simple cron scaler for "office hours" simulation
+      # or we need the KEDA HTTP Add-on.
+      # The user asked for "efficient", scale-to-zero implies HTTP trigger or Queue.
+      # Let's install KEDA HTTP Addon next if we want true request-based scale-to-zero.
+      # OR we use the "Prometheus" scaler pointing to GKE Managed Prometheus (GMP).
+      # GMP is enabled (gmp-system namespace exists).
+      # Let's assume we can query GMP.
+  - type: prometheus 
+    metadata:
+      # GKE Managed Prometheus frontend
+      serverAddress: http://frontend.gmp-system.svc.cluster.local:9090
+      query: sum(rate(http_requests_total{app="vllm-inference"}[2m]))
+      threshold: "0.1"
+      activationThreshold: "0.1"

@@ -1,16 +1,14 @@
 """
 Telemetry configuration for GCP Cloud Logging and Cloud Trace.
+Refactored for Hybrid Observability (LangSmith Async + AgentSight).
 """
 import contextlib
 import logging
 import os
-import random
 import sys
-import base64
 from typing import Any
 
 from pythonjsonlogger import jsonlogger
-
 
 # Configure Structured JSON Logging immediately
 class TraceIdFilter(logging.Filter):
@@ -53,43 +51,11 @@ logger = logging.getLogger("FinancialAdvisor")
 
 _telemetry_configured = False
 
-def smart_sampling(span: Any) -> bool:
-    """
-    Applies Semantic Sampling Logic for the Cold Tier.
-
-    Logic:
-    - RISKY (Blocked/Altered): 100%
-    - WRITE (Tools/Execution): 100%
-    - READ (Chat): 1%
-    """
-    attributes = span.attributes or {}
-
-    # A. RISKY: Guardrail intervention (BLOCKED or ALTERED)
-    outcome = attributes.get("guardrail.outcome")
-    if outcome in ["BLOCKED", "ALTERED"]:
-        return True
-
-    # B. WRITE: Tool execution
-    # Check for 'gen_ai.tool.name' or if span name implies execution
-    if "gen_ai.tool.name" in attributes:
-        return True
-
-    # Heuristic for write nodes if not explicitly using tool attribute
-    if "execute" in span.name.lower() or "write" in span.name.lower():
-        return True
-
-    # C. READ: Default (Chat) -> Variable Sampling (Default 1%)
-    # We assume if it's not Write/Risky, it's Read/Chat
-    sampling_rate = float(os.getenv("TRACE_SAMPLING_RATE", "0.01"))
-    if random.random() < sampling_rate:
-        return True
-
-    return False
-
 def configure_telemetry():
     """
-    Configures OpenTelemetry tracing and Google Cloud Logging.
-    This function is idempotent - calling it multiple times has no effect.
+    Configures OpenTelemetry tracing (Hybrid Mode).
+    Uses standard async BatchSpanProcessors to capture payloads for LangSmith,
+    while AgentSight handles system-level correlation via HTTP headers.
     """
     global _telemetry_configured
     if _telemetry_configured:
@@ -100,162 +66,67 @@ def configure_telemetry():
         from opentelemetry import trace
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter, Compression
 
-        # Try to configure Google Cloud Trace
+        # Set up tracer provider
+        provider = TracerProvider()
+        trace.set_tracer_provider(provider)
+
+        # 1. Hot Tier: Cloud Trace (or OTLP fallback)
         try:
-            # Set up tracer provider
-            provider = TracerProvider()
-            trace.set_tracer_provider(provider)
-
-            # 1. Define Exporters
-            # Hot Tier: Cloud Trace
-            try:
-                from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
-                gcp_project = os.environ.get("GOOGLE_CLOUD_PROJECT")
+            from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
+            gcp_project = os.environ.get("GOOGLE_CLOUD_PROJECT")
+            if gcp_project:
                 cloud_exporter = CloudTraceSpanExporter(project_id=gcp_project)
-                hot_processor = BatchSpanProcessor(cloud_exporter)
+                provider.add_span_processor(BatchSpanProcessor(cloud_exporter))
+                logger.info(f"✅ OpenTelemetry: Cloud Trace configured for project {gcp_project}")
+        except Exception:
+            pass
 
-                # Optimizer Processor (Correct Import)
-                try:
-                    from src.governed_financial_advisor.infrastructure.telemetry.processors.genai_cost_optimizer import (
-                        GenAICostOptimizerProcessor,
-                    )
-                except ImportError as e:
-                    logger.warning(f"⚠️ Optimizer Processor import failed: {e}")
-                    raise
+        # 2. Cold Tier / LangSmith (Standard Async Tracing)
+        otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+        if otel_endpoint:
+             otel_headers = {}
+             if os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
+                  pairs = os.getenv("OTEL_EXPORTER_OTLP_HEADERS").split(",")
+                  for pair in pairs:
+                       k, v = pair.split("=", 1)
+                       otel_headers[k] = v
 
-                # Cold Tier: OTLP (Standard/Arrow-compatible)
-                # Only enable if explicitly configured to avoid localhost connection errors in GKE
-                otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-                cold_processor = None
+             otlp_exporter = OTLPSpanExporter(endpoint=otel_endpoint, headers=otel_headers)
+             provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
+             logger.info(f"✅ OpenTelemetry: OTLP Exporter configured at {otel_endpoint}")
 
-                if otel_endpoint:
-                    otel_headers = {}
-                    if os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
-                         pairs = os.getenv("OTEL_EXPORTER_OTLP_HEADERS").split(",")
-                         for pair in pairs:
-                              k, v = pair.split("=", 1)
-                              otel_headers[k] = v
+        # LangSmith Integration (Via OTLP)
+        langsmith_key = os.getenv("LANGSMITH_API_KEY")
+        langsmith_endpoint = os.environ.get("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
 
-                    otlp_exporter = OTLPSpanExporter(endpoint=otel_endpoint, headers=otel_headers)
-                    cold_processor = BatchSpanProcessor(otlp_exporter)
-                    logger.info(f"✅ OpenTelemetry: OTLP Exporter configured at {otel_endpoint}")
-                
-                # Langfuse Integration (Automatic if Env Vars present)
-                langfuse_pk = os.getenv("LANGFUSE_PUBLIC_KEY")
-                langfuse_sk = os.getenv("LANGFUSE_SECRET_KEY")
-                langfuse_host = os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com")
-                
-                if langfuse_pk and langfuse_sk:
-                    try:
-                        # 1. Configure Tracing (OTLP to Langfuse)
-                        # Remove 'https://' from host for basic auth construction if needed, but OTLP usually takes full URL
-                        # Langfuse OTLP endpoint: /api/public/otel/v1/traces
-                        langfuse_otlp_endpoint = f"{langfuse_host.rstrip('/')}/api/public/otel/v1/traces"
-                        
-                        # Ensure no whitespace
-                        pk = langfuse_pk.strip()
-                        sk = langfuse_sk.strip()
-                        
-                        # Auth Header: Basic base64(pk:sk)
-                        auth_str = f"{pk}:{sk}"
-                        auth_bytes = auth_str.encode("ascii")
-                        base64_auth = base64.b64encode(auth_bytes).decode("ascii")
-                        
-                        # Set Env Vars for OTLP (Standard way)
-                        os.environ["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] = langfuse_otlp_endpoint
-                        os.environ["OTEL_EXPORTER_OTLP_TRACES_HEADERS"] = f"Authorization=Basic {base64_auth}"
-                        
-                        from opentelemetry.exporter.otlp.proto.http.trace_exporter import Compression
-
-                        # Use default constructor which reads env vars
-                        langfuse_exporter = OTLPSpanExporter(
-                            compression=Compression.NoCompression
-                        )
-                        # Add as a separate processor
-                        provider.add_span_processor(BatchSpanProcessor(langfuse_exporter))
-                        logger.info(f"✅ Langfuse: Tracing configured at {langfuse_otlp_endpoint}")
-
-                    except Exception as e:
-                        logger.warning(f"⚠️ Langfuse configuration failed: {e}")
-                else:
-                    logger.info("ℹ️ Langfuse: Credentials not found, skipping integration.")
-                
-                if not cold_processor:
-                    logger.info("ℹ️ OpenTelemetry: OTEL_EXPORTER_OTLP_ENDPOINT not set. Using NoOp Cold Tier.")
-                    # Define lightweight NoOp processor to satisfy optimizer contract
-                    class NoOpSpanProcessor:
-                        def on_start(self, span, parent_context=None): pass
-                        def on_end(self, span): pass
-                        def shutdown(self): pass
-                        def force_flush(self, timeout_millis=30000): return True
-                    cold_processor = NoOpSpanProcessor()
-
-
-
-                # 2. Configure Optimizer Processor
-                # Routes Sampled/Audit (Cold) -> OTLP (Full Fidelity)
-                # Routes All (Hot) -> Cloud Trace (Stripped)
-                optimizer = GenAICostOptimizerProcessor(
-                    hot_processor=hot_processor,
-                    cold_processor=cold_processor,
-                    pricing_rule=smart_sampling
-                )
-                provider.add_span_processor(optimizer)
-                logger.info("✅ OpenTelemetry: Tiered Observability (Cost Optimizer) configured with OTLP Cold Tier.")
-
-            except Exception as e:
-                logger.warning(f"⚠️ Telemetry Pipeline Logic failed: {e}")
-                # Fallback: Just add Cloud Trace if optimizer failed
-                try:
-                     from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
-                     gcp_project = os.environ.get("GOOGLE_CLOUD_PROJECT")
-                     cloud_exporter = CloudTraceSpanExporter(project_id=gcp_project)
-                     provider.add_span_processor(BatchSpanProcessor(cloud_exporter))
-                     logger.info("✅ OpenTelemetry: Fallback to simple Cloud Trace.")
-                except Exception:
-                     pass
-
-            # Instrument the requests and httpx libraries for HTTP tracing
+        if langsmith_key:
             try:
-                from opentelemetry.instrumentation.requests import RequestsInstrumentor
-                RequestsInstrumentor().instrument()
-                logger.info("✅ OpenTelemetry: Requests HTTP library instrumented.")
-
-                # Instrument httpx if available
-                try:
-                    from opentelemetry.instrumentation.httpx import (
-                        HTTPXClientInstrumentor,
-                    )
-                    HTTPXClientInstrumentor().instrument()
-                    logger.info("✅ OpenTelemetry: HTTPX library instrumented.")
-                except ImportError:
-                    pass
-
-            except ImportError:
-                logger.warning("⚠️ Requests/HTTPX instrumentation not available")
+                langsmith_otlp_endpoint = f"{langsmith_endpoint.rstrip('/')}/otel/v1/traces"
+                
+                langsmith_exporter = OTLPSpanExporter(
+                    endpoint=langsmith_otlp_endpoint,
+                    headers={"x-api-key": langsmith_key.strip()},
+                    compression=Compression.NoCompression
+                )
+                provider.add_span_processor(BatchSpanProcessor(langsmith_exporter))
+                logger.info(f"✅ LangSmith: Async Tracing configured at {langsmith_otlp_endpoint}")
             except Exception as e:
-                logger.warning(f"⚠️ HTTP instrumentation failed: {e}")
+                logger.warning(f"⚠️ LangSmith configuration failed: {e}")
 
-        except Exception as e:
-            logger.warning(f"⚠️ OpenTelemetry Cloud Trace not configured: {e}")
-
-        # Configure Google Cloud Logging (if explicitly needed, but JSON to stdout is often enough for Cloud Run)
-        # We prefer our custom JSON handler for consistency, but if GCL client is used, it might attach its own handler.
-        # We will wrap it in try-except but mostly rely on our setup_canonical_logging
+        # Instrument HTTP libraries
         try:
-            # Check environment to decide if we want to use the library
-            if os.getenv("GOOGLE_CLOUD_PROJECT"):
-                 pass
-                 # We skip google.cloud.logging.Client().setup_logging() to avoid overriding our JSON formatter
-                 # unless we want to use its specific features.
-                 # For Phase 1/2, stdout JSON is best practice.
-        except Exception as e:
-             logger.warning(f"⚠️ Google Cloud Logging check failed: {e}")
+            from opentelemetry.instrumentation.requests import RequestsInstrumentor
+            RequestsInstrumentor().instrument()
+            from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+            HTTPXClientInstrumentor().instrument()
+            logger.info("✅ OpenTelemetry: HTTP instrumentation enabled.")
+        except ImportError:
+            pass
 
         _telemetry_configured = True
-        logger.info("✅ Telemetry configuration complete.")
+        logger.info("✅ Telemetry configuration complete (Hybrid Mode).")
 
     except ImportError as e:
         logger.warning(f"⚠️ Telemetry dependencies not available: {e}")
@@ -276,8 +147,8 @@ def get_tracer():
 @contextlib.contextmanager
 def genai_span(name: str, prompt: str = None, model: str = None):
     """
-    Context manager for GenAI Semantic Conventions.
-    Captures prompt, model, and creates a distinct span.
+    Context manager for GenAI Semantic Conventions (Hybrid).
+    Captures prompt content for LangSmith (async), while AgentSight captures raw traffic.
     """
     tracer = get_tracer()
     if tracer is None:
@@ -287,10 +158,14 @@ def genai_span(name: str, prompt: str = None, model: str = None):
     try:
         from opentelemetry import trace as otel_trace
         with tracer.start_as_current_span(name) as span:
+            # HYBRID: We restore payload capture here for LangSmith utility.
+            # The 'BatchSpanProcessor' ensures this is handled asynchronously.
             if prompt:
                 span.set_attribute("gen_ai.content.prompt", prompt)
+
             if model:
                 span.set_attribute("gen_ai.request.model", model)
+
             try:
                 yield span
             except Exception as e:
@@ -302,18 +177,14 @@ def genai_span(name: str, prompt: str = None, model: str = None):
 
 
 def record_completion(span, completion: str):
-    """Helper to add completion to the current span."""
-    if span:
+    """Helper to record completion metadata (Hybrid)."""
+    if span and completion:
+        # HYBRID: We restore payload capture here for LangSmith utility.
         span.set_attribute("gen_ai.content.completion", completion)
 
 def record_usage(span, usage):
     """
     Helper to add token usage stats to the current span.
-    Handles both Pydantic objects (OpenAI) and dictionaries.
-    Terms mapped to GenAI Semantic Conventions:
-    - prompt_tokens -> gen_ai.usage.input_tokens
-    - completion_tokens -> gen_ai.usage.output_tokens
-    - total_tokens -> gen_ai.usage.total_tokens
     """
     if not span or not usage:
         return
@@ -322,7 +193,6 @@ def record_usage(span, usage):
     completion_tokens = None
     total_tokens = None
 
-    # Handle Pydantic model (OpenAI) or dict
     if hasattr(usage, "prompt_tokens"):
         prompt_tokens = getattr(usage, "prompt_tokens", 0)
         completion_tokens = getattr(usage, "completion_tokens", 0)
@@ -334,12 +204,7 @@ def record_usage(span, usage):
 
     if prompt_tokens is not None:
         span.set_attribute("gen_ai.usage.input_tokens", prompt_tokens)
-        # Also set prompt_tokens for broader compatibility if needed
-        span.set_attribute("gen_ai.usage.prompt_tokens", prompt_tokens)
-        
     if completion_tokens is not None:
         span.set_attribute("gen_ai.usage.output_tokens", completion_tokens)
-        span.set_attribute("gen_ai.usage.completion_tokens", completion_tokens)
-        
     if total_tokens is not None:
         span.set_attribute("gen_ai.usage.total_tokens", total_tokens)

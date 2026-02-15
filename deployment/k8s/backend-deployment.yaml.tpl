@@ -79,13 +79,24 @@ spec:
             - name: OPA_URL
               value: "${OPA_URL}"
 
-            # --- Langfuse (Hot Tier Observability) ---
-            - name: LANGFUSE_PUBLIC_KEY
-              value: "${LANGFUSE_PUBLIC_KEY}"
-            - name: LANGFUSE_SECRET_KEY
-              value: "${LANGFUSE_SECRET_KEY}"
-            - name: LANGFUSE_HOST
-              value: "${LANGFUSE_HOST}"
+            # --- LangSmith (Hot Tier Observability) ---
+            - name: LANGSMITH_TRACING
+              value: "${LANGSMITH_TRACING}"
+            - name: LANGSMITH_ENDPOINT
+              value: "${LANGSMITH_ENDPOINT}"
+            - name: LANGSMITH_API_KEY
+              value: "${LANGSMITH_API_KEY}"
+            - name: LANGSMITH_PROJECT
+              value: "${LANGSMITH_PROJECT}"
+            # Map to LangChain Standard Vars (for automatic instrumentation reliability)
+            - name: LANGCHAIN_TRACING_V2
+              value: "${LANGSMITH_TRACING}"
+            - name: LANGCHAIN_ENDPOINT
+              value: "${LANGSMITH_ENDPOINT}"
+            - name: LANGCHAIN_API_KEY
+              value: "${LANGSMITH_API_KEY}"
+            - name: LANGCHAIN_PROJECT
+              value: "${LANGSMITH_PROJECT}"
 
             # --- OpenTelemetry (Cold Tier) ---
             - name: OTEL_EXPORTER_OTLP_ENDPOINT

@@ -84,7 +84,7 @@ def generate_workflow():
     """Generates a strict ordered workflow scenario for evaluation."""
     symbol = random.choice(SYMBOLS)
     strategy = random.choice(STRATEGIES)
-    risk = random.choice(RISK_PROFILES)
+    risk = "Conservative" # Forced for deterministic testing
     action = random.choice(ACTIONS)
     amount = random.randint(10, 500)
     

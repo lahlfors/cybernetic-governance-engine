@@ -16,6 +16,13 @@ spec:
         app: gateway
     spec:
       serviceAccountName: financial-advisor-sa # Needs access to Firestore/etc if applicable, or same SA
+      volumes:
+        - name: policy-volume
+          secret:
+            secretName: finance-policy-rego
+        - name: opa-config-volume
+          secret:
+            secretName: opa-configuration
       containers:
         - name: gateway
           image: ${GATEWAY_IMAGE_URI}
@@ -42,6 +49,9 @@ spec:
               value: "redis://${REDIS_HOST}:${REDIS_PORT}"
             - name: VLLM_GATEWAY_URL
               value: "${VLLM_GATEWAY_URL}"
+            # OPA Configuration
+            - name: OPA_URL
+              value: "http://localhost:8181/v1/data/finance/allow"
           resources:
             requests:
               cpu: "250m"
@@ -49,6 +59,33 @@ spec:
             limits:
               cpu: "500m"
               memory: "1Gi"
+
+        # OPA Sidecar
+        - name: opa
+          image: openpolicyagent/opa:latest-static
+          ports:
+            - containerPort: 8181
+          args:
+            - "run"
+            - "--server"
+            - "--addr=localhost:8181"
+            - "--config-file=/config/opa_config.yaml"
+            - "/policies/finance_policy.rego"
+          volumeMounts:
+            - name: policy-volume
+              mountPath: /policies/finance_policy.rego
+              subPath: finance_policy.rego
+              readOnly: true
+            - name: opa-config-volume
+              mountPath: /config
+              readOnly: true
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
 ---
 apiVersion: v1
 kind: Service

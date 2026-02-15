@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debug-model-downloader-qwen
+  namespace: governance-stack
+spec:
+  containers:
+  - name: downloader
+    image: python:3.9-slim
+    command: ["/bin/sh", "-c"]
+    args:
+    - |
+      pip install --upgrade huggingface_hub
+      echo "⬇️ Downloading/Verifying model: Qwen/Qwen2.5-7B-Instruct"
+      python3 -m huggingface_hub.cli download Qwen/Qwen2.5-7B-Instruct --cache-dir /model-cache --token ${HF_TOKEN} --verbose || sleep 3600
+      echo "✅ Download complete."
+    volumeMounts:
+    - name: model-cache
+      mountPath: /model-cache
+    env:
+    - name: HF_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: hf-token-secret
+          key: token
+  restartPolicy: Never
+  volumes:
+  - name: model-cache
+    persistentVolumeClaim:
+      claimName: model-cache-fast-pvc

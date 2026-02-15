@@ -21,7 +21,9 @@ class AgentState(TypedDict):
 
     # Risk Loop Control
     risk_status: Literal["UNKNOWN", "APPROVED", "REJECTED_REVISE"]
+    risk_status: Literal["UNKNOWN", "APPROVED", "REJECTED_REVISE"]
     risk_feedback: str | None
+    loop_count: int | None # Track recursion depth for Safety Breaker
 
     # Safety & Optimization Control
     safety_status: Literal["APPROVED", "BLOCKED", "ESCALATED", "SKIPPED"]

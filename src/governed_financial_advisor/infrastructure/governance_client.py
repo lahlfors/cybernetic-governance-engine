@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 class GovernanceClient:
-    # Default to the "Goldilocks" model: 9B parameters, fits on L4
-    DEFAULT_MODEL_ID = "google/gemma-2-9b-it"
+    # Default to the "Goldilocks" model: 7B parameters, fits on L4
+    DEFAULT_MODEL_ID = "Qwen/Qwen2.5-7B-Instruct"
 
     def __init__(
         self,

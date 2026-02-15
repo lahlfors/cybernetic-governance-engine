@@ -67,8 +67,8 @@ services:
       - GOOGLE_CLOUD_LOCATION=${GOOGLE_CLOUD_LOCATION:-us-central1}
       - OPA_URL=http://opa:8181/v1/data/finance/allow
       - OPA_AUTH_TOKEN=${OPA_AUTH_TOKEN:-dev-token}
-      - MODEL_FAST=${MODEL_FAST:-meta-llama/Llama-3.1-8B-Instruct}
-      - MODEL_REASONING=${MODEL_REASONING:-meta-llama/Llama-3.1-70B-Instruct}
+      - MODEL_FAST=${MODEL_FAST:-Qwen/Qwen2.5-7B-Instruct}
+      - MODEL_REASONING=${MODEL_REASONING:-deepseek-ai/DeepSeek-R1-Distill-Qwen-32B}
       - VLLM_FAST_API_BASE=http://vllm-fast:8000/v1
       # Gateway Host updated to point to MCP Gateway
       - GATEWAY_HOST=gateway

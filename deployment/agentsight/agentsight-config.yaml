@@ -1,0 +1,30 @@
+# AgentSight Daemon Configuration
+# https://github.com/agent-sight/agentsight
+
+daemon:
+  log_level: "info"
+  # Target Process Selector
+  # If left empty, it monitors all processes matching the pattern (default: python3)
+  target_pattern: "python3"
+
+# eBPF Probe Configuration
+probes:
+  # Intent: SSL/TLS Interception (OpenSSL)
+  ssl:
+    enabled: true
+    library_path: "/usr/lib/x86_64-linux-gnu/libssl.so.3" # Adjust for your base image
+
+  # Action: System Call Monitoring
+  syscalls:
+    enabled: true
+    events:
+      - execve
+      - openat
+      - connect
+      - socket
+      - bind
+
+# Output / Export Configuration
+exporter:
+  type: "console" # Or "remote" to send to Dashboard backend
+  endpoint: "http://agentsight-dashboard:8080"

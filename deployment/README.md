@@ -65,7 +65,7 @@ python3 deployment/deploy_sw.py --project-id YOUR_PROJECT_ID --skip-build
 Configuration is managed via `deployment/config.yaml` (default settings) and `.env` (secrets/overrides).
 
 **Key Environment Variables:**
-*   `MODEL_FAST`: Model ID for the fast path (e.g., `meta-llama/Llama-3.1-8B-Instruct`).
+*   `MODEL_FAST`: Model ID for the fast path (e.g., `Qwen/Qwen2.5-7B-Instruct`).
 *   `MODEL_REASONING`: Model ID for the reasoning path.
 *   `HUGGING_FACE_HUB_TOKEN`: Required for vLLM to download gated models.
 *   `OPENAI_API_KEY`: Required if using OpenAI models via NeMo.

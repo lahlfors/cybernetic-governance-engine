@@ -58,13 +58,13 @@ The primary divergence is in the **ARPaCCino Pattern** (Module 6), where the sys
 *   **Concept:** **Speculative Decoding (SD)**
     *   **Implementation:** The project implements a **Draft Model** architecture rather than Medusa (multi-head).
     *   **Configuration:**
-        *   **Target:** `google/gemma-3-27b-it`
-        *   **Draft:** `google/gemma-3-4b-it`
+        *   **Target:** `deepseek-ai/DeepSeek-R1-Distill-Qwen-32B`
+        *   **Draft:** `Qwen/Qwen2.5-1.5B-Instruct`
         *   **Lookahead:** 5 tokens
     *   **Evidence:** `deployment/k8s/vllm-deployment.yaml`:
         ```yaml
-        - "--model", "google/gemma-3-27b-it"
-        - "--speculative-model", "google/gemma-3-4b-it"
+        - "--model", "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
+        - "--speculative-model", "Qwen/Qwen2.5-1.5B-Instruct"
         - "--num-speculative-tokens", "5"
         ```
 *   **Concept:** **Latency "Surplus"**

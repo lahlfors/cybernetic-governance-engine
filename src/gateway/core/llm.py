@@ -1,6 +1,7 @@
 import json
 import logging
 from openai import AsyncOpenAI
+from opentelemetry import trace
 from src.governed_financial_advisor.utils.telemetry import genai_span, record_completion, record_usage
 from config.settings import Config
 
@@ -66,6 +67,18 @@ class GatewayClient:
     
             if extra_body:
                 kwargs["extra_body"] = extra_body
+
+            # Inject Trace Context for AgentSight Correlation (Hybrid Strategy)
+            extra_headers = kwargs.get("extra_headers", {})
+            try:
+                current_span = trace.get_current_span()
+                if current_span and current_span.get_span_context().is_valid:
+                    trace_id = format(current_span.get_span_context().trace_id, "032x")
+                    extra_headers["X-Trace-Id"] = trace_id
+                    # Also inject full traceparent for standard propagation
+                    # extra_headers["traceparent"] = ... (Optional, X-Trace-Id is enough for AgentSight)
+            except Exception:
+                pass
     
             try:
                 response = await client.chat.completions.create(
@@ -74,6 +87,7 @@ class GatewayClient:
                         {"role": "system", "content": system_instruction or "You are a helpful assistant."},
                         {"role": "user", "content": prompt}
                     ],
+                    extra_headers=extra_headers,
                     **kwargs
                 )
                 
