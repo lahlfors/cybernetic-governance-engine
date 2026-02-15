@@ -44,7 +44,28 @@ We employ a **Hybrid Strategy** to balance latency and visibility:
 3.  **Configure Environment:**
     Copy `.env.example` to `.env` and set your keys (Alpaca, LangSmith, etc.).
 
-### Running the System
+### GKE Deployment
+
+To deploy the system to Google Kubernetes Engine (GKE):
+
+```bash
+python3 deployment/deploy_sw.py --project-id <YOUR_PROJECT_ID> --region <YOUR_REGION>
+```
+
+This script will:
+*   Build and push Docker images (Gateway, Backend, UI).
+*   Provision GKE infrastructure (if not exists).
+*   Deploy vLLM Inference and Reasoning services.
+*   Deploy the Financial Advisor agents.
+
+**Verification:**
+After deployment, run the verification suite:
+```bash
+export BACKEND_URL="http://<LOAD_BALANCER_IP>"
+python3 tests/test_vertex_evaluation.py
+```
+
+### Running the System (Local)
 
 **Option 1: Full Stack (with AgentSight)**
 To run the advisor with full system-level observability:

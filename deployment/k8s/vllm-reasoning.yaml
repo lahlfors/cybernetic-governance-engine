@@ -44,7 +44,7 @@ spec:
         - "--served-model-name"
         - "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
         - "--max-model-len"
-        - "2048"
+        - "4096"
         - "--quantization"
         - "awq_marlin"
         - "--dtype"
@@ -57,7 +57,7 @@ spec:
         - "--port"
         - "8000"
         - "--gpu-memory-utilization"
-        - "0.92"
+        - "0.95"
         env:
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:

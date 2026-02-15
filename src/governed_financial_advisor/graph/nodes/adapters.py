@@ -303,15 +303,22 @@ def execution_analyst_node(state):
         final_response = res.answer
 
     # Reset status so we can potentially loop again or proceed
-    return {
+    # Reset status so we can potentially loop again or proceed
+    updates = {
         "messages": [("ai", final_response)],
         "risk_status": "UNKNOWN",
         "execution_plan_output": plan_output,
         "loop_count": (state.get("loop_count", 0) or 0) + 1 if state.get("risk_status") == "REJECTED_REVISE" else 0,
-        # Update State from Plan (Context Extraction)
-        "risk_attitude": plan_output.get("user_risk_attitude") if plan_output else None,
-        "investment_period": plan_output.get("user_investment_period") if plan_output else None
     }
+    
+    # Update State from Plan (Context Extraction) ONLY if present in output
+    if plan_output:
+        if plan_output.get("user_risk_attitude"):
+            updates["risk_attitude"] = plan_output.get("user_risk_attitude")
+        if plan_output.get("user_investment_period"):
+            updates["investment_period"] = plan_output.get("user_investment_period")
+            
+    return updates
 
 
 def governed_trader_node(state):

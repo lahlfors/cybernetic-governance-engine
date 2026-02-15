@@ -71,9 +71,9 @@ async def get_market_sentiment_tool(ticker: str) -> str:
         
         # Truncate result to prevent Context Limit (4096 tokens)
         # 6000 chars is roughly 1.5k tokens.
-        if len(str(result)) > 15000:
+        if len(str(result)) > 1000:
             logger.warning(f"Truncating sentiment data for {ticker} (Len: {len(str(result))})")
-            return str(result)[:15000] + "... [TRUNCATED]"
+            return str(result)[:1000] + "... [TRUNCATED]"
             
         return result
     except Exception as e:

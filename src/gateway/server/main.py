@@ -133,10 +133,15 @@ class GatewayService(gateway_pb2_grpc.GatewayServicer):
              # params should contain 'target_tool' and 'target_params'
              target_tool = params.get("target_tool", "execute_trade")
              target_params = params.get("target_params", {})
+             risk_profile = params.get("risk_profile", "Moderate")
 
-             logger.info(f"🔍 Evaluator verifying proposed action: {target_tool}")
+             # Inject risk_profile into target_params so OPA sees it
+             verification_params = target_params.copy()
+             verification_params["risk_profile"] = risk_profile
 
-             violations = await self.symbolic_governor.verify(target_tool, target_params)
+             logger.info(f"🔍 Evaluator verifying proposed action: {target_tool} with Risk: {risk_profile}")
+
+             violations = await self.symbolic_governor.verify(target_tool, verification_params)
 
              if not violations:
                  return gateway_pb2.ToolResponse(status="SUCCESS", output="APPROVED: No violations detected.")
