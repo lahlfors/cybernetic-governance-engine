@@ -15,17 +15,13 @@ The architecture enforces "Defense in Depth" through six distinct layers (0-5):
 
 ### Layer 0: Conversational Guardrails (NeMo)
 **Goal:** Input/Output Safety & Topical Control.
-<<<<<<< HEAD
-We use **NeMo Guardrails** as the first line of defense to ensure the model stays on topic and avoids jailbreaks *before* it even processes a tool call.
-=======
 We use **NeMo Guardrails** running **In-Process** as the first line of defense to ensure the model stays on topic and avoids jailbreaks *before* it even processes a tool call. The in-process architecture is validated in both the main `server.py` entry point and the parallel safety checks in `optimistic_nodes.py`.
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
 *   **Implementation:** `src/utils/nemo_manager.py` & `config/rails/`
 *   **Observability (ISO 42001):** A custom `NeMoOTelCallback` intercepts every guardrail intervention (e.g., `self_check_input`) and emits an OpenTelemetry span with `guardrail.outcome` and `iso.control_id="A.6.2.8"`.
 
 ### Layer 1: Session Persistence (Redis)
 **Goal:** Stateful Sessions on Stateless Compute.
-Cloud Run containers are **stateless** (ephemeral). To maintain session continuity, we use **Redis (Cloud Memorystore)** for session state persistence.
+The Agentic Gateway runs on **GKE (Google Kubernetes Engine)** behind a global load balancer. To maintain session continuity across pod restarts, we use **Redis (Cloud Memorystore)** for session state persistence.
 *   **Constraint:** Session state is checkpointed to Redis after each turn.
 *   **Safety:** This ensures consistent behavior even if the compute node was destroyed and recreated.
 *   **Implementation:** `src/graph/checkpointer.py` using Redis-backed session storage.
@@ -49,15 +45,12 @@ We use **Open Policy Agent (OPA)** and **Rego** to decouple policy from code. Th
 **Role-Based Access Control (RBAC):**
 *   **Junior Trader:** Limit $5,000. Manual Review $5,000 - $10,000.
 *   **Senior Trader:** Limit $500,000. Manual Review $500,000 - $1,000,000.
-*   **Architecture (Sidecar):** OPA runs as a sidecar container on `localhost`. This eliminates network latency, enabling **real-time** compliance checks critical for high-frequency trading decisions.
+*   **Architecture (Sovereign vLLM):** The system runs on **GKE Standard** with **NVIDIA L4 GPUs**. The OPA policy engine is co-located within the governance pod, ensuring low-latency compliance checks.
 *   **Implementation:** `src/governance/policy/finance_policy.rego`
 
-<<<<<<< HEAD
-=======
 **State Management (CBF):**
 The `ControlBarrierFunction` in `safety.py` now supports transactional state updates with `rollback_state(cost)` to handle failed downstream executions.
 
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
 ### Layer 4: The Semantic Verifier (Intent)
 **Goal:** Semantic Safety & Anti-Hallucination.
 We implement a **Propose-Verify-Execute** pattern:
@@ -70,12 +63,8 @@ We implement a **Propose-Verify-Execute** pattern:
 ### Layer 5: The Consensus Engine (Adaptive Compute)
 **Goal:** High-Stakes Validation.
 For actions exceeding a high-risk threshold ($10,000), the system triggers an **Ensemble Check**.
-<<<<<<< HEAD
-*   **Mechanism:** The `ConsensusEngine` simulates a voting process (mocked for this sample) to ensure unanimous agreement before execution.
-=======
 *   **Mechanism:** The `ConsensusEngine` orchestrates a multi-agent debate (using distinct "Risk Manager" and "Compliance Officer" personas) to ensure unanimous agreement before execution.
 *   **Model Configuration:** Uses `MODEL_CONSENSUS` environment variable (defaults to `MODEL_REASONING`).
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
 *   **Integration:** Embedded in the `@governed_tool` decorator. If the consensus check fails, the trade is blocked even if OPA approves.
 *   **Implementation:** `src/governance/consensus.py`
 
@@ -93,46 +82,31 @@ We implement a **Risk-Based Tiered Strategy** for observability, solving the par
 *   **Hot Storage (Datadog/Cloud Trace):** Essential for operational health (latency, error rates) but prohibitively expensive for storing full LLM payloads (prompts/responses).
 *   **Cold Storage (S3/GCS):** Cheap but slow to query. Essential for compliance and forensics ("Why did the agent do that?").
 
-<<<<<<< HEAD
-### The Solution: Smart Sampling
-We implement a custom **OpenTelemetry SpanProcessor** (`TieredSpanProcessor`) that routes data based on risk and utility:
-=======
-### The Solution: Smart Sampling (Implemented)
-The architecture implements a **Risk-Based Tiered Strategy** using the `GenAICostOptimizerProcessor` to route data based on utility.
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
+### The Solution: AgentSight (eBPF) + Hybrid Observability
+We utilize **AgentSight**, a kernel-level observability framework using eBPF, to capture full fidelity data without penalizing application performance.
 
-| Tier | Destination | Content | Sampling Logic | Purpose |
-|------|-------------|---------|----------------|---------|
-| **Hot** | Cloud Trace | Metadata Only (Latency, Status, TraceID) | 100% | Operational Health |
-<<<<<<< HEAD
-| **Cold** | GCS/S3 (Parquet) | Full Payload (Prompts, Reasoning, RAG Chunks) | **Smart Sampled** | Forensics & Compliance |
+| Tier | Component | Content | Purpose |
+|------|-----------|---------|---------|
+| **Hot** | **Cloud Trace** | Metadata (Latency, Status, TraceID) | Operational Health |
+| **Deep** | **AgentSight (eBPF)** | Full Payloads (Prompts, Completions) + Syscalls | Forensics & Security |
+| **App** | **LangSmith** | Application Logic (Chains, Agents) | Debugging & Eval |
 
-### Smart Sampling Logic
-The processor applies semantic rules to decide what gets archived to Cold Storage:
-1.  **READ (Chat):** Sample **1%**. Most chat is noise.
-2.  **WRITE (Tools):** Sample **100%**. Any state-changing action (Trade, SQL) is fully archived.
-3.  **RISKY (Guardrails):** Sample **100%**. Any interaction where `guardrail.outcome` is `BLOCKED` or `ALTERED` is preserved for security audit.
+### How It Works
+1.  **Zero-Overhead Capture:** AgentSight runs as a sidecar daemon with privileged access. It uses eBPF probes to intercept SSL/TLS traffic at the kernel level, capturing the raw "Intent" (Prompt) and "Response" (Completion) without the Python application needing to serialize or export heavy payloads.
+2.  **Syscall Monitoring:** Unlike standard tracing, AgentSight also monitors system calls (e.g., `connect`, `execve`). If an agent tries to open a reverse shell or connect to a suspicious IP, AgentSight sees the **Action**, not just the intent.
+3.  **Correlation:** The application injects an `X-Trace-Id` header into LLM requests. AgentSight captures this header, allowing us to link the low-level kernel trace with the high-level LangSmith application trace.
 
 ### Implementation
-*   **Stripping:** The processor actively *strips* heavy attributes (`gen_ai.content.prompt`, `gen_ai.content.completion`) from the span *before* it is sent to the Hot Exporter, reducing ingestion costs by orders of magnitude.
-*   **Parquet:** Cold traces are written in Parquet format for efficient long-term storage and querying via BigQuery/Athena.
-*   **Source:** `src/infrastructure/telemetry/tiered_processor.py`
-=======
-| **Cold** | Local Parquet (Sync needed for GCS) | Full Payload (Prompts, Reasoning, RAG Chunks) | **Smart Sampled** | Forensics & Compliance |
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
+*   **Source:** `deployment/agentsight/` (Daemon Configuration)
+*   **Integration:** `src/governed_financial_advisor/utils/telemetry.py` (Hybrid Configuration)
 
 ## 4. Implementation Details
 
 ### The Deterministic Router (LangGraph)
 The `financial_coordinator` (Supervisor) does **not** have direct access to sub-agents. It cannot "hallucinate" a call to `governed_trading_agent`.
 Instead, we use **LangGraph** to implement a rigid State Graph that separates control from reasoning.
-<<<<<<< HEAD
-*   **Supervisor Node:** Routes user intents to specific agent nodes (Data, Risk, Execution).
-*   **Risk Refinement Loop:** If the Risk Analyst node returns a `REJECTED_REVISE` status, the graph *automatically* routes back to the Execution Analyst. The system injects the specific risk feedback into the prompt, forcing the planner to self-correct before the trade can proceed. This ensures that no unsafe plan can reach the Execution state.
-=======
 *   **Supervisor Node:** Routes user intents to specific agent nodes (Data, Execution, Governed Trader).
 *   **Risk Refinement Loop:** If the **Optimistic Execution Node** (Safety Layer) detects a violation, the graph *automatically* routes back to the Execution Analyst. The system injects the specific risk feedback into the prompt, forcing the planner to self-correct before the trade can proceed. This ensures that no unsafe plan can reach the Execution state.
->>>>>>> origin/docs/agentic-gateway-analysis-15132879769016669359
 
 ### Governance Decorator
 The `@governed_tool` decorator (`src/governance/client.py`) intercepts all tool executions.
@@ -156,11 +130,12 @@ The `@governed_tool` decorator (`src/governance/client.py`) intercepts all tool 
     uv run python3 -m unittest discover tests
     ```
 
-## 6. Deployment (Cloud Run Sidecar)
+## 6. Deployment (Sovereign vLLM onto GKE)
 
-The architecture is designed for Google Cloud Run with OPA as a sidecar container.
-*   **Application Container:** Python/FastAPI agent.
-*   **Sidecar Container:** OPA serving the Rego policy.
-*   **Communication:** Localhost HTTP (Application -> `localhost:8181` -> OPA).
+The architecture is designed for **Google Kubernetes Engine (GKE)** using the **Sovereign vLLM** pattern.
+*   **Infrastructure:** GKE Standard Cluster with NVIDIA L4 GPU node pools.
+*   **Governance Pod:** Contains the Financial Advisor agent and OPA policy engine.
+*   **Inference Pod:** Runs vLLM serving the Reasoning Model (DeepSeek-R1-Distill) and Fast Model (Qwen2.5).
+*   **Communication:** Intra-cluster gRPC/HTTP.
 
-For detailed deployment instructions, including the sidecar configuration and startup checks, please see **[deployment/README.md](deployment/README.md)**.
+For detailed deployment instructions, please see **[deployment/README.md](deployment/README.md)**.
