@@ -5,7 +5,7 @@ An AI-driven financial agent designed to demonstrate **safe, governed, and perfo
 ## Key Features
 
 *   **Sovereign Architecture:** "Split-Brain" topology separating Reasoning (Llama 3.1 8B) from Governance (Llama 3.2 3B).
-*   **Neuro-Symbolic Governance:** Enforces SR 11-7 and ISO 42001 compliance using OPA policies, STPA hazard analysis, and circuit breakers.
+*   **Neuro-Symbolic Governance:** Enforces SR 11-7 and ISO 42001 compliance using OPA policies, STPA hazard analysis, PII Masking (Presidio), and circuit breakers.
 *   **Hybrid Observability:**
     *   **Application Layer:** Async LangSmith tracing for prompt engineering and execution trees.
     *   **System Layer:** AgentSight (eBPF sidecar) for deep payload inspection and security monitoring (syscalls).

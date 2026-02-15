@@ -211,9 +211,22 @@ def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
     rails = LLMRails(config)
 
     # Explicitly register actions
-    # Actions removed as they were stubs or unused in this context.
-    # The native actions are auto-registered.
-    pass
+    try:
+        from src.gateway.governance.nemo.actions import (
+            check_approval_token,
+            check_data_latency,
+            check_drawdown_limit,
+            check_slippage_risk,
+            check_atomic_execution,
+        )
+        rails.register_action(check_approval_token, "check_approval_token")
+        rails.register_action(check_data_latency, "check_data_latency")
+        rails.register_action(check_drawdown_limit, "check_drawdown_limit")
+        rails.register_action(check_slippage_risk, "check_slippage_risk")
+        rails.register_action(check_atomic_execution, "check_atomic_execution")
+        logger.info("✅ NeMo actions registered successfully")
+    except ImportError as e:
+        logger.warning(f"⚠️ Could not import NeMo actions: {e}")
 
     return rails
 

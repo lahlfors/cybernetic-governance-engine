@@ -10,6 +10,7 @@ The Gateway acts as the central orchestrator and compliance enforcement point fo
     *   Exposes a unified HTTP/MCP interface.
     *   Handles tool execution requests (`execute_trade`, `search_market`).
     *   Enforces neuro-symbolic policies via OPA and the Symbolic Governor.
+    *   **NeMo Guardrails (PII & Semantic):** Enforces topical safety and masks PII (Presidio) on input/output.
 
 2.  **Sovereign vLLM Cluster:**
     *   **Node A (Reasoning):** Handles planning, complex analysis, and chain-of-thought generation.
