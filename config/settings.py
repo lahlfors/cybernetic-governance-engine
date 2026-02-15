@@ -31,6 +31,10 @@ class Config:
     # Otherwise, it falls back to the split-brain URLs above.
     VLLM_GATEWAY_URL = os.getenv("VLLM_GATEWAY_URL")
 
+    # --- LangSmith ---
+    LANGCHAIN_TRACING_V2 = os.getenv("LANGCHAIN_TRACING_V2", "true")
+    LANGCHAIN_PROJECT = os.getenv("LANGCHAIN_PROJECT", "financial-advisor")
+
 # Backward compatibility & Module-level access
 MODEL_NAME = Config.DEFAULT_REASONING_MODEL
 MODEL_FAST = Config.MODEL_FAST

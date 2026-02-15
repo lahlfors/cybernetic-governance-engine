@@ -118,6 +118,12 @@ spec:
             - name: GATEWAY_GRPC_PORT
               value: "${GATEWAY_GRPC_PORT}"
 
+            # --- LangSmith ---
+            - name: LANGCHAIN_TRACING_V2
+              value: "${LANGCHAIN_TRACING_V2}"
+            - name: LANGCHAIN_PROJECT
+              value: "${LANGCHAIN_PROJECT}"
+
             # --- MCP Configuration ---
             - name: MCP_MODE
               value: "${MCP_MODE}"

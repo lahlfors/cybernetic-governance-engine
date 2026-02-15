@@ -288,6 +288,10 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         # Gateway Configuration
         "${GATEWAY_HOST}": "gateway.governance-stack.svc.cluster.local",
         "${GATEWAY_GRPC_PORT}": "50051",
+        
+        # --- LangSmith ---
+        "${LANGCHAIN_TRACING_V2}": os.environ.get("LANGCHAIN_TRACING_V2", "true"),
+        "${LANGCHAIN_PROJECT}": os.environ.get("LANGCHAIN_PROJECT", "financial-advisor"),
     }
     
     # Helper: strip surrounding quotes from .env values (they get re-quoted in YAML)
