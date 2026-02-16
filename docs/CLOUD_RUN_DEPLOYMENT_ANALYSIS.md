@@ -1,86 +1,54 @@
-# Cloud Run Deployment Analysis: Agentic Gateway
+# Cloud Run Deployment Analysis
 
-## Executive Summary
+**Architecture: Split Gateway & NeMo Services**
 
-This document analyzes the strategy for deploying the gRPC **Agentic Gateway** (`src/gateway`) to Google Cloud Run. The primary decision is between deploying the Gateway as a **Sidecar Container** (same Cloud Run Service) or as a **Separate Microservice** (distinct Cloud Run Service).
+This document analyzes the alternative architectural pattern of deploying the Gateway Service and NeMo Guardrails as **separate** Cloud Run services, rather than consolidating them.
 
-**Recommendation:** Deploy as a **Separate Cloud Run Service (Microservice)**. This maximizes security isolation (Identity Separation) and allows independent scaling, despite a minor latency penalty.
+## Motivation
 
----
+While consolidation offers latency benefits, splitting the services aligns with a microservices philosophy and may offer advantages in specific scaling or organizational scenarios.
 
-## 1. Deployment Options
+## Architecture
 
-### Option A: Sidecar Container (Multi-Container Support)
-Cloud Run supports deploying multiple containers in a single Service (Pod-like structure).
-*   **Architecture:** `[Agent Container] <--(localhost:50051)--> [Gateway Container]`
-*   **Latency:** Minimal (localhost loopback, <0.1ms).
-*   **Security:** Shared Identity (Service Account). Both containers run as the same Google Service Account (GSA).
-*   **Scaling:** Coupled. If the Agent scales to 10 instances, the Gateway scales to 10 instances.
+### Components
 
-### Option B: Separate Microservice (Service-to-Service)
-Deploy the Gateway as its own Cloud Run Service.
-*   **Architecture:** `[Agent Service] <--(gRPC/Network)--> [Gateway Service]`
-*   **Latency:** Increased (Network Hop + Load Balancer + Auth Handshake). Est: 10-30ms.
-*   **Security:** **Strong Isolation.** The Agent GSA can have *zero* permissions. The Gateway GSA holds the keys to the Exchange and Vertex AI. The Agent only has permission to `invoke` the Gateway.
-*   **Scaling:** Decoupled. The Gateway can handle traffic from multiple Agent types or scale differently based on CPU load (e.g., Token Counting vs Reasoning).
+1.  **Gateway Service (Cloud Run Service A):**
+    *   **Role:** Orchestrator / Proxy.
+    *   **Logic:** Lightweight FastAPI app.
+    *   **Responsibility:** Handles tool routing, OPA checks, and calls the NeMo service for content verification.
+    *   **Scaling:** Scales based on request throughput (IO bound).
 
----
+2.  **NeMo Service (Cloud Run Service B):**
+    *   **Role:** Governance Engine.
+    *   **Logic:** NeMo Guardrails + Presidio + Spacy.
+    *   **Responsibility:** Receives text, performs PII masking and safety checks, returns sanitized text.
+    *   **Scaling:** Scales based on CPU/Memory usage (Compute bound).
 
-## 2. Technical Feasibility (gRPC on Cloud Run)
+### Communication
 
-Cloud Run fully supports gRPC (via HTTP/2).
+*   **Protocol:** HTTPS (gRPC or REST).
+*   **Authentication:** Service-to-Service IAM (OIDC tokens).
+*   **Latency:** Incurs network overhead (~20-50ms per check within the same region).
 
-*   **Requirement:** The Gateway Service must expose port `8080` (or configured port) and the client must use HTTP/2.
-*   **Configuration:**
-    ```yaml
-    # serving.knative.dev/minScale: "1"  <-- Recommended to avoid Cold Starts
-    containers:
-      - image: gateway-image
-        ports:
-          - containerPort: 50051
-            name: h2c  # Explicitly signal HTTP/2
-    ```
-*   **Authentication:** Cloud Run requires `Authorization: Bearer <OIDC_TOKEN>` for Service-to-Service calls. The Agent must fetch an ID Token for the Gateway audience.
+## Pros & Cons (vs. Consolidated)
 
----
-
-## 3. Latency Impact Analysis
-
-**The "Latency as Currency" Trade-off:**
-
-| Metric | Sidecar (Option A) | Microservice (Option B) |
+| Feature | Split Architecture | Consolidated Architecture |
 | :--- | :--- | :--- |
-| **Connection Time** | ~0ms (Localhost) | ~20ms (DNS + TLS + Connect) |
-| **Request RTT** | <0.1ms | ~5-10ms (internal Google network) |
-| **Cold Start** | Shared (Single Wakeup) | Cascading (Agent wakes -> Calls Gateway -> Gateway wakes). |
+| **Scaling** | **Granular:** Scale NeMo (heavy) independently of Gateway (light). | **Unified:** Must scale the heavy container even for light tasks. |
+| **Development** | **Decoupled:** Teams can iterate on Policy vs. Logic separately. | **Coupled:** Policy changes require redeploying the Gateway. |
+| **Latency** | High: Network hop + serialization. | **Low:** In-process function call. |
+| **Cost** | Potentially Higher: Min instances needed for *both* services to avoid cold starts. | Lower: Shared idle resources. |
+| **Complexity** | High: IAM, networking, service discovery. | Low: Single deployment artifact. |
+| **Cold Start** | **Critical Risk:** If NeMo scales to zero, Gateway waits 5-10s for it to wake up. | Managed: Gateway startup includes NeMo load. |
 
-**Evaluation:**
-*   For **LLM Streaming**, the 20ms connection overhead is negligible compared to the 200ms+ TTFT of the LLM.
-*   For **Tool Execution**, the 10ms overhead is acceptable given the Governance value.
-*   **Cold Start Risk:** Cascading cold starts are the biggest risk for Option B. This can be mitigated by keeping `min_instances=1` for the Gateway.
+## Recommendation
 
----
+**Status: Rejected for Initial MVP.**
 
-## 4. Pros & Cons
+**Reasoning:**
+1.  **Latency is Currency:** In the "Cybernetic Governance" model, every millisecond counts for the safety check loop. Adding 50ms+ network overhead per interaction degrades the user experience.
+2.  **Complexity:** Managing secure service-to-service authentication on Cloud Run adds significant Terraform/Deployment complexity for a relatively small codebase.
+3.  **Cost:** Running two separate "min instance" sets to prevent cold starts doubles the idle cost.
 
-### Option A: Sidecar
-*   **Pros:** Ultra-low latency, simple networking (localhost), no auth overhead between containers.
-*   **Cons:** **Security Violation.** The Agent container shares the Identity. If the Agent is compromised, it can steal the Gateway's credentials (e.g., using `gcloud auth print-access-token` from the metadata server). This defeats the purpose of the "Security Boundary".
-
-### Option B: Microservice
-*   **Pros:** **Zero Trust Architecture.** The Agent has *no credentials* except the ability to call the Gateway. The Gateway is the only entity with access to the Exchange API and sensitive Policy data. Independent Lifecycle (update Gateway without redeploying Agents).
-*   **Cons:** Network Latency (~10ms), cascading cold starts, slightly more complex IaC (Terraform).
-
----
-
-## 5. Final Recommendation
-
-**Deploy as a Separate Microservice.**
-
-The primary driver for this architecture is **Governance and Security** ("The Governor"). Option A (Sidecar) compromises security by sharing the Service Account identity. Therefore, Option B is the only viable choice for a high-integrity system.
-
-**Implementation Plan:**
-1.  **Containerize Gateway:** Create `Dockerfile.gateway`.
-2.  **Infrastructure:** Define Cloud Run Service `gateway-service` with `http2` enabled.
-3.  **Identity:** Create `sa-agent` (invoker) and `sa-gateway` (executor). Bind `roles/run.invoker` on `gateway-service` to `sa-agent`.
-4.  **Client Update:** Update `GatewayClient` in the Agent to fetch OIDC tokens (`google.auth.default()`) and attach them to gRPC metadata.
+**Future Consideration:**
+If the NeMo logic becomes extremely heavy (e.g., loading 70B parameter local models), splitting it off to a GPU-enabled Cloud Run (or returning to GKE) would be necessary. For the current `en_core_web_sm` + API-based LLM design, consolidation is superior.
