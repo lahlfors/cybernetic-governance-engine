@@ -79,10 +79,17 @@ class NeMoManager:
         """
         Checks input against NeMo Guardrails.
         Returns a dict with 'response' (the possibly modified text) and 'blocked' status.
+
+        PRODUCTION SAFETY: Fails Closed.
+        If rails are not initialized or an error occurs, the request is BLOCKED.
         """
         if not self.rails:
-            logger.warning("NeMo Rails not initialized. Bypassing check.")
-            return {"response": input_text, "blocked": False, "bypass": True}
+            logger.critical("NeMo Rails not initialized. FAILING CLOSED.")
+            return {
+                "response": "Safety System Unavailable. Request Blocked.",
+                "blocked": True,
+                "error": "Guardrails Not Initialized"
+            }
 
         # OTel Context
         handler = NeMoOTelCallback()
@@ -110,7 +117,11 @@ class NeMoManager:
 
         except Exception as e:
             logger.error(f"Guardrail execution failed: {e}")
-            # Fail closed or open? If guardrails fail, maybe we should block.
-            return {"response": "Error in safety check.", "blocked": True, "error": str(e)}
+            # FAIL CLOSED: Any error in safety check MUST result in a block.
+            return {
+                "response": "Internal Governance Error. Request Blocked.",
+                "blocked": True,
+                "error": str(e)
+            }
         finally:
             streaming_handler_var.reset(token)

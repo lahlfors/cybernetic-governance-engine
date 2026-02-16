@@ -44,8 +44,10 @@ async def mask_sensitive_data(text: str, source: str = "input") -> str:
         return text
 
     if not analyzer or not anonymizer:
-        logger.warning("Presidio not initialized. Returning text unmasked.")
-        return text
+        # FAIL CLOSED: If we can't sanitize, we can't show it.
+        # Returning a placeholder forces a block or generic refusal downstream if the text was needed.
+        logger.critical("Presidio not initialized. FAILING CLOSED. Returning REDACTED placeholder.")
+        return "[REDACTED - SECURITY SYSTEM UNAVAILABLE]"
 
     try:
         # 1. Analyze
@@ -77,7 +79,5 @@ async def mask_sensitive_data(text: str, source: str = "input") -> str:
 
     except Exception as e:
         logger.error(f"Error during PII masking: {e}")
-        # Fail open (return original) or fail closed (return empty/error)?
-        # For PII, fail safe usually implies blocking or redaction, but crashing isn't good.
-        # We'll return the original but log heavily, assuming the LLM might catch it or it's a trade-off.
-        return text
+        # FAIL CLOSED: Return a secure placeholder if the PII masking fails.
+        return "[REDACTED - SECURITY ERROR]"
