@@ -11,6 +11,7 @@ async def test_gateway_client_reuses_http_client():
     with patch("httpx.AsyncClient") as mock_client_cls:
         # Mock the client instance
         mock_client_instance = AsyncMock()
+        mock_client_instance.is_closed = False  # Ensure it looks open
         mock_client_cls.return_value = mock_client_instance
 
         # Mock the response
@@ -18,14 +19,19 @@ async def test_gateway_client_reuses_http_client():
         mock_response.json.return_value = {"choices": [{"message": {"content": "Test Response"}}]}
         mock_client_instance.post.return_value = mock_response
 
-        # Instantiate GatewayClient (should trigger AsyncClient creation)
+        # Instantiate GatewayClient (Lazy initialization)
         client = GatewayClient()
+
+        # Verify AsyncClient was NOT created yet
+        mock_client_cls.assert_not_called()
+
+        # Call chat (triggers initialization)
+        await client.chat("Hello")
 
         # Verify AsyncClient was created once
         mock_client_cls.assert_called_once()
 
-        # Call chat multiple times
-        await client.chat("Hello")
+        # Call chat again
         await client.chat("World")
 
         # Verify AsyncClient was NOT created again

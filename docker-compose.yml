@@ -24,31 +24,16 @@ services:
       timeout: 3s
       retries: 5
 
-  # NeMo Guardrails: Semantic Safety
-  nemo:
-    build:
-      context: .
-      dockerfile: Dockerfile.nemo
-    command: ["uvicorn", "src.governance.nemo_server:app", "--host", "0.0.0.0", "--port", "8000"]
-    ports:
-      - "8000:8000"
-    environment:
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
-    volumes:
-      - ./src:/app/src
-
-  # Gateway (MCP Server)
-  # Replaces gRPC Gateway
+  # Gateway (Hybrid Server with NeMo)
   gateway:
     build:
       context: .
       dockerfile: src/gateway/Dockerfile
-    command: ["python", "src/gateway/server/mcp_server.py"]
+    command: ["python", "src/gateway/server/hybrid_server.py"]
     ports:
-      - "50051:50051"
+      - "8080:8080"
     environment:
-      - PORT=50051
+      - PORT=8080
       - OPA_URL=http://opa:8181/v1/data/finance/allow
     volumes:
       - ./src:/app/src
@@ -61,7 +46,7 @@ services:
   app:
     build: .
     ports:
-      - "8080:8080"
+      - "3000:8080" # Remapped to avoid conflict
     environment:
       - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
       - GOOGLE_CLOUD_LOCATION=${GOOGLE_CLOUD_LOCATION:-us-central1}
@@ -70,9 +55,9 @@ services:
       - MODEL_FAST=${MODEL_FAST:-Qwen/Qwen2.5-7B-Instruct}
       - MODEL_REASONING=${MODEL_REASONING:-deepseek-ai/DeepSeek-R1-Distill-Qwen-32B}
       - VLLM_FAST_API_BASE=http://vllm-fast:8000/v1
-      # Gateway Host updated to point to MCP Gateway
+      # Gateway Host updated to point to Hybrid Gateway
       - GATEWAY_HOST=gateway
-      - GATEWAY_PORT=50051
+      - GATEWAY_PORT=8080
     volumes:
       - ./src:/app/src
       - ./.env:/app/.env

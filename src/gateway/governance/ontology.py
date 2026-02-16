@@ -93,7 +93,7 @@ class TradingKnowledgeGraph:
             id="SC-1",
             description="The Agent must never execute a write operation to the Production Database without a signed approval token.",
             logic="has_approval_token == True",
-            scope=["write_db", "delete_db"]
+            scope=["write_db", "delete_db", "execute_trade"]
         ))
         self.add_constraint(Constraint(
             id="FIN-1",
