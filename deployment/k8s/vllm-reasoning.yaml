@@ -49,6 +49,7 @@ spec:
         - "awq_marlin"
         - "--dtype"
         - "half"
+        - "--enforce-eager"
 
         - "--trust-remote-code"
         - "--enable-auto-tool-choice"
@@ -57,13 +58,29 @@ spec:
         - "--port"
         - "8000"
         - "--gpu-memory-utilization"
-        - "0.95"
+        - "0.85"
         env:
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
             secretKeyRef:
               name: hf-token-secret
               key: token
+        readinessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8000
+          initialDelaySeconds: 120
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8000
+          initialDelaySeconds: 600
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 5
         resources:
           limits:
             nvidia.com/gpu: 1

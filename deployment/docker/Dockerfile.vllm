@@ -1,0 +1,4 @@
+FROM vllm/vllm-openai:latest
+
+# Install Run:ai Model Streamer
+RUN pip install vllm[runai]

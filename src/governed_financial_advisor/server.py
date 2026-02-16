@@ -105,7 +105,7 @@ async def query_agent(req: QueryRequest, request: Request):
         print(f"DEBUG: Invoking Graph with prompt '{req.prompt}'")
         res = await request.app.state.graph.ainvoke(
             {"messages": [("user", req.prompt)], "user_id": req.user_id},
-            {"recursion_limit": 20, "configurable": {"thread_id": req.thread_id}}
+            {"recursion_limit": 100, "configurable": {"thread_id": req.thread_id}}
         )
         print(f"DEBUG: Graph result messages keys: {res.keys() if res else 'None'}")
         if res and "messages" in res and res["messages"]:

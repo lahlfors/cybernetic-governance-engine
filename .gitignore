@@ -81,3 +81,15 @@ test_import.py
 
 # Backend Logs
 backend_logs*.txt
+
+# Local Models
+qwen_temp/
+temp_model_cache/
+models/
+model_cache/
+*.safetensors
+*.gguf
+*.pt
+*.pth
+*.bin
+*.onnx
