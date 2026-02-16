@@ -1,70 +1,65 @@
-# Agentic Gateway Analysis & Refactoring Strategy
+# Agentic Gateway Analysis
 
-## Executive Summary
+**Consolidated Architecture: Gateway Service + NeMo Guardrails (Cloud Run)**
 
-This document analyzes the architectural transition from an "In-Process Governance" model to a "Agentic Gateway" microservice pattern. The primary driver is **Code Cleanliness and Maintainability**, with a specific requirement to support **Tool Execution Interception** and **LLM Proxying**.
+This document analyzes the architectural decision to consolidate the NeMo Guardrails service directly into the Gateway Service, deployed on Google Cloud Run. This approach simplifies operations and reduces latency for the Cybernetic Governance Engine.
 
-**Status:** The refactor has been successfully implemented. The Agentic Gateway now serves as the centralized governance point for all tool execution and LLM inference.
+## Motivation
 
----
+Previously, the architecture used a standalone NeMo Service (gRPC/HTTP) communicating with the Gateway. This introduced:
+1.  **Network Latency:** An extra hop for every safety check.
+2.  **Operational Complexity:** Managing two separate services, deployments, and authentication flows.
+3.  **Cold Start Issues:** Two separate containers needing warm-up.
 
-## 1. Architectural Shift
+By embedding NeMo logic directly into the Gateway process:
+*   Safety checks become in-process function calls (<10ms).
+*   Deployment is atomic (Code + Policy versioning).
+*   Resource utilization is more efficient (shared memory).
 
-### Current State: "Agentic Gateway" (Implemented)
-The `Agent` service acts as a "Pure Reasoner", computing *intent* but having no ability to *act* or *perceive* directly.
+## Architecture
 
-*   **North/South Traffic (User <-> Agent):** The Gateway sits in front of the Agent API, handling AuthN, Input Guardrails (NeMo), and Trace Context injection.
-*   **East/West Traffic (Agent <-> World):**
-    *   **LLM Proxy:** Agent sends `(messages, model_config)` to Gateway. Gateway handles token counting, DLP, caching, and provider routing.
-    *   **Tool Execution Proxy:** Agent sends `(tool_name="execute_trade", params={...})` to Gateway. Gateway checks Policy (OPA), Safety (CBF), Consensus, and *then* executes the tool.
+### Components
 
-### Key Implementation Details
-1.  **Async/Await Architecture:** The Gateway uses `async def` for all tool executions to prevent blocking the gRPC event loop, adhering to the "Latency as Currency" requirement.
-2.  **Dry Run Capability:** The Gateway supports a `dry_run` flag in `ExecuteTool`. This allows the **Evaluator Agent** (System 3) to verify if an action *would* be allowed by Policy (OPA) and Safety (CBF) without actually executing it.
-3.  **Market Service Stub:** Market data checks are routed through a `MarketService` within the Gateway, allowing for centralized simulation or real API integration.
+1.  **Gateway Service (Cloud Run):**
+    *   **Orchestrator:** FastAPI application handling tool requests and LLM proxying.
+    *   **Governance Engine (Internal):**
+        *   **NeMo Manager:** Initializes `LLMRails` on startup.
+        *   **Presidio Analyzer:** Loaded once (singleton) with `en_core_web_sm` Spacy model.
+        *   **OPA Client:** Async HTTP client for policy decisions.
+    *   **LLM Client:** `HybridClient` using Google Gen AI SDK (Vertex AI) for reasoning.
 
----
+2.  **Agent (Vertex AI Reasoning Engine):**
+    *   Hosted on Google's managed LangChain runtime.
+    *   Communicates with the Gateway via secure HTTP (Cloud Run invocation).
 
-## 2. Component Migration Plan (Completed)
+### PII Protection Flow
 
-| Component | Current Location | New Location (Gateway) | Notes |
-| :--- | :--- | :--- | :--- |
-| **HybridClient** | `src/governed_financial_advisor/infrastructure/llm_client.py` | `src/gateway/core/llm.py` | Gateway acts as the "Model Router". |
-| **OPAClient** | `src/governed_financial_advisor/governance/client.py` | `src/gateway/core/policy.py` | Policy checks are enforced strictly at the Gateway. |
-| **Tool Logic** | `src/governed_financial_advisor/tools/trades.py` | `src/gateway/core/tools.py` | The Agent code only contains stubs. Execution logic resides in the Gateway. |
-| **Safety Logic** | `src/governed_financial_advisor/agents/evaluator/agent.py` | `src/gateway/server/main.py` | Mocks removed. Evaluator calls Gateway for `check_market_status`, `verify_policy_opa`, and `verify_content_safety`. |
+1.  **Input:** User text arrives at Gateway (`/chat` or tool call).
+2.  **NeMo Check:** `NeMoManager.check_guardrails()` is called.
+    *   **Input Rails:** Trigger `mask_sensitive_data` action.
+    *   **Presidio:** Scans text for Email, Phone, SSN, Credit Card.
+    *   **Masking:** Replaces PII with `<ENTITY_TYPE>`.
+3.  **LLM Interaction:** The sanitized prompt is sent to Vertex AI (Gemini).
+4.  **Output:** LLM response is checked again by NeMo Output Rails.
+5.  **Result:** Safe, masked response returned to Agent/User.
 
----
+## Deployment Strategy
 
-## 3. Protocol Analysis
+*   **Platform:** Google Cloud Run (Fully Managed).
+*   **Resources:**
+    *   **Memory:** Increased to `2Gi` to accommodate Spacy models and NeMo overhead.
+    *   **CPU:** 1 vCPU (scales to zero).
+*   **Authentication:** Service-to-Service IAM (OIDC).
+*   **Dependencies:** Docker image builds `nemoguardrails`, `presidio-analyzer`, `presidio-anonymizer`, `spacy`, and `langchain-google-vertexai`.
 
-**Decision: gRPC (Protobuf)**
-The system uses gRPC for high-performance, strongly-typed communication between the Agent and the Gateway.
+## Trade-offs
 
-*   **LLM Streaming:** Supported via `stream ChatResponse`.
-*   **Tool Calls:** Strongly typed via `ToolRequest` and `ToolResponse`.
-*   **Security:** Service-to-Service authentication (e.g., K8s Service Accounts or OIDC) is supported via `GatewayClient`.
+| Feature | Consolidated Gateway | Separate Service |
+| :--- | :--- | :--- |
+| **Latency** | **Low (In-Process)** | High (Network Hop) |
+| **Complexity** | **Low (Single Artifact)** | High (Microservices) |
+| **Scalability** | **High (Cloud Run Autoscaling)** | High (Independent Scaling) |
+| **Coupling** | High (Policy tied to Code) | Low (Decoupled) |
+| **Cold Start** | Slower (~5-10s load time) | Faster per-service |
 
----
-
-## 4. Latency Impact Evaluation
-
-**The "Tax" of Separation:**
-*   **Network Hop:** ~0.2ms - 0.5ms per call (localhost/UDS).
-
-**The "Dividend" of Separation:**
-*   **Non-Blocking IO & Parallelism:** The Gateway handles heavy governance checks (Consensus, OPA) asynchronously, offloading them from the Agent's event loop.
-*   **Connection Pooling:** The Gateway maintains persistent, warm connections to VertexAI/vLLM and OPA, avoiding the "cold start" of HTTP clients.
-*   **Dry Run Simulation:** Allows "Optimistic Planning" (Agent) with "Pessimistic Verification" (Evaluator) without risk of accidental execution.
-*   **Bankruptcy Protocol:** The Gateway Server explicitly calculates request latency and passes it to the `OPAClient`. If the "Governance Tax" + "Network Latency" exceeds the budget (3000ms), the OPA client fast-fails (returns DENY), enforcing the "Latency as Currency" strategy.
-
-**Net Impact:**
-*   For **LLM Calls:** Neutral. The overhead of the network hop is invisible compared to the 20ms+ TTFT of the LLM.
-*   For **Tool Calls:** Slight Increase (~1ms). This is acceptable given the **Security** and **Governance** gains. The "Governance Tax" (OPA check) is already ~10ms; adding 1ms for the network is a 10% increase on the tax, but a 0.01% increase on the total transaction time.
-
----
-
-## 5. Final Recommendation
-
-**Refactor Complete.**
-The system now adheres to the Agentic Gateway pattern. All future tool integrations should be added to `src/gateway/core/tools.py` and registered in `src/gateway/server/main.py`.
+**Conclusion:** For this specific governance use case, the latency and simplicity benefits of consolidation outweigh the coupling concerns. The atomic deployment ensures that code changes are always synchronized with the safety policies governing them.
