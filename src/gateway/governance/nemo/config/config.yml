@@ -1,0 +1,31 @@
+models:
+  - type: main
+    engine: google_vertexai
+    model: gemini-1.5-flash-001
+
+colang_version: "2.x"
+
+instructions:
+  - type: general
+    content: |
+      You are a helpful financial advisor assistant.
+      You must adhere to strict safety guidelines.
+
+rails:
+  config:
+    sensitive_data_detection:
+      include_rails: true
+      input:
+        entities:
+          - EMAIL_ADDRESS
+          - PHONE_NUMBER
+          - PERSON
+          - CREDIT_CARD
+          - US_SSN
+      output:
+        entities:
+          - EMAIL_ADDRESS
+          - PHONE_NUMBER
+          - PERSON
+          - CREDIT_CARD
+          - US_SSN

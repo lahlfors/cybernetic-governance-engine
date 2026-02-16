@@ -158,7 +158,7 @@ def deploy_gateway_service(project_id, region, opa_url):
         "--command", "uvicorn,src.gateway.server.main:app,--host,0.0.0.0,--port,8080",
         "--allow-unauthenticated", # Gateway is the entry point
         "--port", "8080",
-        "--memory", "1Gi",
+        "--memory", "2Gi",
         "--cpu", "1"
     ])
 

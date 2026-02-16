@@ -25,7 +25,10 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 # 3. Install Python Dependencies
 # Use uv for faster resolution
-RUN uv pip install --system . openai nemoguardrails
+RUN uv pip install --system . openai nemoguardrails presidio-analyzer presidio-anonymizer spacy
+
+# Download Spacy Model for Presidio
+RUN python -m spacy download en_core_web_sm
 
 # 4. Environment
 ENV PORT=8080

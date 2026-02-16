@@ -1,0 +1,101 @@
+# NeMo Guardrails Flows - Colang 2.x
+# Actions are registered programmatically, so no import needed
+
+import core
+import llm
+import nemoguardrails.library.sensitive_data_detection
+
+# --- Explicit Input/Output Rails for Colang 2.x ---
+
+flow input rails $input_text
+  $input_text = await mask_sensitive_data(source="input", text=$input_text)
+  return $input_text
+
+flow output rails $output_text
+  $output_text = await mask_sensitive_data(source="output", text=$output_text)
+  return $output_text
+
+# Main flow - required entry point for Colang 2.x
+flow main
+  activate llm continuation
+  activate greeting
+  activate financial_analysis
+  activate catch_all
+  activate check_authorization
+  activate check_latency
+  activate check_financial_risk
+
+
+flow greeting
+  user expressed greeting
+  bot express greeting
+
+flow user expressed greeting
+  user said "hello" or user said "hi" or user said "hey" or user said "Hi" or user said "Hello"
+
+flow bot express greeting
+  bot say "Hello! I'm your financial advisor assistant. How can I help you today?"
+
+flow financial_analysis
+  match UtteranceUserAction.Finished(final_transcript=regex("(?i)analyze.*"))
+  or match UtteranceUserAction.Finished(final_transcript=regex("(?i)recommend.*"))
+  or match UtteranceUserAction.Finished(final_transcript=regex("(?i)evaluate.*"))
+  or match UtteranceUserAction.Finished(final_transcript=regex("(?i)what is.*"))
+  or match UtteranceUserAction.Finished(final_transcript=regex("(?i)how.*"))
+  # Allow the LLM to generate the response for these queries
+  # bot continue removed to avoid internal error, allowing pass-through to Graph
+
+flow catch_all
+  match UtteranceUserAction.Finished(final_transcript=regex("(?i).*"))
+  # bot continue
+
+flow check_authorization
+  user said "execute trade"
+  $allowed = await check_approval_token()
+  if not $allowed
+    bot refuse to respond
+    abort
+
+flow check_latency
+  user said "execute trade"
+  $allowed = await check_data_latency()
+  if not $allowed
+    bot refuse to respond
+    abort
+
+flow check_financial_risk
+  user said "execute trade"
+  $drawdown_ok = await check_drawdown_limit()
+  if not $drawdown_ok
+    bot refuse to respond
+    abort
+  $slippage_ok = await check_slippage_risk()
+  if not $slippage_ok
+    bot refuse to respond
+    abort
+
+flow check_atomic_execution
+  user said "execute multi-leg trade"
+  $atomic_ok = await check_atomic_execution()
+  if not $atomic_ok
+    bot refuse to respond
+    abort
+
+# --- Advanced Governance: Parallel Rails (Colang 2.0) ---
+
+flow parallel_governance_check
+  match UtteranceUserAction.Finished(final_transcript=regex("(?i)transfer funds|modify account|access pii"))
+
+  # Trigger parallel execution
+  $topical = await check_approval_token()
+  $safety = await check_drawdown_limit()
+  $fact = await check_data_latency()
+
+  if not $topical or not $safety or not $fact
+    bot refuse to respond
+    abort
+  else
+    bot continue to execution
+
+flow bot continue to execution
+  bot say "Proceeding with transaction."

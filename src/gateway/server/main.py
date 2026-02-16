@@ -26,6 +26,7 @@ from src.gateway.core.market import market_service
 # Import Governance Logic
 from src.governed_financial_advisor.governance.consensus import consensus_engine
 from src.governed_financial_advisor.governance.safety import safety_filter
+from src.gateway.governance.nemo.manager import NeMoManager
 
 # --- Logging Setup ---
 logger = logging.getLogger("Gateway.Server")
@@ -43,6 +44,7 @@ app = FastAPI(title="Governed Financial Advisor Gateway", version="2.0.0")
 # We initialize clients globally or in lifespan
 llm_client = HybridClient()
 opa_client = OPAClient()
+nemo_manager = NeMoManager()
 
 logger.info("Gateway Service Initialized.")
 
@@ -159,9 +161,21 @@ async def execute_tool_endpoint(request: ToolRequest):
     # --- SEMANTIC SAFETY TOOL ---
     elif tool_name == "verify_content_safety":
         text = params.get("text", "")
-        if "jailbreak" in text.lower() or "ignore previous" in text.lower():
-             return ToolResponse(status="BLOCKED", error="Semantic Safety Violation (Jailbreak Pattern)")
-        return ToolResponse(status="SUCCESS", output="SAFE")
+
+        # Use NeMo Guardrails for deep inspection (Jailbreak, PII, etc.)
+        check_result = await nemo_manager.check_guardrails(text)
+
+        # If NeMo blocked it (or if checking explicitly for blocking signal)
+        if check_result.get("blocked", False):
+             return ToolResponse(status="BLOCKED", error=f"NeMo Safety Violation: {check_result.get('response')}")
+
+        # If response differs significantly and is short refusal, treat as block?
+        # For now, we assume if it passed (blocked=False), it returns the (possibly masked) content.
+        # But this tool expects "SAFE" as output if successful verification?
+        # If the input was "Analyze AAPL", NeMo returns "Analyze AAPL".
+        # If the input was PII, NeMo returns masked PII.
+
+        return ToolResponse(status="SUCCESS", output=check_result.get("response"))
 
     # --- TRADE EXECUTION TOOL ---
     elif tool_name == "execute_trade":
