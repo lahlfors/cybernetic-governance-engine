@@ -310,7 +310,7 @@ def deploy_k8s_infra(project_id, config, args=None):
         return
 
     # Deploy Model Storage (PVC + Downloader)
-    deploy_model_storage(project_id, config)
+    # deploy_model_storage(project_id, config) # Disabled for Run:ai Streamer
 
     # Deploy Redis (StatefulSet)
     redis_manifest = k8s_dir / "redis-statefulset.yaml"

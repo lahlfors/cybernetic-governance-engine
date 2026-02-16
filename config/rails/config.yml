@@ -2,8 +2,8 @@
 
 models:
   - type: main
-    engine: openai
-    model: Qwen/Qwen2.5-7B-Instruct
+    engine: vllm_llama
+    model: deepseek-ai/DeepSeek-R1-Distill-Llama-8B
 
 colang_version: "2.x"
 

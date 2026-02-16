@@ -22,7 +22,7 @@ from google.adk.tools import FunctionTool
 
 from config.settings import MODEL_FAST
 from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
-from src.governed_financial_advisor.infrastructure.gateway_client import gateway_client
+from src.governed_financial_advisor.tools.openbb_tool import get_market_data_openbb
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ DATA_ANALYST_PROMPT_OBJ = Prompt(
                     Part(
                         text="""
 Agent Role: data_analyst
-Tool Usage: Use the provided `get_market_sentiment_tool` tool.
+Tool Usage: Use the provided `get_market_data_openbb` tool.
 
 Overall Goal: To generate a comprehensive and timely market sentiment report for a provided_ticker.
 
@@ -43,7 +43,7 @@ Inputs (from calling agent/environment):
 provided_ticker: (string, mandatory) The stock market ticker symbol.
 
 Mandatory Process - Data Collection:
-Fetch real-time market sentiment and news using the 'get_market_sentiment_tool' tool.
+Fetch real-time market data (price and news) using the 'get_market_data_openbb' tool.
 
 Expected Final Output (Structured Report):
 A comprehensive text report summarizing the sentiment and key news.
@@ -60,25 +60,7 @@ If no data is found, state that clearly.
 def get_data_analyst_instruction() -> str:
     return DATA_ANALYST_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
 
-async def get_market_sentiment_tool(ticker: str) -> str:
-    """
-    Fetch market sentiment for a ticker using the Gateway (AlphaVantage MCP).
-    """
-    logger.info(f"Calling Gateway (MCP) for sentiment: {ticker}")
-    try:
-        # Use GatewayClient to call the MCP tool
-        result = await gateway_client.execute_tool("get_market_sentiment", {"symbol": ticker})
-        
-        # Truncate result to prevent Context Limit (4096 tokens)
-        # 6000 chars is roughly 1.5k tokens.
-        if len(str(result)) > 1000:
-            logger.warning(f"Truncating sentiment data for {ticker} (Len: {len(str(result))})")
-            return str(result)[:1000] + "... [TRUNCATED]"
-            
-        return result
-    except Exception as e:
-        logger.error(f"Gateway Call Failed: {e}")
-        return f"Error fetching sentiment: {e}"
+
 
 from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
 
@@ -91,5 +73,5 @@ def create_data_analyst_agent(model_name: str = MODEL_FAST) -> Agent:
         name="data_analyst_agent",
         instruction=get_data_analyst_instruction(),
         output_key="market_data_analysis_output",
-        tools=[FunctionTool(get_market_sentiment_tool)],
+        tools=[FunctionTool(get_market_data_openbb)],
     )

@@ -4,6 +4,7 @@ from typing import Any
 from litellm import acompletion
 from config.settings import Config, MODEL_FAST
 from src.governed_financial_advisor.graph.state import AgentState
+from src.governed_financial_advisor.utils.text_utils import strip_thinking_tags
 
 logger = logging.getLogger("ExplainerNode")
 
@@ -44,7 +45,7 @@ async def explainer_node(state: AgentState) -> dict[str, Any]:
             api_key="EMPTY",
             messages=[{"role": "user", "content": user_msg}]
         )
-        content = response.choices[0].message.content
+        content = strip_thinking_tags(response.choices[0].message.content)
         
         return {
             "messages": [("ai", content)], 

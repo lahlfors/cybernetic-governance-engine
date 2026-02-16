@@ -251,9 +251,9 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         "${PORT}": os.environ.get("PORT", "8080"),
         
         # Model Configuration (Tiered)
-        "${MODEL_FAST}": os.environ.get("MODEL_FAST", ""),
-        "${MODEL_REASONING}": os.environ.get("MODEL_REASONING", ""),
-        "${MODEL_CONSENSUS}": os.environ.get("MODEL_CONSENSUS", os.environ.get("MODEL_REASONING", "")),
+        "${MODEL_FAST}": f"openai/{os.environ.get('MODEL_FAST')}" if os.environ.get("MODEL_FAST") and not os.environ.get("MODEL_FAST").startswith("openai/") else os.environ.get("MODEL_FAST", ""),
+        "${MODEL_REASONING}": f"openai/{os.environ.get('MODEL_REASONING')}" if os.environ.get("MODEL_REASONING") and not os.environ.get("MODEL_REASONING").startswith("openai/") else os.environ.get("MODEL_REASONING", ""),
+        "${MODEL_CONSENSUS}": f"openai/{os.environ.get('MODEL_CONSENSUS', os.environ.get('MODEL_REASONING', ''))}" if os.environ.get("MODEL_CONSENSUS", os.environ.get("MODEL_REASONING")) and not os.environ.get("MODEL_CONSENSUS", os.environ.get("MODEL_REASONING", "")).startswith("openai/") else os.environ.get("MODEL_CONSENSUS", os.environ.get("MODEL_REASONING", "")),
         
         # vLLM Endpoints
         "${VLLM_BASE_URL}": os.environ.get("VLLM_BASE_URL", "http://vllm-service.governance-stack.svc.cluster.local:8000/v1"),
@@ -453,6 +453,8 @@ def main():
              # Since we enforce node isolation (1 GPU per model), we can use more memory.
              # 0.7 was too low for 8k context.
              config["model"]["gpu_memory_utilization"] = 0.9
+             config["model"]["load_format"] = "runai_streamer"
+             config["model"]["extra_config"] = '{"distributed": true}'
              print(f"ℹ️ Optimized gpu_memory_utilization to 0.9 for {model_fast}")
     
     print(f"🔍 DEBUG: Final Config Model (Inference): {config.get('model', {})}")

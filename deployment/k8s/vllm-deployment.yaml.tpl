@@ -75,11 +75,8 @@ ${ENV_VARS}
           command:
             - "vllm"
             - "serve"
-            - "${MODEL_PATH}" # e.g. gs://bucket/model
-            - "--load-format"
-            - "runai_streamer"
-            - "--model-loader-extra-config"
-            - '{"distributed": true}'
+            - "--host"
+            - "0.0.0.0"
             - "--port"
             - "8000"
 ${ARGS}

@@ -61,6 +61,14 @@ def generate_vllm_manifest(accelerator, config):
         vllm_args_list.append('            - "--load-format"')
         vllm_args_list.append(f'            - "{load_format}"')
 
+    extra_config = model_conf.get("extra_config")
+    if extra_config:
+        vllm_args_list.append('            - "--model-loader-extra-config"')
+        # Ensure it is quoted properly as JSON string
+        # If it's a dict, dump it? But config usually comes from yaml/json or env.
+        # Assuming string for simplicity or forcing string.
+        vllm_args_list.append(f"            - '{extra_config}'")
+
     max_model_len = model_conf.get("max_model_len")
     if max_model_len:
         vllm_args_list.append('            - "--max-model-len"')
