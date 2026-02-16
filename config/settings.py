@@ -17,7 +17,11 @@ class Config:
     MODEL_FAST = os.getenv("MODEL_FAST", "Qwen/Qwen2.5-7B-Instruct")
     MODEL_CONSENSUS = os.getenv("MODEL_CONSENSUS", MODEL_REASONING)
 
+    MAX_TOKENS = int(os.getenv("MAX_TOKENS", 8192))
+    
     # --- INFRASTRUCTURE ---
+    GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT")
+    GOOGLE_CLOUD_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
     PORT = int(os.getenv("PORT", 8080))
     REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
