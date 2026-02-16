@@ -15,6 +15,7 @@ spec:
       labels:
         app: vllm-inference-streaming
     spec:
+      serviceAccountName: financial-advisor-sa
       volumes:
         - name: dshm
           emptyDir:

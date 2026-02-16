@@ -15,14 +15,15 @@ spec:
       labels:
         app: vllm-inference
     spec:
+      serviceAccountName: financial-advisor-sa
       volumes:
         - name: dshm
           emptyDir:
             medium: Memory
             sizeLimit: "16Gi"  # vLLM requires large shared memory
-        - name: model-cache
-          persistentVolumeClaim:
-            claimName: model-cache-fast-pvc
+        # - name: model-cache
+        #   persistentVolumeClaim:
+        #     claimName: model-cache-fast-pvc
       containers:
         - name: vllm
           # Ensure image has runai extensions: pip install vllm[runai]
@@ -40,7 +41,6 @@ ${RESOURCE_REQUESTS}
           volumeMounts:
             - mountPath: /dev/shm
               name: dshm
-            # Streaming bypasses local disk cache, so we remove the PVC mount for weights
             # - mountPath: /root/.cache/huggingface
             #   name: model-cache
           env:
