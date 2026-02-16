@@ -7,18 +7,18 @@ import time
 
 BACKEND_URL = os.environ.get("BACKEND_URL")
 
-def verify_openbb_tool():
+def verify_market_data_tool():
     if not BACKEND_URL:
         print("❌ BACKEND_URL not set.")
         return
 
-    print(f"🧪 Verifying OpenBB Tool on {BACKEND_URL}...")
+    print(f"🧪 Verifying Market Data Tool on {BACKEND_URL}...")
     
     prompt = "Analyze AAPL stock performance. Include recent price history and news."
     url = f"{BACKEND_URL}/agent/query"
     payload = {
         "prompt": prompt,
-        "user_id": "verify_openbb_user",
+        "user_id": "verify_yfinance_user",
         "thread_id": f"verify_{int(time.time())}"
     }
     
@@ -38,9 +38,9 @@ def verify_openbb_tool():
         
         # Validation Logic
         checks = {
-            "Market Data Report": "Market Data Report" in content,
-            "Price History": "Price History" in content or "Recent Price" in content,
-            "News": "News" in content or "Recent News" in content
+            "Recent Price History": "Recent Price History" in content,
+            "Latest Close": "Latest Close" in content,
+            "Recent News": "Recent News" in content
         }
         
         passed = all(checks.values())
@@ -51,9 +51,9 @@ def verify_openbb_tool():
             print(f"   - {check}: {status}")
             
         if passed:
-            print("\n✅ OpenBB Tool Integration VERIFIED.")
+            print("\n✅ Market Data Tool Integration VERIFIED.")
         else:
-            print("\n❌ OpenBB Tool Integration FAILED checks.")
+            print("\n❌ Market Data Tool Integration FAILED checks.")
             # Trigger failure but don't exit hard if we want to see more
             sys.exit(1)
             
@@ -62,4 +62,4 @@ def verify_openbb_tool():
         sys.exit(1)
 
 if __name__ == "__main__":
-    verify_openbb_tool()
+    verify_market_data_tool()

@@ -4,7 +4,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-def get_market_data_openbb(ticker: str) -> str:
+def get_market_data(ticker: str) -> str:
     """
     Fetches comprehensive market data for a given ticker using yfinance.
     Includes historical price data and recent news.

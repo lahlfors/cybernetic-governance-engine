@@ -22,7 +22,7 @@ from google.adk.tools import FunctionTool
 
 from config.settings import MODEL_FAST
 from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
-from src.governed_financial_advisor.tools.openbb_tool import get_market_data_openbb
+from src.governed_financial_advisor.tools.market_data_tool import get_market_data
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ DATA_ANALYST_PROMPT_OBJ = Prompt(
                     Part(
                         text="""
 Agent Role: data_analyst
-Tool Usage: Use the provided `get_market_data_openbb` tool.
+Tool Usage: Use the provided `get_market_data` tool.
 
 Overall Goal: To generate a comprehensive and timely market sentiment report for a provided_ticker.
 
@@ -43,7 +43,7 @@ Inputs (from calling agent/environment):
 provided_ticker: (string, mandatory) The stock market ticker symbol.
 
 Mandatory Process - Data Collection:
-Fetch real-time market data (price and news) using the 'get_market_data_openbb' tool.
+Fetch real-time market data (price and news) using the 'get_market_data' tool.
 
 Expected Final Output (Structured Report):
 A comprehensive text report summarizing the sentiment and key news.
@@ -73,5 +73,5 @@ def create_data_analyst_agent(model_name: str = MODEL_FAST) -> Agent:
         name="data_analyst_agent",
         instruction=get_data_analyst_instruction(),
         output_key="market_data_analysis_output",
-        tools=[FunctionTool(get_market_data_openbb)],
+        tools=[FunctionTool(get_market_data)],
     )
