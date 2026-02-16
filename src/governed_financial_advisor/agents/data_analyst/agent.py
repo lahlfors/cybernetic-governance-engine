@@ -49,6 +49,9 @@ Expected Final Output (Structured Report):
 A comprehensive text report summarizing the sentiment and key news.
 The report MUST be formatted in Markdown.
 If no data is found, state that clearly.
+
+CONSTRAINT: You MUST use the `get_market_data` tool to fetch real data. Do not rely on internal knowledge or hallucinate prices.
+Call the tool immediately.
 """
                     )
                 ]

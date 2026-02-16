@@ -455,7 +455,8 @@ def main():
              config["model"]["gpu_memory_utilization"] = 0.9
              config["model"]["load_format"] = "runai_streamer"
              config["model"]["extra_config"] = '{"distributed": true}'
-             print(f"ℹ️ Optimized gpu_memory_utilization to 0.9 for {model_fast}")
+             config["model"]["max_model_len"] = 8192
+             print(f"ℹ️ Optimized gpu_memory_utilization to 0.9 and max_model_len to 8192 for {model_fast}")
     
     print(f"🔍 DEBUG: Final Config Model (Inference): {config.get('model', {})}")
 

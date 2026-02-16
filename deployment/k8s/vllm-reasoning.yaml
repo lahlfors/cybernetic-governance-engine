@@ -44,7 +44,7 @@ spec:
         - "--served-model-name"
         - "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
         - "--max-model-len"
-        - "2048"
+        - "4096"
         - "--dtype"
         - "half"
         - "--enforce-eager"

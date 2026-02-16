@@ -8,6 +8,7 @@ venv/
 .deploy_venv/
 .manual_deploy_venv/
 deployment/artifacts/
+deployment/terraform/
 __pycache__/
 *.py[cod]
 *.log
