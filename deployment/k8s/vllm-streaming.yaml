@@ -72,6 +72,8 @@ spec:
             - "${MODEL_PATH}"
             - "--load-format"
             - "runai_streamer"
+            - "--model-loader-extra-config"
+            - '{"distributed": true}'
             - "--port"
             - "8000"
             - "--trust-remote-code"

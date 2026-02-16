@@ -236,6 +236,8 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
             f.write(sa_content)
         run_command(["kubectl", "apply", "-f", str(sa_generated)])
 
+        print(f"ℹ️ Ensure the mapped Google Service Account has 'roles/storage.objectViewer' on model buckets.")
+
     # 5. Define Substitutions (Moved up for Gateway)
     timestamp = str(int(time.time()))
     substitutions = {

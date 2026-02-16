@@ -78,6 +78,8 @@ ${ENV_VARS}
             - "${MODEL_PATH}" # e.g. gs://bucket/model
             - "--load-format"
             - "runai_streamer"
+            - "--model-loader-extra-config"
+            - '{"distributed": true}'
             - "--port"
             - "8000"
 ${ARGS}
