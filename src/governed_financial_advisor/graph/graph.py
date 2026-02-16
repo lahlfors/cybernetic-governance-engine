@@ -95,7 +95,7 @@ def create_graph(redis_url=None):
     workflow.add_edge("governed_trader", "explainer")
 
     # Explainer -> Finish/Supervisor
-    workflow.add_edge("explainer", "supervisor")
+    workflow.add_edge("explainer", END)
 
     # 5. Other Loops
     # PIPELINE: Data Analyst -> Execution Analyst (Skip Supervisor for automatic flow)
