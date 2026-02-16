@@ -1,31 +1,29 @@
 import logging
+import yfinance as yf
 import pandas as pd
-from openbb import obb
 
 logger = logging.getLogger(__name__)
 
 def get_market_data_openbb(ticker: str) -> str:
     """
-    Fetches comprehensive market data for a given ticker using OpenBB.
+    Fetches comprehensive market data for a given ticker using yfinance.
     Includes historical price data and recent news.
     """
-    logger.info(f"Fetching OpenBB data for {ticker}")
+    logger.info(f"Fetching market data for {ticker} via yfinance")
     report = [f"# Market Data Report for {ticker}"]
 
     try:
-        # 1. Fetch Historical Price (Last 30 days coverage)
-        # Using 'yfinance' as a reliable free provider
-        price_data = obb.equity.price.historical(symbol=ticker, provider="yfinance")
-        if hasattr(price_data, "to_df"):
-             df = price_data.to_df()
-             # Get last 5 days
-             recent_df = df.tail(5)
+        # 1. Fetch Historical Price
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period="5d")
+        
+        if not hist.empty:
              report.append("## Recent Price History (Last 5 Days)")
-             report.append(recent_df.to_markdown())
+             # Format nicely
+             report.append(hist[['Close', 'Volume']].to_markdown())
              
-             # Calculate simple stats
-             latest_close = df.iloc[-1]['close'] if 'close' in df.columns else "N/A"
-             report.append(f"\n**Latest Close:** {latest_close}")
+             latest_close = hist.iloc[-1]['Close']
+             report.append(f"\n**Latest Close:** {latest_close:.2f}")
         else:
              report.append("No price data available.")
 
@@ -35,25 +33,17 @@ def get_market_data_openbb(ticker: str) -> str:
 
     try:
         # 2. Fetch Company News
-        # 'yfinance' also provides news usually, or 'benzinga' (might require key)
-        # Let's try default or fallback
-        news_data = obb.news.company(symbol=ticker, provider="yfinance") 
-        if hasattr(news_data, "to_df"):
-            news_df = news_data.to_df()
-            if not news_df.empty:
-                report.append("\n## Recent News")
-                # Select relevant columns if possible, otherwise just show top 3
-                # 'title', 'publisher', 'link' are common fields
-                top_news = news_df.head(3)
-                for _, row in top_news.iterrows():
-                    title = row.get('title', 'No Title')
-                    publisher = row.get('publisher', 'Unknown')
-                    link = row.get('link', '')
-                    report.append(f"- **{title}** ({publisher}) [Link]({link})")
-            else:
-                 report.append("\nNo recent news found.")
+        news = stock.news
+        if news:
+            report.append("\n## Recent News")
+            # Show top 3
+            for item in news[:3]:
+                title = item.get('title', 'No Title')
+                publisher = item.get('publisher', 'Unknown')
+                link = item.get('link', '')
+                report.append(f"- **{title}** ({publisher}) [Link]({link})")
         else:
-            report.append("\nNo news data returned.")
+             report.append("\nNo recent news found.")
 
     except Exception as e:
         logger.error(f"Error fetching news for {ticker}: {e}")
