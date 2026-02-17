@@ -313,7 +313,7 @@ def data_analyst_node(state):
     print(f"--- [Planner] Plan/Ticker: {plan_content} ---")
 
     # 2. EXECUTOR: "Execute the plan"
-    # We pass the plan to the Executor (Llama 3.1) which is forced to call tools.
+    # We pass the plan to the Executor (Qwen/DeepSeek) which is forced to call tools.
     # We use a factory that might bind tools specific to the ticker if needed, 
     # but usually it just needs the ticker in the prompt or message.
     

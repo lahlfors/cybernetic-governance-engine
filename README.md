@@ -1,11 +1,13 @@
 # Governed Financial Advisor (Sovereign Edition)
 
-An AI-driven financial agent designed to demonstrate **safe, governed, and performant** autonomous behavior. This system implements a "Sovereign" architecture where reasoning and governance run on independent, locally-controlled infrastructure (vLLM/Llama 3), reinforced by neuro-symbolic guardrails.
+An AI-driven financial agent designed to demonstrate **safe, governed, and performant** autonomous behavior. This system prioritizes a **GKE Inference Gateway** architecture, orchestrating a "Split-Brain" topology where reasoning and governance run on independent infrastructure, reinforced by neuro-symbolic guardrails.
 
 ## Key Features
 
-*   **Sovereign Architecture:** "Split-Brain" topology separating Reasoning (Llama 3.1 8B) from Governance (Llama 3.2 3B).
-*   **Neuro-Symbolic Governance:** Enforces SR 11-7 and ISO 42001 compliance using OPA policies, STPA hazard analysis, PII Masking (Presidio), and circuit breakers.
+*   **GKE Inference Gateway:** A unified interface that manages the "Split-Brain" topology, routing requests to specialized models for optimal performance and safety.
+    *   **Reasoning Plane:** Powered by `deepseek-ai/DeepSeek-R1-Distill-Qwen-32B` for high-order planning and analysis.
+    *   **Governance Plane:** Powered by `Qwen/Qwen2.5-7B-Instruct` for fast, deterministic checks and JSON formatting.
+*   **Integrated Neuro-Symbolic Governance:** Enforces SR 11-7 and ISO 42001 compliance using OPA policies, STPA hazard analysis, and PII Masking (Presidio), all consolidated within the Gateway service.
 *   **Hybrid Observability:**
     *   **Application Layer:** Async LangSmith tracing for prompt engineering and execution trees.
     *   **System Layer:** AgentSight (eBPF sidecar) for deep payload inspection and security monitoring (syscalls).
@@ -78,8 +80,8 @@ Access the AgentSight dashboard at `http://localhost:3000`.
 
 **Option 2: Local Development**
 ```bash
-# Start infrastructure (Redis, vLLM)
-docker-compose up -d redis vllm-reasoning vllm-governance
+# Start infrastructure
+docker-compose up -d
 
 # Run the Agent
 python src/main.py
