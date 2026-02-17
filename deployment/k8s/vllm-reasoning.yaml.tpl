@@ -40,13 +40,15 @@ spec:
         command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
         args:
         - "--model"
-        - "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
+        - "casperhansen/deepseek-r1-distill-llama-8b-awq"
         - "--served-model-name"
-        - "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
+        - "casperhansen/deepseek-r1-distill-llama-8b-awq"
         - "--max-model-len"
-        - "4096"
+        - "8192"
         - "--dtype"
         - "half"
+        - "--quantization"
+        - "awq"
         - "--enforce-eager"
 
         - "--trust-remote-code"

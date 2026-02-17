@@ -15,6 +15,7 @@ venv.bak/
 .new_venv/
 .build_venv/
 .manual_deploy_venv/
+.mirror_venv/
 source/
 deploy_*.txt
 deployment/artifacts/
@@ -30,6 +31,7 @@ deployment/artifacts/
 agents_log/
 deploy_log.txt
 deploy_agent_log.txt
+mirror.log
 
 # Project Specific
 opa
@@ -85,6 +87,7 @@ backend_logs*.txt
 # Local Models
 qwen_temp/
 temp_model_cache/
+temp_model_mirror/
 models/
 model_cache/
 *.safetensors

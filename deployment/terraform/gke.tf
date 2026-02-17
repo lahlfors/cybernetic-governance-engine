@@ -71,7 +71,7 @@ resource "google_container_node_pool" "gpu_pool" {
   name       = "gpu-pool"
   location   = var.zone
   cluster    = google_container_cluster.primary.name
-  node_count = 1
+  node_count = 2
 
   autoscaling {
     min_node_count = 0 # Scale to zero if no inference needed (optional cost saving)
