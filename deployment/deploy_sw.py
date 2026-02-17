@@ -262,6 +262,39 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
     else:
         print("⚠️ No HF_TOKEN found. vLLM model download may fail.")
 
+    # Advisor Secrets (LangSmith, AlphaVantage, etc.)
+    print("🔑 Creating advisor-secrets...")
+    advisor_secrets = {
+        "LANGCHAIN_TRACING_V2": os.environ.get("LANGCHAIN_TRACING_V2", "true"),
+        "LANGCHAIN_ENDPOINT": os.environ.get("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com"),
+        "LANGCHAIN_API_KEY": os.environ.get("LANGCHAIN_API_KEY", ""),
+        "LANGCHAIN_PROJECT": os.environ.get("LANGCHAIN_PROJECT", "financial-advisor"),
+        "LANGSMITH_TRACING": os.environ.get("LANGCHAIN_TRACING_V2", "true"),
+        "LANGSMITH_ENDPOINT": os.environ.get("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com"),
+        "LANGSMITH_API_KEY": os.environ.get("LANGCHAIN_API_KEY", ""),
+        "LANGSMITH_PROJECT": os.environ.get("LANGCHAIN_PROJECT", "financial-advisor"),
+        "ALPHAVANTAGE_API_KEY": os.environ.get("ALPHAVANTAGE_API_KEY", "")
+    }
+    
+    # Filter out empty keys to avoid creation errors if env vars generate empty strings
+    secret_args = []
+    for k, v in advisor_secrets.items():
+        if v:
+            secret_args.append(f"--from-literal={k}={v}")
+            
+    if secret_args:
+        subprocess.run(["kubectl", "create", "secret", "generic", "advisor-secrets", *secret_args, "-n", "governance-stack", "--dry-run=client", "-o", "yaml"] + ["|", "kubectl", "apply", "-f", "-"], shell=True) # Pipeline requires shell=True for the pipe, but we can't mix list and pipe easily in subprocess.run without shell=True
+        # Alternative: run check_output then apply
+        # Let's use the safer construct we used for gcs-credentials
+        cmd = ["kubectl", "create", "secret", "generic", "advisor-secrets", *secret_args, "-n", "governance-stack", "--dry-run=client", "-o", "yaml"]
+        try:
+            secret_yaml = subprocess.check_output(cmd, text=True)
+            subprocess.run(["kubectl", "apply", "-f", "-"], input=secret_yaml, text=True, check=True)
+            print("✅ advisor-secrets applied.")
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Failed to create advisor-secrets: {e}")
+
+
     # AWS/GCS Credentials for Run:ai Streamer
     # We strip 'export ' if present in .env values just in case, though usually os.environ handles it.
     aws_access_key = os.environ.get("AWS_ACCESS_KEY_ID", "")
