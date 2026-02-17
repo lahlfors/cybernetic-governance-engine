@@ -39,13 +39,7 @@ ${RESOURCE_REQUESTS}
             - mountPath: /dev/shm
               name: dshm
           env:
-            # Run:ai Streamer Configuration for GCS (AWS Compat)
-            # AWS_ENDPOINT_URL is not added by renderer, so keep it.
-            # AWS_EC2_METADATA_DISABLED is not added by renderer, so keep it.
-            - name: AWS_ENDPOINT_URL
-              value: "https://storage.googleapis.com"
-            - name: AWS_EC2_METADATA_DISABLED
-              value: "true"
+
 ${ENV_VARS}
           ports:
             - containerPort: 8000

@@ -152,32 +152,207 @@ def run_adk_agent(agent_instance, user_msg: str, session_id: str = "default", us
     )
 
     # Run and collect events to extract answer
-    answer_parts = []
-    function_calls = []
-    try:
-        for event in runner.run(user_id=user_id, session_id=session_id, new_message=new_message):
-            if hasattr(event, 'content') and event.content:
-                for part in event.content.parts:
-                    if hasattr(part, 'text') and part.text:
-                        answer_parts.append(part.text)
-                    if hasattr(part, 'function_call') and part.function_call:
-                        function_calls.append(part.function_call)
-    except Exception as e:
-        logger.error(f"Error running ADK agent: {e}")
-        return AgentResponse(answer=f"Error: {e!s}")
+    final_answer_parts = []
+    
+    # Tool Loop
+    max_turns = 10
+    current_turn = 0
+    
+    # We loop until the model stops calling tools or we hit max_turns
+    while current_turn < max_turns:
+        current_turn += 1
+        
+        turn_answer_parts = []
+        turn_function_calls = []
+        
+        try:
+            # Execute Runner for this turn
+            for event in runner.run(user_id=user_id, session_id=session_id, new_message=new_message):
+                print(f"🔎 ADK Event: {type(event)} - {event}")
 
-    return AgentResponse(answer=strip_thinking_tags("".join(answer_parts)), function_calls=function_calls)
+                if hasattr(event, 'content') and event.content:
+                    for part in event.content.parts:
+                        if hasattr(part, 'text') and part.text:
+                            print(f"📝 Event Content Part: {part.text[:50]}...")
+                            turn_answer_parts.append(part.text)
+                        if hasattr(part, 'function_call') and part.function_call:
+                            print(f"🛠️ Event Function Call: {part.function_call}")
+                            turn_function_calls.append(part.function_call)
+                            
+        except Exception as e:
+            logger.error(f"Error running ADK agent: {e}")
+            return AgentResponse(answer=f"Error: {e!s}")
+
+        # If no tool calls, we are done with this turn and the whole conversation for now
+        if not turn_function_calls:
+            # Accumulate the text from this final turn
+            final_answer_parts.extend(turn_answer_parts)
+            break
+            
+        # If we have tool calls, we must execute them and feed results back
+        # The text generated ALONGSIDE the tool call (e.g. "I will check...") is usually kept?
+        # Typically we might want to keep it if it's relevant, but for the final answer we usually want the LAST response.
+        # But let's accumulate it just in case, or ignore it if we want only the final result.
+        # For now, let's NOT accumulate intermediate text to avoid clutter, UNLESS it's the final answer.
+        # Actually, sometimes the model explains what it is doing first.
+        # Let's log it but not return it as the 'answer' unless it's the only thing.
+        if turn_answer_parts:
+             logger.info(f"Intermediate thought: {''.join(turn_answer_parts)}")
+
+        tool_outputs = []
+        for call in turn_function_calls:
+            logger.info(f"🔎 Executing Tool: {call.name}")
+            
+            # Find the tool in the agent's registry
+            target_tool = None
+            if hasattr(agent_instance, 'tools'):
+                for tool in agent_instance.tools:
+                    # Check 'name' attribute or 'fn.__name__' if it's a FunctionTool
+                    t_name = getattr(tool, 'name', None)
+                    if not t_name and hasattr(tool, 'fn'):
+                         t_name = tool.fn.__name__
+                    
+                    if t_name == call.name:
+                        target_tool = tool
+                        break
+            
+            result_content = {}
+            if target_tool:
+                try:
+                    # Extract arguments
+                    args = dict(call.args) if call.args else {}
+                    
+                    # Execute
+                    # Support both .run() and direct .fn() call
+                    if hasattr(target_tool, 'run'):
+                        # checks if run takes **kwargs
+                        res = target_tool.run(**args)
+                    elif hasattr(target_tool, 'fn'):
+                        res = target_tool.fn(**args)
+                    elif callable(target_tool):
+                        res = target_tool(**args)
+                    else:
+                        res = f"Error: Tool {call.name} is not callable."
+                    
+                    # Handle Async Tools
+                    if asyncio.iscoroutine(res):
+                        try:
+                            # We expect a loop to exist since we created/got one earlier
+                            # nest_asyncio was applied at start of function
+                            curr_loop = asyncio.get_running_loop()
+                            if curr_loop.is_running():
+                                res = curr_loop.run_until_complete(res)
+                            else:
+                                res = curr_loop.run_until_complete(res)
+                        except RuntimeError:
+                            # Fallback if no running loop found (unlikely)
+                            res = asyncio.run(res)
+
+                    # Ensure result is serializable (usually dict or str)
+                    result_content = res if isinstance(res, (dict, list, str, int, float, bool)) else str(res)
+                    
+                except Exception as e:
+                    logger.error(f"Tool execution failed: {e}")
+                    result_content = {"error": str(e)}
+            else:
+                logger.error(f"Tool {call.name} not found in agent tools.")
+                result_content = {"error": f"Tool {call.name} not found."}
+
+            tool_outputs.append(
+                types.Part(
+                    function_response=types.FunctionResponse(
+                        name=call.name,
+                        response={"result": result_content}
+                    )
+                )
+            )
+        
+        # Prepare the NEXT message (inputs for the next turn)
+        # This message contains the tool outputs
+        if tool_outputs:
+            new_message = types.Content(
+                role="tool", # or 'function' depending on API, types.Content usually uses 'tool' for function responses in Gemini
+                parts=tool_outputs
+            )
+            logger.info(f"Feeding back {len(tool_outputs)} tool results...")
+        else:
+            # Should not reach here if turn_function_calls was not empty
+            break
+
+    return AgentResponse(answer=strip_thinking_tags("".join(final_answer_parts)), function_calls=[])
 
 
 # --- Node Implementations ---
 
+from src.governed_financial_advisor.agents.data_analyst.agent import create_data_analyst_planner, create_data_analyst_executor
+
 def data_analyst_node(state):
-    """Wraps the Data Analyst agent for LangGraph."""
-    print("--- [Graph] Calling Data Analyst ---")
-    agent = get_agent("data_analyst", create_data_analyst_agent)
+    """
+    Wraps the Data Analyst agent for LangGraph.
+    Now split into:
+    1. Planner (DeepSeek): Extracts ticker/intent.
+    2. Executor (Llama 3): Generates tool calls.
+    3. Tool Loop: Executes tools and gets final answer.
+    """
+    print("--- [Graph] Calling Data Analyst (Split) ---")
+    
+    # 1. PLANNER: "Describe the task/intent"
+    # The Planner uses DeepSeek (Reasoning) to understand the context.
+    # We pass the full history or just the last message.
+    planner = get_agent("data_analyst_planner", create_data_analyst_planner)
     last_msg = get_valid_last_message(state)
-    res = run_adk_agent(agent, last_msg)
-    return {"messages": [("ai", f"Data Analysis: {res.answer}")]}
+    
+    print(f"--- [Planner] Analyzing request: {last_msg[:50]}... ---")
+    # Planner should output a concise plan or just the ticker if that's the prompt.
+    # Current prompt asks for "Just the ticker" but we can rely on its reasoning.
+    planner_res = run_adk_agent(planner, last_msg)
+    
+    # Extract the plan (e.g. Ticker)
+    # If the model used <think> tags, 'planner_res.answer' already has them stripped by 'run_adk_agent'
+    plan_content = planner_res.answer.strip()
+    print(f"--- [Planner] Plan/Ticker: {plan_content} ---")
+
+    # 2. EXECUTOR: "Execute the plan"
+    # We pass the plan to the Executor (Llama 3.1) which is forced to call tools.
+    # We use a factory that might bind tools specific to the ticker if needed, 
+    # but usually it just needs the ticker in the prompt or message.
+    
+    # If the plan is just a ticker, we might want to frame it as "Fetch data for {ticker}"
+    # to ensure the Executor (which might be generic) knows what to do.
+    # If the output is "AAPL", we say "Fetch data for AAPL".
+    
+    executor_input = plan_content
+    # Heuristic: if it looks like a ticker (short, no spaces), wrap it.
+    if len(executor_input.split()) < 2:
+        executor_input = f"Fetch market data for {executor_input}"
+        
+    executor_agent_name = f"data_analyst_executor"
+    # We don't need to pass ticker to factory if we pass it in the prompt, 
+    # BUT the factory might need it for system instructions.
+    # Let's inspect the factory in agent.py (it takes 'ticker').
+    # If we pass 'ticker' to factory, it bakes it into system prompt.
+    # So we should extract the ticker cleanly.
+    
+    ticker = plan_content.split()[-1] # Simple fallback extraction if it talks a lot
+    # Ideally Planner just outputs the ticker.
+    if len(plan_content) < 10:
+         ticker = plan_content
+    
+    print(f"--- [Executor] Initializing for Ticker: {ticker} ---")
+    executor = get_agent(f"{executor_agent_name}_{ticker}", lambda: create_data_analyst_executor(ticker))
+    
+    # 3. TOOL LOOP (Handled by run_adk_agent)
+    # The executor is configured with tool_choice='required' (usually) or just tools.
+    # run_adk_agent will loop: Model triggers Tool -> Agent executes Tool -> Model sees result -> Final Answer.
+    print(f"--- [Executor] Executing Tool Loop ---")
+    executor_res = run_adk_agent(executor, executor_input)
+    
+    print(f"DEBUG DATA ANALYSIS: Length {len(executor_res.answer)}")
+    
+    return {
+        "messages": [("ai", f"Data Analysis for {ticker}:\n{executor_res.answer}")],
+        "data_analyst_ticker": ticker
+    }
 
 
 def execution_analyst_node(state):

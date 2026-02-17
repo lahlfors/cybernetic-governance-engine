@@ -5,7 +5,7 @@ import sys
 import json
 import time
 
-BACKEND_URL = os.environ.get("BACKEND_URL")
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://34.58.155.90")
 
 def verify_market_data_tool():
     if not BACKEND_URL:
@@ -14,7 +14,7 @@ def verify_market_data_tool():
 
     print(f"🧪 Verifying Market Data Tool on {BACKEND_URL}...")
     
-    prompt = "Analyze AAPL stock performance. Include recent price history and news."
+    prompt = "You MUST use the market_data tool to analyze AAPL stock performance. Get the recent price history and news."
     url = f"{BACKEND_URL}/agent/query"
     payload = {
         "prompt": prompt,

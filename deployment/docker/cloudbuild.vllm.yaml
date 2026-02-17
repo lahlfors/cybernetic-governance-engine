@@ -1,5 +1,15 @@
 steps:
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', 'gcr.io/laah-cybernetics/vllm-streamer:latest', '-f', 'deployment/docker/Dockerfile.vllm', '.']
+  args: 
+  - 'build'
+  - '-t'
+  - 'gcr.io/laah-cybernetics/vllm-streamer:latest'
+  - '--build-arg'
+  - 'HUGGING_FACE_HUB_TOKEN=${_HF_TOKEN}'
+  - '-f'
+  - 'deployment/docker/Dockerfile.vllm'
+  - '.'
 images:
 - 'gcr.io/laah-cybernetics/vllm-streamer:latest'
+substitutions:
+  _HF_TOKEN: "" # Default to empty if not provided
