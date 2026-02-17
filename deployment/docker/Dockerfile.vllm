@@ -1,0 +1,16 @@
+FROM vllm/vllm-openai:latest
+
+# Install Run:ai Model Streamer
+# Try both ensuring standard vllm is updated and installing the streamer
+# Install Run:ai Model Streamer (via vllm[runai] extra or direct)
+# Ensuring vllm[runai] is installed for proper extension mapping
+RUN pip install --no-cache-dir "vllm[runai]" runai-model-streamer huggingface_hub
+
+# Pre-cache model configurations to avoid runtime hangs
+COPY deployment/docker/download_config.py /app/download_config.py
+# We need the HF token to download gated models (like Llama 3.1)
+# Use a build arg for the token
+ARG HUGGING_FACE_HUB_TOKEN
+ENV HUGGING_FACE_HUB_TOKEN=$HUGGING_FACE_HUB_TOKEN
+
+RUN python3 /app/download_config.py

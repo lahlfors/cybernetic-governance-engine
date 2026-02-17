@@ -1,30 +1,29 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: vllm-inference
+  name: ${APP_NAME}
   namespace: governance-stack
   labels:
-    app: vllm-inference
+    app: ${APP_NAME}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: vllm-inference
+      app: ${APP_NAME}
   template:
     metadata:
       labels:
-        app: vllm-inference
+        app: ${APP_NAME}
     spec:
+      serviceAccountName: financial-advisor-sa
       volumes:
         - name: dshm
           emptyDir:
             medium: Memory
             sizeLimit: "16Gi"  # vLLM requires large shared memory
-        - name: model-cache
-          persistentVolumeClaim:
-            claimName: model-cache-fast-pvc
       containers:
         - name: vllm
+          # Ensure image has runai extensions: pip install vllm[runai]
           image: ${IMAGE_NAME}
           imagePullPolicy: IfNotPresent
           resources:
@@ -39,14 +38,8 @@ ${RESOURCE_REQUESTS}
           volumeMounts:
             - mountPath: /dev/shm
               name: dshm
-            - mountPath: /root/.cache/huggingface
-              name: model-cache
           env:
-            - name: HUGGING_FACE_HUB_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: hf-token-secret
-                  key: token
+
 ${ENV_VARS}
           ports:
             - containerPort: 8000
@@ -64,9 +57,10 @@ ${ENV_VARS}
             initialDelaySeconds: 600
             periodSeconds: 15
           command:
-            - "python3"
-            - "-m"
-            - "vllm.entrypoints.openai.api_server"
+            - "vllm"
+            - "serve"
+            - "--host"
+            - "0.0.0.0"
             - "--port"
             - "8000"
 ${ARGS}

@@ -14,10 +14,11 @@ We also employ **Systems-Theoretic Process Analysis (STPA)** to identify and mit
 The architecture enforces "Defense in Depth" through six distinct layers (0-5):
 
 ### Layer 0: Conversational Guardrails (NeMo)
-**Goal:** Input/Output Safety & Topical Control.
-We use **NeMo Guardrails** running **In-Process** as the first line of defense to ensure the model stays on topic and avoids jailbreaks *before* it even processes a tool call. The in-process architecture is validated in both the main `server.py` entry point and the parallel safety checks in `optimistic_nodes.py`.
-*   **Implementation:** `src/utils/nemo_manager.py` & `config/rails/`
-*   **Observability (ISO 42001):** A custom `NeMoOTelCallback` intercepts every guardrail intervention (e.g., `self_check_input`) and emits an OpenTelemetry span with `guardrail.outcome` and `iso.control_id="A.6.2.8"`.
+**Goal:** Input/Output Safety, Topical Control, and **PII Filtering**.
+We use **NeMo Guardrails** running **In-Process** (or via gRPC sidecar) as the first line of defense to ensure the model stays on topic, avoids jailbreaks, and sanitizes sensitive data *before* it even processes a tool call.
+*   **PII Filtering:** We integrate **Presidio** and **Spacy** (using the lightweight `en_core_web_sm` model) to automatically mask PII (Names, Emails, Phone Numbers) in both user input and agent output.
+*   **Implementation:** `src/gateway/governance/nemo/manager.py` & `config/rails/`
+*   **Observability (ISO 42001):** A custom `NeMoOTelCallback` intercepts every guardrail intervention (e.g., `self_check_input`, `mask_sensitive_data`) and emits an OpenTelemetry span with `guardrail.outcome` and `iso.control_id="A.6.2.8"`.
 
 ### Layer 1: Session Persistence (Redis)
 **Goal:** Stateful Sessions on Stateless Compute.
@@ -82,23 +83,13 @@ We implement a **Risk-Based Tiered Strategy** for observability, solving the par
 *   **Hot Storage (Datadog/Cloud Trace):** Essential for operational health (latency, error rates) but prohibitively expensive for storing full LLM payloads (prompts/responses).
 *   **Cold Storage (S3/GCS):** Cheap but slow to query. Essential for compliance and forensics ("Why did the agent do that?").
 
-### The Solution: AgentSight (eBPF) + Hybrid Observability
-We utilize **AgentSight**, a kernel-level observability framework using eBPF, to capture full fidelity data without penalizing application performance.
+### The Solution: Smart Sampling (Implemented)
+The architecture implements a **Risk-Based Tiered Strategy** using the `GenAICostOptimizerProcessor` to route data based on utility.
 
-| Tier | Component | Content | Purpose |
-|------|-----------|---------|---------|
-| **Hot** | **Cloud Trace** | Metadata (Latency, Status, TraceID) | Operational Health |
-| **Deep** | **AgentSight (eBPF)** | Full Payloads (Prompts, Completions) + Syscalls | Forensics & Security |
-| **App** | **LangSmith** | Application Logic (Chains, Agents) | Debugging & Eval |
-
-### How It Works
-1.  **Zero-Overhead Capture:** AgentSight runs as a sidecar daemon with privileged access. It uses eBPF probes to intercept SSL/TLS traffic at the kernel level, capturing the raw "Intent" (Prompt) and "Response" (Completion) without the Python application needing to serialize or export heavy payloads.
-2.  **Syscall Monitoring:** Unlike standard tracing, AgentSight also monitors system calls (e.g., `connect`, `execve`). If an agent tries to open a reverse shell or connect to a suspicious IP, AgentSight sees the **Action**, not just the intent.
-3.  **Correlation:** The application injects an `X-Trace-Id` header into LLM requests. AgentSight captures this header, allowing us to link the low-level kernel trace with the high-level LangSmith application trace.
-
-### Implementation
-*   **Source:** `deployment/agentsight/` (Daemon Configuration)
-*   **Integration:** `src/governed_financial_advisor/utils/telemetry.py` (Hybrid Configuration)
+| Tier | Destination | Content | Sampling Logic | Purpose |
+|------|-------------|---------|----------------|---------|
+| **Hot** | Cloud Trace | Metadata Only (Latency, Status, TraceID) | 100% | Operational Health |
+| **Cold** | Local Parquet (Sync needed for GCS) | Full Payload (Prompts, Reasoning, RAG Chunks) | **Smart Sampled** | Forensics & Compliance |
 
 ## 4. Implementation Details
 

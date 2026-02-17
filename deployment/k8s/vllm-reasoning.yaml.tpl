@@ -40,15 +40,16 @@ spec:
         command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
         args:
         - "--model"
-        - "casperhansen/deepseek-r1-distill-qwen-32b-awq"
+        - "casperhansen/deepseek-r1-distill-llama-8b-awq"
         - "--served-model-name"
-        - "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
+        - "casperhansen/deepseek-r1-distill-llama-8b-awq"
         - "--max-model-len"
-        - "4096"
-        - "--quantization"
-        - "awq_marlin"
+        - "8192"
         - "--dtype"
         - "half"
+        - "--quantization"
+        - "awq"
+        - "--enforce-eager"
 
         - "--trust-remote-code"
         - "--enable-auto-tool-choice"
@@ -57,13 +58,29 @@ spec:
         - "--port"
         - "8000"
         - "--gpu-memory-utilization"
-        - "0.95"
+        - "0.9"
         env:
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
             secretKeyRef:
               name: hf-token-secret
               key: token
+        readinessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8000
+          initialDelaySeconds: 120
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8000
+          initialDelaySeconds: 600
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 5
         resources:
           limits:
             nvidia.com/gpu: 1

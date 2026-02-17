@@ -4,6 +4,7 @@ import json
 import os
 import sys
 from typing import List, Optional, Dict, Any, Union
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -14,13 +15,12 @@ sys.path.append(".")
 
 from mcp.server.fastmcp import FastMCP
 
-# Reuse existing core logic
-from src.gateway.core.llm import GatewayClient
-from src.gateway.core.policy import OPAClient
+# Core logic
 from src.gateway.core.tools import execute_trade, TradeOrder
 from src.gateway.core.market import market_service
-from src.gateway.governance.consensus import consensus_engine
-from src.gateway.governance.safety import safety_filter
+from src.gateway.governance.singletons import symbolic_governor, opa_client
+from src.gateway.governance.symbolic_governor import GovernanceError
+from src.gateway.governance.nemo.manager import initialize_rails, validate_with_nemo
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO)
@@ -29,23 +29,23 @@ logger = logging.getLogger("Gateway.HybridServer")
 from src.governed_financial_advisor.utils.telemetry import configure_telemetry
 configure_telemetry()
 
-# --- 1. Initialize FastAPI App ---
-app = FastAPI(title="Governed Financial Advisor Gateway (Hybrid)")
+# --- 1. Initialize Global Resources ---
+rails = initialize_rails()
 
-# --- 2. Initialize MCP Server ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("🚀 Hybrid Gateway Starting...")
+    yield
+    # Shutdown
+    logger.info("🛑 Hybrid Gateway Shutting Down...")
+    await opa_client.close()
+
+# --- 2. Initialize FastAPI App ---
+app = FastAPI(title="Governed Financial Advisor Gateway (Hybrid)", lifespan=lifespan)
+
+# --- 3. Initialize MCP Server ---
 mcp = FastMCP("Governed Gateway")
-opa_client = OPAClient()
-# We initialize HybridClient lazily or globally
-llm_client = GatewayClient() # Uses env vars
-
-# --- 3. Governance Logic (Shared) ---
-# Initialize Neuro-Symbolic Governor
-from src.gateway.governance import SymbolicGovernor, GovernanceError
-symbolic_governor = SymbolicGovernor(
-    opa_client=opa_client,
-    safety_filter=safety_filter,
-    consensus_engine=consensus_engine
-)
 
 async def enforce_governance(tool_name: str, params: dict):
     """
@@ -72,15 +72,6 @@ async def check_safety_constraints(target_tool: str, target_params: dict, risk_p
     """
     logger.info(f"🔍 Evaluator verifying proposed action: {target_tool} (Risk: {risk_profile})")
     
-    # Inject risk profile into params for OPA to see
-    # The Governor's 'verify' method eventually calls OPA.
-    # We need to ensure 'risk_profile' is in the payload OPA receives.
-    # We might need to patch attributes or pass it via context if SymbolicGovernor supports it.
-    # For now, let's inject it into target_params as metadata if possible, 
-    # or rely on OPAClient updates if we modify SymbolicGovernor.
-    
-    # Reviewing SymbolicGovernor.verify: it calls opa_client.evaluate_policy(params)
-    # So we should add risk_profile to target_params for the check.
     verification_params = target_params.copy()
     verification_params["risk_profile"] = risk_profile
     
@@ -115,10 +106,11 @@ async def get_market_sentiment(symbol: str) -> str:
 
 @mcp.tool()
 async def verify_content_safety(text: str) -> str:
-    """Verifies if the provided text content is safe (Jailbreak detection)."""
+    """Verifies if the provided text content is safe using NeMo Guardrails."""
     logger.info("Tool Call: verify_content_safety")
-    if "jailbreak" in text.lower() or "ignore previous" in text.lower():
-         return "BLOCKED: Semantic Safety Violation (Jailbreak Pattern)"
+    is_safe, response = await validate_with_nemo(text, rails)
+    if not is_safe:
+        return f"BLOCKED: {response}"
     return "SAFE"
 
 @mcp.tool()
@@ -161,7 +153,7 @@ async def execute_trade_action(symbol: str, amount: float, currency: str, transa
     if dry_run:
         return "DRY_RUN: APPROVED by OPA, Safety, and Consensus."
 
-    safety_filter.update_state(amount)
+    symbolic_governor.safety_filter.update_state(amount)
 
     try:
         order = TradeOrder(**params)
@@ -169,19 +161,16 @@ async def execute_trade_action(symbol: str, amount: float, currency: str, transa
         return result
     except Exception as e:
         logger.error(f"Execution Error: {e}")
+        symbolic_governor.safety_filter.rollback_state(amount)
         return f"ERROR: {e}"
 
 # --- 5. Mount MCP Server ---
-# We mount the MCP SSE app at the root (handling /sse and /messages)
-# Note: FastMCP.sse_app() returns a Starlette app.
 logger.info("Mounting MCP SSE App at /sse_app...")
-# We mount at /mcp to avoid conflict with root routes.
-# Clients must connect to /mcp/sse
 app.mount("/mcp", mcp.sse_app())
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "mode": "hybrid"}
+    return {"status": "ok", "mode": "hybrid", "nemo": "active"}
 
 # --- 6. Chat Endpoint (OpenAI Compatible) ---
 
@@ -202,56 +191,34 @@ class ChatCompletionRequest(BaseModel):
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
     """
-    OpenAI-compatible Chat Completion Endpoint.
-    Routes to vLLM via HybridClient.
+    OpenAI-compatible Chat Completion Endpoint using NeMo Guardrails.
+    Routes to VLLM via NeMo (configured in config/rails or manager.py).
     """
     logger.info(f"Chat Request: Model={request.model} Stream={request.stream}")
 
-    # Extract last user message or build prompt
-    # HybridClient expects a single prompt usually, but can handle lists?
-    # Checking HybridClient.generate: expects (prompt: str, system_instruction: str, ...)
-    # So we need to collapse messages or extract the last one.
-
-    # Strategy: Use last user message as prompt. System message as system_instruction.
-    system_instruction = request.system_instruction
-    prompt = ""
-
-    for msg in request.messages:
-        if msg.role == "system":
-            system_instruction = msg.content
-        elif msg.role == "user":
-            prompt = msg.content # Simplistic: take last user message
-
-    # Prepare kwargs
-    kwargs = {}
-    if request.temperature: kwargs['temperature'] = request.temperature
-    if request.guided_json: kwargs['guided_json'] = request.guided_json
-    if request.guided_regex: kwargs['guided_regex'] = request.guided_regex
-    if request.guided_choice: kwargs['guided_choice'] = request.guided_choice
-    if request.model: kwargs['model'] = request.model
-
-    # Mode determination
-    mode = "chat"
-    if "verifier" in (request.model or ""): mode = "verifier"
-
     try:
-        if request.stream:
-            # TODO: HybridClient currently returns full response string in the code I read.
-            # I need to check if HybridClient supports yielding.
-            # src/gateway/core/llm.py: `if is_verifier: ... return full_response else: stream = response ...`
-            # Yes, it supports streaming! But the current generate method implementation I read *consumes* the stream and returns full string!
-            # See line: `full_response = "".join(collected_content)` in `src/gateway/core/llm.py`.
-            # I need to update HybridClient to yield if I want true streaming.
-            # For now, I will fake streaming or just return JSON.
-            pass
+        # Convert Pydantic messages to dicts for NeMo
+        messages = [{"role": m.role, "content": m.content} for m in request.messages]
 
-        # Call HybridClient
-        response_text = await llm_client.generate(
-            prompt=prompt,
-            system_instruction=system_instruction,
-            mode=mode,
-            **kwargs
-        )
+        # Inject system instruction if provided (as first message)
+        if request.system_instruction:
+            if not messages or messages[0]["role"] != "system":
+                messages.insert(0, {"role": "system", "content": request.system_instruction})
+
+        # Generate with NeMo (enforces rails)
+        # Using generate_async calls NeMo's LLM (VLLM) with the conversation history
+        # and applies Input/Output rails.
+        res = await rails.generate_async(messages=messages)
+
+        response_text = ""
+        # Handle NeMo response variations (Dict or String)
+        if isinstance(res, dict) and "content" in res:
+            response_text = res["content"]
+        elif isinstance(res, str):
+            response_text = res
+        else:
+             # Fallback
+             response_text = str(res)
 
         # Build OpenAI Response
         import time
@@ -273,9 +240,9 @@ async def chat_completions(request: ChatCompletionRequest):
                 }
             ],
             "usage": {
-                "prompt_tokens": len(prompt) // 4,
+                "prompt_tokens": 0,
                 "completion_tokens": len(response_text) // 4,
-                "total_tokens": (len(prompt) + len(response_text)) // 4
+                "total_tokens": len(response_text) // 4
             }
         }
 
@@ -296,50 +263,50 @@ class ToolExecutionRequest(BaseModel):
 async def execute_tool_endpoint(request: ToolExecutionRequest):
     """
     Executes a named tool directly via HTTP.
-    Matches GatewayClient.execute_tool expectations.
     """
     logger.info(f"Tool Execution Request: {request.tool_name}")
     
     try:
-        # Dispatch to MCP Tools
-        # We can call the decorated functions directly
         output = None
         
+        # Dispatcher Mapping
+        tool_map = {
+            "check_safety_constraints": check_safety_constraints,
+            "trigger_safety_intervention": trigger_safety_intervention,
+            "check_market_status": check_market_status,
+            "get_market_sentiment": get_market_sentiment,
+            "verify_content_safety": verify_content_safety,
+            "evaluate_policy": evaluate_policy,
+            "execute_trade_action": execute_trade_action
+        }
+
+        if request.tool_name not in tool_map:
+             raise HTTPException(status_code=404, detail=f"Tool '{request.tool_name}' not found")
+
+        func = tool_map[request.tool_name]
+
+        # Argument binding logic
         if request.tool_name == "check_safety_constraints":
-            # Parse params loosely
-            target_tool = request.params.get("target_tool")
-            target_params = request.params.get("target_params") or {}
-            risk_profile = request.params.get("risk_profile", "Medium")
-            output = await check_safety_constraints(target_tool, target_params, risk_profile)
-            
+             target_tool = request.params.get("target_tool")
+             target_params = request.params.get("target_params") or {}
+             risk_profile = request.params.get("risk_profile", "Medium")
+             output = await func(target_tool, target_params, risk_profile)
+
         elif request.tool_name == "trigger_safety_intervention":
-            reason = request.params.get("reason", "Unknown")
-            output = await trigger_safety_intervention(reason)
-            
+             output = await func(request.params.get("reason", "Unknown"))
+
         elif request.tool_name == "check_market_status":
-            symbol = request.params.get("symbol")
-            if not symbol: raise ValueError("Missing 'symbol'")
-            output = await check_market_status(symbol)
-            
+             output = await func(request.params.get("symbol"))
+
         elif request.tool_name == "get_market_sentiment":
-            symbol = request.params.get("symbol")
-            if not symbol: raise ValueError("Missing 'symbol'")
-            output = await get_market_sentiment(symbol)
-            
+             output = await func(request.params.get("symbol"))
+
         elif request.tool_name == "verify_content_safety":
-            text = request.params.get("text", "")
-            output = await verify_content_safety(text)
-            
-        elif request.tool_name == "evaluate_policy":
-            # kwargs unpack
-            output = await evaluate_policy(**request.params)
-            
-        elif request.tool_name == "execute_trade_action":
-            # kwargs unpack
-            output = await execute_trade_action(**request.params)
-            
+             output = await func(request.params.get("text", ""))
+
         else:
-            raise HTTPException(status_code=404, detail=f"Tool '{request.tool_name}' not found")
+             # evaluate_policy and execute_trade_action accept kwargs
+             output = await func(**request.params)
         
         return {"status": "SUCCESS", "output": str(output)}
 
@@ -347,136 +314,7 @@ async def execute_tool_endpoint(request: ToolExecutionRequest):
         logger.error(f"Tool Execution Error: {e}")
         return {"status": "ERROR", "error": str(e)}
 
-# --- 8. gRPC Server Implementation ---
-import grpc
-from src.gateway.protos import gateway_pb2, gateway_pb2_grpc
-
-class GatewayService(gateway_pb2_grpc.GatewayServicer):
-    async def Chat(self, request, context):
-        """
-        gRPC Chat Implementation.
-        """
-        logger.info(f"gRPC Chat Request: Model={request.model}")
-        
-        # Extract prompt from messages
-        system_instruction = request.system_instruction
-        prompt = ""
-        for msg in request.messages:
-            if msg.role == "system":
-                system_instruction = msg.content
-            elif msg.role == "user":
-                prompt = msg.content
-
-        # Prepare kwargs
-        kwargs = {
-            "model": request.model,
-            "temperature": request.temperature,
-            "guided_json": json.loads(request.guided_json) if request.guided_json else None,
-            "guided_regex": request.guided_regex if request.guided_regex else None,
-            "guided_choice": json.loads(request.guided_choice) if request.guided_choice else None,
-            "stream": True # Force stream for gRPC
-        }
-
-        mode = "chat"
-        if "verifier" in (request.model or "") or request.mode == "verifier":
-            mode = "verifier"
-
-        try:
-            # Call HybridClient
-            # We need to ensure HybridClient supports yielding/streaming if we want true streaming.
-            # Current implementation returns full text. We will yield it as one chunk for now.
-            response_text = await llm_client.generate(
-                prompt=prompt,
-                system_instruction=system_instruction,
-                mode=mode,
-                **kwargs
-            )
-            
-            # Yield response
-            yield gateway_pb2.ChatResponse(content=response_text, is_final=True)
-
-        except Exception as e:
-            logger.error(f"gRPC Chat Error: {e}")
-            context.set_details(str(e))
-            context.set_code(grpc.StatusCode.INTERNAL)
-
-    async def ExecuteTool(self, request, context):
-        """
-        gRPC Tool Execution.
-        """
-        logger.info(f"gRPC Tool Execution: {request.tool_name}")
-        try:
-            params = json.loads(request.params_json)
-            output = None
-
-            # Recycle endpoint logic (refactor eventually to separate service layer)
-            if request.tool_name == "check_safety_constraints":
-                target_tool = params.get("target_tool")
-                target_params = params.get("target_params") or {}
-                risk_profile = params.get("risk_profile", "Medium")
-                output = await check_safety_constraints(target_tool, target_params, risk_profile)
-            
-            elif request.tool_name == "trigger_safety_intervention":
-                reason = params.get("reason", "Unknown")
-                output = await trigger_safety_intervention(reason)
-                
-            elif request.tool_name == "check_market_status":
-                symbol = params.get("symbol")
-                output = await check_market_status(symbol)
-                
-            elif request.tool_name == "get_market_sentiment":
-                symbol = params.get("symbol")
-                output = await get_market_sentiment(symbol)
-                
-            elif request.tool_name == "verify_content_safety":
-                text = params.get("text", "")
-                output = await verify_content_safety(text)
-                
-            elif request.tool_name == "evaluate_policy":
-                output = await evaluate_policy(**params)
-                
-            elif request.tool_name == "execute_trade_action":
-                output = await execute_trade_action(**params)
-                
-            else:
-                context.set_details(f"Tool '{request.tool_name}' not found")
-                context.set_code(grpc.StatusCode.NOT_FOUND)
-                return gateway_pb2.ToolResponse(status="ERROR", error="Tool not found")
-
-            return gateway_pb2.ToolResponse(output=str(output), status="SUCCESS")
-
-        except Exception as e:
-            logger.error(f"gRPC Tool Error: {e}")
-            return gateway_pb2.ToolResponse(error=str(e), status="ERROR")
-
-async def serve_grpc():
-    server = grpc.aio.server()
-    gateway_pb2_grpc.add_GatewayServicer_to_server(GatewayService(), server)
-    grpc_port = os.getenv("GATEWAY_GRPC_PORT", "50051")
-    server.add_insecure_port(f'[::]:{grpc_port}')
-    logger.info(f"🚀 gRPC Server starting on port {grpc_port}...")
-    await server.start()
-    await server.wait_for_termination()
-
 if __name__ == "__main__":
     import uvicorn
-    
-    # Run both servers?
-    # Option: Run FastAPI in one task, gRPC in another.
-    # Uvicorn run() is blocking. We can use Config and Server.serve() in a loop.
-    
     http_port = int(os.getenv("PORT", 8080))
-    grpc_port = int(os.getenv("GATEWAY_GRPC_PORT", 50051))
-    
-    config = uvicorn.Config(app, host="0.0.0.0", port=http_port)
-    server = uvicorn.Server(config)
-    
-    async def main():
-        # Start gRPC
-        grpc_task = asyncio.create_task(serve_grpc())
-        # Start HTTP
-        http_task = asyncio.create_task(server.serve())
-        
-        await asyncio.gather(grpc_task, http_task)
-        
-    asyncio.run(main())
+    uvicorn.run(app, host="0.0.0.0", port=http_port)

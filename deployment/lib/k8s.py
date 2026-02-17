@@ -123,7 +123,7 @@ def ensure_gke_cluster(project_id, config):
             "gcloud", "container", "clusters", "create", cluster_name,
             location_flag, location_value,
             "--project", project_id,
-            "--num-nodes", "1",
+            "--num-nodes", "2",
             "--machine-type", machine_type,
             "--accelerator", f"type={accelerator_type},count={accelerator_count}",
             "--disk-size", disk_size,
@@ -132,7 +132,7 @@ def ensure_gke_cluster(project_id, config):
             "--shielded-secure-boot",
             "--shielded-integrity-monitoring",
             "--enable-private-nodes",
-            "--master-ipv4-cidr", "172.16.101.0/28", # Updated to avoid conflict with legacy subnet
+            "--master-ipv4-cidr", "172.16.102.0/28", # Updated to avoid conflict with legacy subnet
             "--enable-ip-alias", # Required for private
             "--enable-master-authorized-networks",
             "--master-authorized-networks", "0.0.0.0/0",
@@ -310,7 +310,8 @@ def deploy_k8s_infra(project_id, config, args=None):
         return
 
     # Deploy Model Storage (PVC + Downloader)
-    deploy_model_storage(project_id, config)
+    # Deploy Model Storage (PVC + Downloader)
+    # deploy_model_storage(project_id, config) # Disabled for Run:ai Streamer Migration
 
     # Deploy Redis (StatefulSet)
     redis_manifest = k8s_dir / "redis-statefulset.yaml"
@@ -346,13 +347,36 @@ def deploy_k8s_infra(project_id, config, args=None):
         run_command(["kubectl", "apply", "-f", str(pdb_path)])
         
     # Deploy Reasoning Model (Static Manifest for now, but needs to be applied)
+    # Deploy Reasoning Model (Dynamic Manifest via Renderer)
     if os.environ.get("MODEL_REASONING"):
-        reasoning_path = k8s_dir / "vllm-reasoning.yaml"
-        if reasoning_path.exists():
-            print("🧠 Deploying Reasoning Model...")
-            # We might need to substitute env vars or other things if it was a template
-            # For now it's static, so just apply. 
+        model_reasoning = os.environ.get("MODEL_REASONING")
+        print(f"🧠 Deploying Reasoning Model: {model_reasoning}...")
+        
+        # Create config for reasoning
+        reasoning_config = config.copy()
+        reasoning_config["model"] = {
+            "name": model_reasoning,
+            # We assume reasoning model needs AWQ if specified in name, or default to what we know
+            "quantization": "awq" if "awq" in model_reasoning.lower() else None,
+            "max_model_len": "32768", # Ultra-long context for reasoning
+            "gpu_memory_utilization": "0.9",
+            "enforce_eager": True,
+            # "load_format": "runai_streamer", # Removed to allow auto-detection/fallback in renderer.py
+            "enable_prefix_caching": True, # Optimize for ReAct loop
+        }
+        
+        # Generate Manifest
+        reasoning_yaml = generate_vllm_manifest(accelerator_kind, reasoning_config, app_name="vllm-reasoning")
+        
+        if reasoning_yaml:
+            reasoning_path = generated_dir / "vllm-reasoning.yaml"
+            with open(reasoning_path, 'w') as f:
+                f.write(reasoning_yaml)
+            
+            print(f"🚀 Applying Reasoning manifest from {reasoning_path}...")
             run_command(["kubectl", "apply", "-f", str(reasoning_path)])
+        else:
+            print("❌ Failed to generate Reasoning manifest.")
 
     
     # 7. Deploy Autoscaling

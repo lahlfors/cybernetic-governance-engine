@@ -34,6 +34,7 @@ class AgentState(TypedDict):
 
     # Execution Data
     execution_plan_output: str | dict | None # Holds the structured plan (System 4 Output)
+    data_analyst_ticker: str | None # Holds the ticker identified by Data Analyst Planner
 
     # MACAW / System 3 Control Signals
     evaluation_result: dict[str, Any] | None # The Evaluator's Verdict & Simulation Results

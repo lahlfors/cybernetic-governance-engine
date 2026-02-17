@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-service
+  namespace: governance-stack
+  labels:
+    app: vllm-inference
+spec:
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  selector:
+    app: vllm-inference
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-reasoning
+  namespace: governance-stack
+  labels:
+    app: vllm-reasoning
+spec:
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  selector:
+    app: vllm-reasoning
+  type: ClusterIP

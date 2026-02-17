@@ -18,7 +18,7 @@ from config.settings import Config
 from src.governed_financial_advisor.demo.router import demo_router
 from src.governed_financial_advisor.graph.graph import create_graph
 from src.governed_financial_advisor.utils.context import user_context
-from src.governed_financial_advisor.utils.nemo_manager import load_rails, validate_with_nemo
+from src.gateway.governance.nemo.manager import load_rails, validate_with_nemo
 from src.governed_financial_advisor.utils.telemetry import configure_telemetry
 from src.governed_financial_advisor.infrastructure.gateway_client import gateway_client
 
@@ -105,7 +105,7 @@ async def query_agent(req: QueryRequest, request: Request):
         print(f"DEBUG: Invoking Graph with prompt '{req.prompt}'")
         res = await request.app.state.graph.ainvoke(
             {"messages": [("user", req.prompt)], "user_id": req.user_id},
-            {"recursion_limit": 20, "configurable": {"thread_id": req.thread_id}}
+            {"recursion_limit": 100, "configurable": {"thread_id": req.thread_id}}
         )
         print(f"DEBUG: Graph result messages keys: {res.keys() if res else 'None'}")
         if res and "messages" in res and res["messages"]:

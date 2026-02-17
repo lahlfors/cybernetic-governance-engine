@@ -34,6 +34,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import concurrent.futures
 from pathlib import Path
 
 import yaml
@@ -59,9 +60,58 @@ load_dotenv()
 
 # --- Service Deployment ---
 
-def build_gateway_image(project_id):
+# --- Service Deployment ---
+
+def build_backend_image(project_id, skip_build=False):
+    """Builds the Backend container image."""
+    image_uri = f"gcr.io/{project_id}/financial-advisor:latest"
+    if skip_build:
+        print(f"\n--- ⏭️ Skipping Backend Build ({image_uri}) ---")
+        return image_uri
+
+    print(f"\n--- 🏗️ Building Backend Image: {image_uri} ---")
+    try:
+        run_command(["gcloud", "builds", "submit", "--tag", image_uri, "--project", project_id, "."])
+        return image_uri
+    except Exception as e:
+        print(f"❌ Backend Build Failed: {e}")
+        raise
+
+def build_vllm_streamer_image(project_id, skip_build=False):
+    """Builds the vLLM Streamer container image."""
+    streamer_image = f"gcr.io/{project_id}/vllm-streamer:latest"
+    if skip_build:
+        print(f"\n--- ⏭️ Skipping vLLM Streamer Build ({streamer_image}) ---")
+        return streamer_image
+
+    print(f"\n--- 🏗️ Building vLLM Streamer Image: {streamer_image} ---")
+    try:
+        cb_config = Path("deployment/docker/cloudbuild.vllm.yaml")
+        if cb_config.exists():
+             # We need to pass the HF_TOKEN as a build arg
+             # But Cloud Build headers don't support --build-arg directly in 'submit --config' unless specific substitutions are used.
+             # Actually, we can use substitutions for this.
+             hf_token = os.environ.get("HUGGING_FACE_HUB_TOKEN") or os.environ.get("HF_TOKEN")
+             subst = []
+             if hf_token:
+                 subst = [f"--substitutions=_HF_TOKEN={hf_token}"]
+             
+             cmd = ["gcloud", "builds", "submit", "--config", str(cb_config), "--project", project_id] + subst + ["."]
+             run_command(cmd)
+        else:
+             print("⚠️ cloudbuild.vllm.yaml not found, falling back to manual instructions or fix.")
+        return streamer_image
+    except Exception as e:
+        print(f"❌ vLLM Streamer Build Failed: {e}")
+        raise
+
+def build_gateway_image(project_id, skip_build=False):
     """Builds the Gateway container image."""
     gateway_image_uri = f"gcr.io/{project_id}/gateway:latest"
+    if skip_build:
+        print(f"\n--- ⏭️ Skipping Gateway Build ({gateway_image_uri}) ---")
+        return gateway_image_uri
+
     print(f"\n--- 🏗️ Building Gateway Image: {gateway_image_uri} ---")
     
     # Check if src/gateway exists
@@ -212,6 +262,37 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
     else:
         print("⚠️ No HF_TOKEN found. vLLM model download may fail.")
 
+    # AWS/GCS Credentials for Run:ai Streamer
+    # We strip 'export ' if present in .env values just in case, though usually os.environ handles it.
+    aws_access_key = os.environ.get("AWS_ACCESS_KEY_ID", "")
+    aws_secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+    aws_region = os.environ.get("AWS_REGION", "us-east-1")
+    aws_endpoint = os.environ.get("AWS_ENDPOINT_URL", "https://storage.googleapis.com")
+
+    if aws_access_key and aws_secret_key:
+        print("🔑 Creating gcs-credentials-secret for vLLM Streamer...")
+        # We use strict formatting to ensure special chars don't break the shell command
+        # Using subprocess with list args avoids shell injection, but kubectl apply -f - requires piping.
+        # We'll construct the command carefully.
+        cmd = [
+            "kubectl", "create", "secret", "generic", "gcs-credentials-secret",
+            f"--from-literal=AWS_ACCESS_KEY_ID={aws_access_key}",
+            f"--from-literal=AWS_SECRET_ACCESS_KEY={aws_secret_key}",
+            f"--from-literal=AWS_REGION={aws_region}",
+            f"--from-literal=AWS_ENDPOINT_URL={aws_endpoint}",
+            "-n", "governance-stack",
+            "--dry-run=client", "-o", "yaml"
+        ]
+        # Execute and pipe to apply
+        try:
+            deploy_yaml = subprocess.check_output(cmd, text=True)
+            subprocess.run(["kubectl", "apply", "-f", "-"], input=deploy_yaml, text=True, check=True)
+            print("✅ gcs-credentials-secret applied.")
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Failed to create gcs-credentials-secret: {e}")
+    else:
+        print("⚠️ AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY missing. vLLM Streamer might fail if using S3/GCS.")
+
     # Finance Policy
     policy_path = "src/governed_financial_advisor/governance/policy/finance_policy.rego"
     if not os.path.exists(policy_path) and os.path.exists("deployment/finance_policy.rego"):
@@ -236,6 +317,8 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
             f.write(sa_content)
         run_command(["kubectl", "apply", "-f", str(sa_generated)])
 
+        print(f"ℹ️ Ensure the mapped Google Service Account has 'roles/storage.objectViewer' on model buckets.")
+
     # 5. Define Substitutions (Moved up for Gateway)
     timestamp = str(int(time.time()))
     substitutions = {
@@ -249,16 +332,16 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         "${PORT}": os.environ.get("PORT", "8080"),
         
         # Model Configuration (Tiered)
-        "${MODEL_FAST}": os.environ.get("MODEL_FAST", ""),
-        "${MODEL_REASONING}": os.environ.get("MODEL_REASONING", ""),
-        "${MODEL_CONSENSUS}": os.environ.get("MODEL_CONSENSUS", os.environ.get("MODEL_REASONING", "")),
+        "${MODEL_FAST}": f"openai/{os.environ.get('MODEL_FAST')}" if os.environ.get("MODEL_FAST") and not os.environ.get("MODEL_FAST").startswith("openai/") else os.environ.get("MODEL_FAST", ""),
+        "${MODEL_REASONING}": f"openai/{os.environ.get('MODEL_REASONING')}" if os.environ.get("MODEL_REASONING") and not os.environ.get("MODEL_REASONING").startswith("openai/") else os.environ.get("MODEL_REASONING", ""),
+        "${MODEL_CONSENSUS}": f"openai/{os.environ.get('MODEL_CONSENSUS', os.environ.get('MODEL_REASONING', ''))}" if os.environ.get("MODEL_CONSENSUS", os.environ.get("MODEL_REASONING")) and not os.environ.get("MODEL_CONSENSUS", os.environ.get("MODEL_REASONING", "")).startswith("openai/") else os.environ.get("MODEL_CONSENSUS", os.environ.get("MODEL_REASONING", "")),
         
         # vLLM Endpoints
-        "${VLLM_BASE_URL}": os.environ.get("VLLM_BASE_URL", "http://vllm-service.governance-stack.svc.cluster.local:8000/v1"),
+        # vLLM Endpoints (Force K8s Service DNS for GKE)
+        "${VLLM_BASE_URL}": "http://vllm-service.governance-stack.svc.cluster.local:8000/v1",
         "${VLLM_API_KEY}": os.environ.get("VLLM_API_KEY", "EMPTY"),
-        # Fix: Use the value of VLLM_BASE_URL from above if env var is not set, not os.environ.get which returns empty
-        "${VLLM_FAST_API_BASE}": os.environ.get("VLLM_FAST_API_BASE", os.environ.get("VLLM_BASE_URL", "http://vllm-service.governance-stack.svc.cluster.local:8000/v1")),
-        "${VLLM_REASONING_API_BASE}": os.environ.get("VLLM_REASONING_API_BASE", os.environ.get("VLLM_BASE_URL", "http://vllm-service.governance-stack.svc.cluster.local:8000/v1")),
+        "${VLLM_FAST_API_BASE}": "http://vllm-service.governance-stack.svc.cluster.local:8000/v1",
+        "${VLLM_REASONING_API_BASE}": "http://vllm-reasoning.governance-stack.svc.cluster.local:8000/v1",
         
         # Policy Engine
         "${OPA_URL}": os.environ.get("OPA_URL", "http://localhost:8181/v1/data/finance/allow"),
@@ -428,6 +511,7 @@ def main():
     if "project" not in config: config["project"] = {}
     config["project"]["region"] = region
     config["project"]["zone"] = zone
+    config["project"]["id"] = project_id
     if args.cluster_name:
         if "cluster" not in config: config["cluster"] = {}
         config["cluster"]["name"] = args.cluster_name
@@ -443,35 +527,49 @@ def main():
     if model_fast:
         config.setdefault("model", {})["name"] = model_fast
         # Clear quantization by default for Fast model (usually small) unless specified in name
-        if not any(q in model_fast for q in ["AWQ", "GPTQ", "BNB", "Int8"]):
+        if not any(q.lower() in model_fast.lower() for q in ["AWQ", "GPTQ", "BNB", "Int8"]):
             config["model"]["quantization"] = None
         
         # Quantization logic for Fast model (if needed in future)
-        if "AWQ" in model_fast or "GPTQ" in model_fast:
+        if "awq" in model_fast.lower() or "gptq" in model_fast.lower():
              config["model"]["quantization"] = "awq" # Example default
         
         # Optimize memory for 7B model on L4 (leave room for activations/FSM)
-        if "7B" in model_fast or "8B" in model_fast:
+        if "7b" in model_fast.lower() or "8b" in model_fast.lower():
              # Since we enforce node isolation (1 GPU per model), we can use more memory.
              # 0.7 was too low for 8k context.
              config["model"]["gpu_memory_utilization"] = 0.9
-             print(f"ℹ️ Optimized gpu_memory_utilization to 0.9 for {model_fast}")
+             config["model"]["load_format"] = "runai_streamer"
+             # config["model"]["extra_config"] = '{"distributed": true}'
+             # config["model"]["extra_config"] = '{"distributed": true}'
+             config["model"]["max_model_len"] = 4096
+             config["model"]["max_num_seqs"] = 256 # High throughput for tools
+             print(f"ℹ️ Optimized gpu_memory_utilization to 0.9, max_model_len to 4096, and max_num_seqs to 256 for {model_fast}")
     
     print(f"🔍 DEBUG: Final Config Model (Inference): {config.get('model', {})}")
 
-    # Build Container
+    # Build Containers in Parallel
     image_uri = f"gcr.io/{project_id}/financial-advisor:latest"
+    
     if not args.skip_build:
-        print("\n--- 🏗️ Building Backend Image ---")
-        run_command(["gcloud", "builds", "submit", "--tag", image_uri, "--project", project_id, "."])
-        
-        # Build Gateway Image
-        if not args.skip_gateway:
-            build_gateway_image(project_id)
-        else:
-            print("\n--- ⏭️ Skipping Gateway Build ---")
+        print("\n--- 🚀 Starting Parallel Builds ---")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            futures = {
+                executor.submit(build_backend_image, project_id, args.skip_build): "Backend",
+                executor.submit(build_vllm_streamer_image, project_id, args.skip_build): "vLLM Streamer",
+                executor.submit(build_gateway_image, project_id, args.skip_gateway): "Gateway"
+            }
+            
+            for future in concurrent.futures.as_completed(futures):
+                name = futures[future]
+                try:
+                    res = future.result()
+                    print(f"✅ {name} Build Completed: {res}")
+                except Exception as e:
+                    print(f"❌ {name} Build Failed: {e}")
+                    sys.exit(1) # Fail fast if any build fails
     else:
-        print(f"\n--- ⏭️ Skipping Build ({image_uri}) ---")
+         print(f"\n--- ⏭️ Skipping All Builds ---")
 
     # Deploy Application Stack
     if not args.skip_k8s:

@@ -1,16 +1,12 @@
 """
-Gateway Client Wrapper (gRPC)
-Replaces Hybrid/REST Client with efficient gRPC stubs.
+Gateway Client Wrapper (HTTP/REST)
+Replaces gRPC Client with HTTP/REST Client.
 """
 import logging
 import os
 import json
-import asyncio
-import grpc
-from typing import AsyncGenerator
-
-from src.gateway.protos import gateway_pb2
-from src.gateway.protos import gateway_pb2_grpc
+import httpx
+from typing import Any, Optional, Dict
 
 logger = logging.getLogger("GatewayClient")
 
@@ -20,114 +16,104 @@ class GatewayClient:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance.channel = None
-            cls._instance.stub = None
-            cls._instance._channel_loop = None
+            cls._instance.client = None
+            cls._instance.base_url = None
         return cls._instance
 
     async def close(self):
-        """Closes the gRPC channel."""
-        if self.channel:
-            await self.channel.close()
-            logger.info("GatewayClient gRPC channel closed.")
+        """Closes the HTTP session."""
+        if self.client:
+            await self.client.aclose()
+            logger.info("GatewayClient HTTP session closed.")
 
     def _ensure_connection(self):
         """
-        Ensures the gRPC channel exists and is bound to the current event loop.
+        Ensures the HTTP client exists.
         """
-        try:
-            current_loop = asyncio.get_running_loop()
-        except RuntimeError:
-            logger.warning("No running event loop found during connection.")
-            return
-
-        # Check if we need to reconnect (No channel, or loop mismatch)
-        if self.channel is None or self._channel_loop != current_loop:
-            if self.channel:
-                logger.warning("GatewayClient detected loop mismatch or existing channel. Reconnecting...")
-                # We can't safely close the old channel from a new loop if it's bound to the old one,
-                # but we can dereference it. The GC will eventually handle it, or we leak a socket.
-                # Ideally, we'd schedule a close on the old loop, but we might not have access to it.
-                self.channel = None
-
+        if self.client is None or self.client.is_closed:
             host = os.getenv("GATEWAY_HOST", "localhost")
-            port = os.getenv("GATEWAY_GRPC_PORT", "50051")
-            target = f"{host}:{port}"
+            port = os.getenv("PORT", "8080") # Default HTTP Port
+
+            # Construct Base URL
+            if not host.startswith("http"):
+                self.base_url = f"http://{host}:{port}"
+            else:
+                # Assuming host includes scheme, append port if not present?
+                # Usually GATEWAY_HOST might be just host.
+                # Let's assume standard format.
+                if ":" not in host.split("//")[-1]:
+                     self.base_url = f"{host}:{port}"
+                else:
+                     self.base_url = host
             
-            logger.info(f"Connecting to Gateway (gRPC) at {target} on loop {id(current_loop)}...")
-            self.channel = grpc.aio.insecure_channel(target)
-            self.stub = gateway_pb2_grpc.GatewayStub(self.channel)
-            self._channel_loop = current_loop
-            logger.info("GatewayClient Connected.")
+            logger.info(f"Connecting to Gateway (HTTP) at {self.base_url}...")
+            # Use a reasonable timeout for LLM/Tool calls
+            self.client = httpx.AsyncClient(base_url=self.base_url, timeout=120.0)
 
     def connect(self, host=None, port=None):
-        # Deprecated: alias to _ensure_connection but params are ignored as we prefer env vars or lazy load
+        # Deprecated: alias to _ensure_connection
         self._ensure_connection()
 
     async def execute_tool(self, tool_name: str, params: dict) -> str:
         """
-        Calls ExecuteTool via gRPC.
+        Calls ExecuteTool via HTTP POST /tools/execute.
         """
         self._ensure_connection()
 
         try:
-            request = gateway_pb2.ToolRequest(
-                tool_name=tool_name,
-                params_json=json.dumps(params)
-            )
-            response = await self.stub.ExecuteTool(request)
+            response = await self.client.post("/tools/execute", json={
+                "tool_name": tool_name,
+                "params": params
+            })
 
-            if response.status == "SUCCESS":
-                return response.output
-            elif response.status == "BLOCKED":
-                 return f"BLOCKED: {response.error}"
+            # We don't raise immediately because 4xx might be a governance block we want to parse
+            if response.status_code >= 500:
+                response.raise_for_status()
+
+            result = response.json()
+
+            if result.get("status") == "SUCCESS":
+                return result.get("output")
+            elif result.get("status") == "BLOCKED":
+                 return f"BLOCKED: {result.get('error')}"
             else:
-                 return f"ERROR: {response.error}"
+                 return f"ERROR: {result.get('error', 'Unknown Error')}"
 
-        except grpc.RpcError as e:
-            logger.error(f"gRPC Tool Execution Failed: {e.details()}")
-            return f"SYSTEM ERROR: {e.details()}"
+        except Exception as e:
+            logger.error(f"HTTP Tool Execution Failed: {e}")
+            return f"SYSTEM ERROR: {e}"
 
     async def chat(self, prompt: str, system_instruction: str | None = None, mode: str = "chat", **kwargs) -> str:
         """
-        Invokes LLM via gRPC Chat Endpoint.
-        """
-        """
-        Invokes LLM via gRPC Chat Endpoint.
+        Invokes LLM via HTTP POST /v1/chat/completions.
         """
         self._ensure_connection()
 
         # Build Message List
         messages = []
-        # Add system instruction if provided (though proto has separate field, consistency helps)
         if system_instruction:
-            messages.append(gateway_pb2.Message(role="system", content=system_instruction))
+            messages.append({"role": "system", "content": system_instruction})
+        messages.append({"role": "user", "content": prompt})
 
-        # Add user prompt
-        messages.append(gateway_pb2.Message(role="user", content=prompt))
-
-        # Build Request
-        request = gateway_pb2.ChatRequest(
-            model=kwargs.get("model", "default"),
-            messages=messages,
-            temperature=kwargs.get("temperature", 0.0),
-            system_instruction=system_instruction or "",
-            mode=mode,
-            guided_json=json.dumps(kwargs.get("guided_json")) if "guided_json" in kwargs else "",
-            guided_regex=kwargs.get("guided_regex", ""),
-            guided_choice=json.dumps(kwargs.get("guided_choice")) if "guided_choice" in kwargs else ""
-        )
+        # Build Request Payload
+        payload = {
+            "model": kwargs.get("model", "default"),
+            "messages": messages,
+            "temperature": kwargs.get("temperature", 0.0),
+            "stream": False, # Enforce non-streaming for now as per method signature returning str
+            "guided_json": kwargs.get("guided_json"),
+            "guided_regex": kwargs.get("guided_regex"),
+            "guided_choice": kwargs.get("guided_choice")
+        }
 
         try:
-            full_content = []
-            # Stream response
-            async for response in self.stub.Chat(request):
-                full_content.append(response.content)
+            response = await self.client.post("/v1/chat/completions", json=payload)
+            response.raise_for_status()
+            data = response.json()
+            return data["choices"][0]["message"]["content"]
 
-            return "".join(full_content)
-
-        except grpc.RpcError as e:
-            logger.error(f"gRPC Chat Failed: {e.details()}")
+        except Exception as e:
+            logger.error(f"HTTP Chat Failed: {e}")
             raise e
 
 # Singleton instance

@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-inference-streaming
+  namespace: governance-stack
+  labels:
+    app: vllm-inference-streaming
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-inference-streaming
+  template:
+    metadata:
+      labels:
+        app: vllm-inference-streaming
+    spec:
+      serviceAccountName: financial-advisor-sa
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: "16Gi"
+      containers:
+        - name: vllm
+          # NOTE: Image must have `pip install vllm[runai]` installed
+          image: ${IMAGE_NAME}
+          imagePullPolicy: IfNotPresent
+          resources:
+            limits:
+              nvidia.com/gpu: "1"
+              memory: "64Gi"
+              cpu: "16"
+            requests:
+              nvidia.com/gpu: "1"
+              memory: "16Gi"
+              cpu: "4"
+          volumeMounts:
+            - mountPath: /dev/shm
+              name: dshm
+          env:
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token-secret
+                  key: token
+            # Run:ai Streamer Configuration (GCS via S3-compat)
+            - name: RUNAI_STREAMER_S3_USE_VIRTUAL_ADDRESSING
+              value: "0"
+            - name: AWS_ENDPOINT_URL
+              value: "https://storage.googleapis.com"
+            - name: AWS_EC2_METADATA_DISABLED
+              value: "true"
+          ports:
+            - containerPort: 8000
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 300
+            periodSeconds: 15
+          command:
+            - "vllm"
+            - "serve"
+            - "${MODEL_PATH}"
+            - "--load-format"
+            - "runai_streamer"
+            - "--model-loader-extra-config"
+            - '{"distributed": true}'
+            - "--port"
+            - "8000"
+            - "--trust-remote-code"
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-l4
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Exists"
+          effect: "NoSchedule"

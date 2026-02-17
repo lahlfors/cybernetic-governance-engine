@@ -20,6 +20,36 @@ from src.governed_financial_advisor.infrastructure.config_manager import config_
 
 # Configure Logging
 logger = logging.getLogger("NeMoManager")
+
+# --- Monkeypatch NeMo Sensitive Data Detection to use en_core_web_sm ---
+try:
+    from nemoguardrails.library.sensitive_data_detection import actions as sdd_actions
+    from presidio_analyzer import AnalyzerEngine
+    from presidio_analyzer.nlp_engine import NlpEngineProvider
+    import spacy
+
+    def _get_analyzer_patch(score_threshold: float = 0.4):
+        try:
+            import spacy
+            if not spacy.util.is_package("en_core_web_sm"):
+                 logger.warning("en_core_web_sm not found, PII detection might fail.")
+        except:
+            pass
+
+        configuration = {
+            "nlp_engine_name": "spacy",
+            "models": [{"lang_code": "en", "model_name": "en_core_web_sm"}],
+        }
+        provider = NlpEngineProvider(nlp_configuration=configuration)
+        nlp_engine = provider.create_engine()
+        return AnalyzerEngine(nlp_engine=nlp_engine, default_score_threshold=score_threshold)
+
+    sdd_actions._get_analyzer = _get_analyzer_patch
+    logger.info("✅ Monkeypatched NeMo Sensitive Data Detection to use en_core_web_sm")
+except ImportError as e:
+    logger.warning(f"⚠️ Could not patch Sensitive Data Detection: {e}")
+except Exception as e:
+    logger.warning(f"⚠️ Error patching Sensitive Data Detection: {e}")
 tracer = trace.get_tracer(__name__)
 
 class VLLMLLM(BaseChatModel):
@@ -165,8 +195,10 @@ def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
         if os.path.exists(cwd_path):
             config_path = cwd_path
         else:
+            # Look relative to project root if running from elsewhere
             base_dir = os.path.dirname(os.path.abspath(__file__))
-            possible_path = os.path.join(base_dir, "rails_config")
+            # We are in src/gateway/governance/nemo/, so ../../../../config/rails
+            possible_path = os.path.abspath(os.path.join(base_dir, "../../../../config/rails"))
             if os.path.exists(possible_path):
                 config_path = possible_path
 
@@ -180,7 +212,7 @@ def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
 
     # Explicitly register actions
     try:
-        from src.governed_financial_advisor.governance.nemo_actions import (
+        from src.gateway.governance.nemo.actions import (
             check_approval_token,
             check_data_latency,
             check_drawdown_limit,

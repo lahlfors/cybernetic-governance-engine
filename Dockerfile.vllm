@@ -1,0 +1,5 @@
+FROM vllm/vllm-openai:latest
+
+# Install Run:ai Model Streamer
+# Try both ensuring standard vllm is updated and installing the streamer
+RUN pip install --no-cache-dir runai-model-streamer

@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""data_analyst_agent for finding information using AlphaVantage MCP"""
+"""
+Data Analyst Agent Split:
+- Planner: Reasons about what data to fetch.
+- Executor: Strictly calls the tool.
+"""
 
 import logging
 from typing import Optional
@@ -20,76 +24,76 @@ from typing import Optional
 from google.adk import Agent
 from google.adk.tools import FunctionTool
 
-from config.settings import MODEL_FAST
+from config.settings import MODEL_FAST, MODEL_REASONING, Config
 from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
-from src.governed_financial_advisor.infrastructure.gateway_client import gateway_client
+from src.governed_financial_advisor.tools.market_data_tool import get_market_data
+from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
 
 logger = logging.getLogger(__name__)
 
-DATA_ANALYST_PROMPT_OBJ = Prompt(
-    prompt_data=PromptData(
-        model=MODEL_FAST,
-        contents=[
-            Content(
-                parts=[
-                    Part(
-                        text="""
-Agent Role: data_analyst
-Tool Usage: Use the provided `get_market_sentiment_tool` tool.
+# --- PLANNER PROMPT (DeepSeek) ---
+PLANNER_PROMPT_TEXT = """
+You are the **Data Analyst PLANNER**.
+Your goal is to understand the user's request and strictly output the **Stock Ticker** that needs to be analyzed.
 
-Overall Goal: To generate a comprehensive and timely market sentiment report for a provided_ticker.
+User Request: {user_msg}
 
-Inputs (from calling agent/environment):
-provided_ticker: (string, mandatory) The stock market ticker symbol.
+INSTRUCTIONS:
+1. Identify the company or stock ticker mentioned.
+2. Output ONLY the ticker symbol (e.g., "AAPL", "GOOGL").
+3. If no ticker is found, ask for it.
 
-Mandatory Process - Data Collection:
-Fetch real-time market sentiment and news using the 'get_market_sentiment_tool' tool.
-
-Expected Final Output (Structured Report):
-A comprehensive text report summarizing the sentiment and key news.
-The report MUST be formatted in Markdown.
-If no data is found, state that clearly.
+Output format: Just the ticker symbol. No other text.
 """
-                    )
-                ]
-            )
-        ]
+
+# --- EXECUTOR PROMPT (Llama 3.1) ---
+EXECUTOR_PROMPT_TEXT = """
+You are the **Data Analyst EXECUTOR**.
+Your ONLY job is to call the `get_market_data` tool for the provided ticker.
+
+Target Ticker: {ticker}
+
+INSTRUCTIONS:
+1. Call `get_market_data(ticker="{ticker}")` immediately.
+2. DO NOT output any text.
+"""
+
+# --- FACTORIES ---
+
+def create_data_analyst_planner(model_name: str = MODEL_REASONING) -> Agent:
+    """
+    Creates the Planner agent.
+    Use Reasoning model (DeepSeek) to extract intent/ticker.
+    """
+    # We construct a simple prompt wrapper or rely on dynamic prompt injection in the node
+    # For ADK Agent, we need static instruction usually, unless we update it per turn.
+    # Here we set a base instruction.
+    
+    return Agent(
+        model=get_adk_model(model_name, api_base=Config.VLLM_REASONING_API_BASE),
+        name="data_analyst_planner",
+        instruction="You are a Data Analyst Planner. Extract the stock ticker from the user request. Output ONLY the ticker.",
+        output_key="data_analyst_plan", # The output is the Ticker
+        tools=[] # No tools, just reasoning/extraction
     )
-)
 
-def get_data_analyst_instruction() -> str:
-    return DATA_ANALYST_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
-
-async def get_market_sentiment_tool(ticker: str) -> str:
+def create_data_analyst_executor(ticker: str, model_name: str = MODEL_FAST) -> Agent:
     """
-    Fetch market sentiment for a ticker using the Gateway (AlphaVantage MCP).
+    Creates the Executor agent.
+    Use Fast model (Llama 3) with forced tool choice.
+    Context (ticker) is injected into the instruction.
     """
-    logger.info(f"Calling Gateway (MCP) for sentiment: {ticker}")
-    try:
-        # Use GatewayClient to call the MCP tool
-        result = await gateway_client.execute_tool("get_market_sentiment", {"symbol": ticker})
-        
-        # Truncate result to prevent Context Limit (4096 tokens)
-        # 6000 chars is roughly 1.5k tokens.
-        if len(str(result)) > 1000:
-            logger.warning(f"Truncating sentiment data for {ticker} (Len: {len(str(result))})")
-            return str(result)[:1000] + "... [TRUNCATED]"
-            
-        return result
-    except Exception as e:
-        logger.error(f"Gateway Call Failed: {e}")
-        return f"Error fetching sentiment: {e}"
-
-from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
-
-from config.settings import Config
-
-def create_data_analyst_agent(model_name: str = MODEL_FAST) -> Agent:
-    """Factory to create data analyst agent."""
+    instruction = EXECUTOR_PROMPT_TEXT.format(ticker=ticker)
+    
     return Agent(
         model=get_adk_model(model_name, api_base=Config.VLLM_FAST_API_BASE),
-        name="data_analyst_agent",
-        instruction=get_data_analyst_instruction(),
+        name="data_analyst_executor",
+        instruction=instruction,
         output_key="market_data_analysis_output",
-        tools=[FunctionTool(get_market_sentiment_tool)],
+        tools=[FunctionTool(get_market_data)]
     )
+
+# Legacy / Wrapper for backward compat if needed (but graph update will remove usage)
+def create_data_analyst_agent(model_name: str = MODEL_FAST) -> Agent:
+    """Deprecated: Use split agents."""
+    return create_data_analyst_executor("AAPL", model_name)
