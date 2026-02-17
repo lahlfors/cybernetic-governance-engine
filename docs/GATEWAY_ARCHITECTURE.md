@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Gateway acts as the central orchestrator and compliance enforcement point for the AI financial advisor. It implements a "Split-Brain" architecture, routing tasks between a high-capacity Reasoning Model (Llama 3.1 8B) and a low-latency Governance Model (Llama 3.2 3B).
+The Gateway acts as the central orchestrator and compliance enforcement point for the AI financial advisor. It implements a **GKE Inference Gateway** architecture, abstracting a "Split-Brain" topology that routes tasks between a high-capacity Reasoning Model (DeepSeek-R1-Distill-Qwen-32B) and a low-latency Governance Model (Qwen/Qwen2.5-7B-Instruct).
 
 ## Core Components
 
@@ -10,7 +10,7 @@ The Gateway acts as the central orchestrator and compliance enforcement point fo
     *   Exposes a unified HTTP/MCP interface.
     *   Handles tool execution requests (`execute_trade`, `search_market`).
     *   Enforces neuro-symbolic policies via OPA and the Symbolic Governor.
-    *   **NeMo Guardrails (PII & Semantic):** Enforces topical safety and masks PII (Presidio) on input/output.
+    *   **NeMo Guardrails (PII & Semantic):** Enforces topical safety and masks PII (Presidio) on input/output directly within the service.
 
 2.  **Sovereign vLLM Cluster:**
     *   **Node A (Reasoning):** Handles planning, complex analysis, and chain-of-thought generation.
@@ -27,7 +27,7 @@ The Gateway acts as the central orchestrator and compliance enforcement point fo
 
 1.  **User Request:** Incoming HTTP/gRPC request to the Gateway.
 2.  **Policy Check (Pre-Execution):** OPA validates the request against regulatory policies.
-3.  **Routing:** GatewayClient determines the target model (Reasoning vs. Governance).
+3.  **Routing:** GatewayClient connects to the Inference Gateway, which routes to the target model (Reasoning vs. Governance).
 4.  **Header Injection:** The client generates a trace ID and injects `X-Trace-Id`.
 5.  **LLM Call:** Request is sent to vLLM. AgentSight intercepts this call.
 6.  **Tool Execution:** If the model requests a tool, the Gateway executes it. AgentSight monitors the resulting system calls (e.g., network request to Alpaca API).

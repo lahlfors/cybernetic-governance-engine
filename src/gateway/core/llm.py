@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 class GatewayClient:
     def __init__(self):
-        # NEW: Support for GKE Inference Gateway (Single Endpoint)
+        # Mode 1: GKE Inference Gateway (Unified Endpoint) - Production
         if Config.VLLM_GATEWAY_URL:
             logger.info(f"🚀 Using GKE Inference Gateway: {Config.VLLM_GATEWAY_URL}")
             self.mode = "gateway"
@@ -18,7 +18,7 @@ class GatewayClient:
                 api_key="EMPTY"
             )
         else:
-            # LEGACY: Local / Split-Brain Mode
+            # Mode 2: Local / Direct Split-Brain (Dev/Test)
             logger.info("🔧 Using Local Split-Brain Mode (Direct Connection)")
             self.mode = "local"
             # Node A: The Brain

@@ -46,7 +46,7 @@ INSTRUCTIONS:
 Output format: Just the ticker symbol. No other text.
 """
 
-# --- EXECUTOR PROMPT (Llama 3.1) ---
+# --- EXECUTOR PROMPT (Qwen/DeepSeek) ---
 EXECUTOR_PROMPT_TEXT = """
 You are the **Data Analyst EXECUTOR**.
 Your ONLY job is to call the `get_market_data` tool for the provided ticker.

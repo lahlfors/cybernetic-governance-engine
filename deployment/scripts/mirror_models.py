@@ -40,7 +40,7 @@ def mirror_models():
     
     # Check for token
     if not os.environ.get("HUGGING_FACE_HUB_TOKEN"):
-        print("⚠️ HUGGING_FACE_HUB_TOKEN not found in env. Gated models (Llama 3.1) might fail.")
+        print("⚠️ HUGGING_FACE_HUB_TOKEN not found in env. Gated models might fail.")
     
     work_dir = Path("temp_model_mirror")
     work_dir.mkdir(exist_ok=True)

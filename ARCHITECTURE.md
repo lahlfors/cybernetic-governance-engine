@@ -62,12 +62,12 @@ To balance User Experience (Latency) with Corporate Safety, we use a hybrid stra
 
 ---
 
-## 3. Sovereign Split-Brain Infrastructure
+## 3. GKE Inference Gateway Architecture
 
-The system employs a **Sovereign Split-Brain** architecture to balance reasoning capability with latency and data sovereignty, eliminating external cloud dependencies.
+The system employs a **GKE Inference Gateway** to provide a unified interface for the underlying **Sovereign Split-Brain** topology. This design hides the complexity of routing between specialized models while ensuring data sovereignty and optimal performance.
 
 ### 3.1. The Gateway Client
-The `GatewayClient` (`src/gateway/core/llm.py`) routes traffic between two specialized vLLM nodes based on the task type:
+The `GatewayClient` (`src/gateway/core/llm.py`) connects to the Inference Gateway, which intelligently routes traffic to the appropriate vLLM node based on the task type:
 
 1.  **Node A: The Brain (Reasoning Plane)**
     *   **Use Case:** High-order reasoning, Planning (System 4), and Evaluation (System 3).
@@ -95,7 +95,7 @@ The `GatewayClient` (`src/gateway/core/llm.py`) routes traffic between two speci
 *   **Checks:**
     *   **Feasibility:** Is the market open? Do funds exist?
     *   **Regulatory:** Does this violate OPA policy?
-    *   **Semantic:** Is this a jailbreak attempt (NeMo)?
+    *   **Semantic:** Is this a jailbreak attempt (NeMo)? **Note:** NeMo Guardrails checks are executed internally within the Gateway service.
 *   **Cybernetics:** Provides the **Negative Feedback** loop to correct the Planner.
 
 ### 4.3. The Executor (Governed Trader)

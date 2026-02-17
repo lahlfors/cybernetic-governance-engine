@@ -8,7 +8,7 @@ RUN pip install --no-cache-dir "vllm[runai]" runai-model-streamer huggingface_hu
 
 # Pre-cache model configurations to avoid runtime hangs
 COPY deployment/docker/download_config.py /app/download_config.py
-# We need the HF token to download gated models (like Llama 3.1)
+# We need the HF token to download gated models (like DeepSeek or Llama)
 # Use a build arg for the token
 ARG HUGGING_FACE_HUB_TOKEN
 ENV HUGGING_FACE_HUB_TOKEN=$HUGGING_FACE_HUB_TOKEN
