@@ -1,6 +1,7 @@
 import logging
 import os
 import httpx
+import warnings
 
 logger = logging.getLogger(__name__)
 
@@ -8,6 +9,12 @@ class MarketService:
     def __init__(self):
         self.api_key = os.getenv("ALPHAVANTAGE_API_KEY")
         self.base_url = "https://www.alphavantage.co/query"
+        # Persistent async client for reuse
+        self.client = httpx.AsyncClient(timeout=10.0)
+
+    async def close(self):
+        """Closes the persistent HTTP client."""
+        await self.client.aclose()
 
     async def get_sentiment(self, symbol: str) -> str:
         """
@@ -25,10 +32,10 @@ class MarketService:
             }
             logger.info(f"Fetching AlphaVantage sentiment for {symbol}...")
             
-            async with httpx.AsyncClient() as client:
-                response = await client.get(self.base_url, params=params, timeout=10.0)
-                response.raise_for_status()
-                data = response.json()
+            # Reuse persistent client
+            response = await self.client.get(self.base_url, params=params)
+            response.raise_for_status()
+            data = response.json()
 
             if "feed" not in data:
                 # Handle cases where API returns error (e.g. rate limit)
@@ -56,12 +63,9 @@ class MarketService:
     def check_status(self, symbol: str) -> str:
         """
         Fetches real market status and price using AlphaVantage (Global Quote).
-        API usage: 1 call.
+        (Synchronous - DEPRECATED: Use check_status_async instead)
         """
-        # Synchronous wrapper or implementation using httpx (sync) or requests if available.
-        # Since this method is called synchronously by legacy gRPC tools, we might need requests or sync httpx.
-        # But we removed requests frompyproject.toml? No, httpx is there. 
-        # Using httpx.Client() for sync.
+        warnings.warn("check_status is deprecated and synchronous. Use check_status_async instead.", DeprecationWarning)
         
         if not self.api_key:
             return "ERROR: ALPHAVANTAGE_API_KEY not set."
@@ -73,8 +77,8 @@ class MarketService:
                 "apikey": self.api_key
             }
             
-            with httpx.Client() as client:
-                response = client.get(self.base_url, params=params, timeout=10.0)
+            with httpx.Client(timeout=10.0) as client:
+                response = client.get(self.base_url, params=params)
                 data = response.json()
             
             # Rate Limit Check
@@ -83,7 +87,43 @@ class MarketService:
             
             quote = data.get("Global Quote", {})
             if not quote:
-                 return f"CLOSED/UNKNOWN: Could not fetch price for {symbol}"
+                return f"CLOSED/UNKNOWN: Could not fetch price for {symbol}"
+
+            price = quote.get("05. price")
+            change = quote.get("10. change percent")
+
+            return f"OPEN: {symbol} trading at ${price} ({change})"
+
+        except Exception as e:
+            logger.error(f"Market Data Error: {e}")
+            return f"ERROR: Market data unavailable: {e}"
+
+    async def check_status_async(self, symbol: str) -> str:
+        """
+        Fetches real market status and price using AlphaVantage (Global Quote).
+        API usage: 1 call. (Async, Non-Blocking)
+        """
+        if not self.api_key:
+            return "ERROR: ALPHAVANTAGE_API_KEY not set."
+
+        try:
+            params = {
+                "function": "GLOBAL_QUOTE",
+                "symbol": symbol,
+                "apikey": self.api_key
+            }
+
+            # Use persistent client (Async)
+            response = await self.client.get(self.base_url, params=params)
+            data = response.json()
+
+            # Rate Limit Check
+            if "Note" in data:
+                return f"LIMIT REACHED: {data['Note']}"
+
+            quote = data.get("Global Quote", {})
+            if not quote:
+                return f"CLOSED/UNKNOWN: Could not fetch price for {symbol}"
 
             price = quote.get("05. price")
             change = quote.get("10. change percent")

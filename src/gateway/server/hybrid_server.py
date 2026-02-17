@@ -40,6 +40,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("🛑 Hybrid Gateway Shutting Down...")
     await opa_client.close()
+    await market_service.close()
 
 # --- 2. Initialize FastAPI App ---
 app = FastAPI(title="Governed Financial Advisor Gateway (Hybrid)", lifespan=lifespan)
@@ -96,7 +97,7 @@ async def trigger_safety_intervention(reason: str) -> str:
 async def check_market_status(symbol: str) -> str:
     """Checks the current market status and price for a given ticker symbol."""
     logger.info(f"Tool Call: check_market_status({symbol})")
-    return market_service.check_status(symbol)
+    return await market_service.check_status_async(symbol)
 
 @mcp.tool()
 async def get_market_sentiment(symbol: str) -> str:
