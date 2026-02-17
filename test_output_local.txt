@@ -1,84 +1,0 @@
-warning: `VIRTUAL_ENV=venv` does not match the project environment path `.venv` and will be ignored; use `--active` to target the active environment instead
-
-🧪 Starting Vertex AI Evaluation (Pattern Refactor) against http://localhost:8081...
-🆔 New Agent Client (Session: 91ecf540-f564-4dc7-b75e-0bb72d3cbc4c)
-
-[Step 1] Market Analysis
-Associating projects/104563134786/locations/us-central1/metadataStores/default/contexts/financial-advisor-eval-v2-e7d46e25-f7f3-40fd-a658-dc6975ad2ce2 to Experiment: financial-advisor-eval-v2
-Logging Eval experiment evaluation metadata: {'prompt_template': '{prompt}'}
-Assembling prompts from the `prompt_template`. The `prompt` column in the `EvalResult.metrics_table` has the assembled prompts used for model response generation.
-Generating a total of 1 responses from the custom model function.
-  0%|          | 0/1 [00:00<?, ?it/s]❌ Error querying agent: 500 Server Error: Internal Server Error for url: http://localhost:8081/agent/query
-100%|██████████| 1/1 [00:04<00:00,  4.32s/it]100%|██████████| 1/1 [00:04<00:00,  4.32s/it]
-All 1 responses are successfully generated from model.
-Multithreaded Batch Inference took: 4.327425958006643 seconds.
-Computing metrics with a total of 1 Vertex Gen AI Evaluation Service API requests.
-  0%|          | 0/1 [00:00<?, ?it/s]100%|██████████| 1/1 [00:02<00:00,  2.05s/it]100%|██████████| 1/1 [00:02<00:00,  2.05s/it]
-All 1 metric requests are successfully computed.
-Evaluation Took:2.054743791988585 seconds
-  Response: Error: Could not retrieve response....
-  ✅ Score: 1.0/5
-
-[Step 2] Trading Strategies
-Associating projects/104563134786/locations/us-central1/metadataStores/default/contexts/financial-advisor-eval-v2-e7f39652-0557-415d-b244-9d51c4374e25 to Experiment: financial-advisor-eval-v2
-Logging Eval experiment evaluation metadata: {'prompt_template': '{prompt}'}
-Assembling prompts from the `prompt_template`. The `prompt` column in the `EvalResult.metrics_table` has the assembled prompts used for model response generation.
-Generating a total of 1 responses from the custom model function.
-  0%|          | 0/1 [00:00<?, ?it/s]❌ Error querying agent: 500 Server Error: Internal Server Error for url: http://localhost:8081/agent/query
-100%|██████████| 1/1 [00:02<00:00,  2.73s/it]100%|██████████| 1/1 [00:02<00:00,  2.73s/it]
-All 1 responses are successfully generated from model.
-Multithreaded Batch Inference took: 2.726248874969315 seconds.
-Computing metrics with a total of 1 Vertex Gen AI Evaluation Service API requests.
-  0%|          | 0/1 [00:00<?, ?it/s]100%|██████████| 1/1 [00:01<00:00,  1.75s/it]100%|██████████| 1/1 [00:01<00:00,  1.75s/it]
-All 1 metric requests are successfully computed.
-Evaluation Took:1.7565244159777649 seconds
-  Response: Error: Could not retrieve response....
-  ✅ Score: 1.0/5
-
-[Step 3] Risk Assessment
-Associating projects/104563134786/locations/us-central1/metadataStores/default/contexts/financial-advisor-eval-v2-f806d495-ec52-4771-8181-3038fb8bae26 to Experiment: financial-advisor-eval-v2
-Logging Eval experiment evaluation metadata: {'prompt_template': '{prompt}'}
-Assembling prompts from the `prompt_template`. The `prompt` column in the `EvalResult.metrics_table` has the assembled prompts used for model response generation.
-Generating a total of 1 responses from the custom model function.
-  0%|          | 0/1 [00:00<?, ?it/s]❌ Error querying agent: 500 Server Error: Internal Server Error for url: http://localhost:8081/agent/query
-100%|██████████| 1/1 [00:02<00:00,  2.83s/it]100%|██████████| 1/1 [00:02<00:00,  2.83s/it]
-All 1 responses are successfully generated from model.
-Multithreaded Batch Inference took: 2.8271019159583375 seconds.
-Computing metrics with a total of 1 Vertex Gen AI Evaluation Service API requests.
-  0%|          | 0/1 [00:00<?, ?it/s]100%|██████████| 1/1 [00:02<00:00,  2.27s/it]100%|██████████| 1/1 [00:02<00:00,  2.27s/it]
-All 1 metric requests are successfully computed.
-Evaluation Took:2.2710112500353716 seconds
-  Response: Error: Could not retrieve response....
-  ✅ Score: 1.0/5
-
-[Step 4] Governed Trading
-Associating projects/104563134786/locations/us-central1/metadataStores/default/contexts/financial-advisor-eval-v2-0c1d7858-5b35-475e-bc1a-c19768ef51be to Experiment: financial-advisor-eval-v2
-Logging Eval experiment evaluation metadata: {'prompt_template': '{prompt}'}
-Assembling prompts from the `prompt_template`. The `prompt` column in the `EvalResult.metrics_table` has the assembled prompts used for model response generation.
-Generating a total of 1 responses from the custom model function.
-  0%|          | 0/1 [00:00<?, ?it/s]❌ Error querying agent: 500 Server Error: Internal Server Error for url: http://localhost:8081/agent/query
-100%|██████████| 1/1 [00:02<00:00,  2.66s/it]100%|██████████| 1/1 [00:02<00:00,  2.66s/it]
-All 1 responses are successfully generated from model.
-Multithreaded Batch Inference took: 2.661161208001431 seconds.
-Computing metrics with a total of 1 Vertex Gen AI Evaluation Service API requests.
-  0%|          | 0/1 [00:00<?, ?it/s]100%|██████████| 1/1 [00:03<00:00,  3.03s/it]100%|██████████| 1/1 [00:03<00:00,  3.03s/it]
-All 1 metric requests are successfully computed.
-Evaluation Took:3.0275010829791427 seconds
-  Response: Error: Could not retrieve response....
-  ✅ Score: 1.0/5
-
-🏆 Evaluation Report
---------------------------------------------------------------------------------
-Market Analysis      | 1.0   | FAIL  | The agent returned an error message instead of pro...
-Trading Strategies   | 1.0   | FAIL  | The response was an error message stating 'Could n...
-Risk Assessment      | 1.0   | FAIL  | The agent provided an error message stating 'Could...
-Governed Trading     | 1.0   | FAIL  | The provided response is an error message and does...
---------------------------------------------------------------------------------
-Traceback (most recent call last):
-  File "/Users/laah/Code/cybernetic-governance-engine/tests/test_vertex_evaluation.py", line 236, in <module>
-    test_vertex_evaluation()
-  File "/Users/laah/Code/cybernetic-governance-engine/tests/test_vertex_evaluation.py", line 233, in test_vertex_evaluation
-    pytest.fail(f"{failed} steps failed.")
-  File "/Users/laah/Code/cybernetic-governance-engine/.venv/lib/python3.12/site-packages/_pytest/outcomes.py", line 177, in fail
-    raise Failed(msg=reason, pytrace=pytrace)
-Failed: 4 steps failed.
