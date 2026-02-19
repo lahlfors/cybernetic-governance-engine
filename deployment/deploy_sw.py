@@ -266,18 +266,13 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
     else:
         print("⚠️ No HF_TOKEN found. vLLM model download may fail.")
 
-    # Advisor Secrets (LangSmith, AlphaVantage, etc.)
+    # Advisor Secrets (Langfuse, AlphaVantage, etc.)
     print("🔑 Creating advisor-secrets...")
     advisor_secrets = {
-        "LANGCHAIN_TRACING_V2": os.environ.get("LANGCHAIN_TRACING_V2", "true"),
-        "LANGCHAIN_ENDPOINT": os.environ.get("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com"),
-        "LANGCHAIN_API_KEY": os.environ.get("LANGCHAIN_API_KEY", ""),
-        "LANGCHAIN_PROJECT": os.environ.get("LANGCHAIN_PROJECT", "financial-advisor"),
-        "LANGSMITH_TRACING": os.environ.get("LANGCHAIN_TRACING_V2", "true"),
-        "LANGSMITH_ENDPOINT": os.environ.get("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com"),
-        "LANGSMITH_API_KEY": os.environ.get("LANGCHAIN_API_KEY", ""),
-        "LANGSMITH_PROJECT": os.environ.get("LANGCHAIN_PROJECT", "financial-advisor"),
-        "ALPHAVANTAGE_API_KEY": os.environ.get("ALPHAVANTAGE_API_KEY", "")
+        "ALPHAVANTAGE_API_KEY": os.environ.get("ALPHAVANTAGE_API_KEY", ""),
+        "LANGFUSE_PUBLIC_KEY": os.environ.get("LANGFUSE_PUBLIC_KEY", ""),
+        "LANGFUSE_SECRET_KEY": os.environ.get("LANGFUSE_SECRET_KEY", ""),
+        "LANGFUSE_HOST": os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com"),
     }
     
     # Filter out empty keys to avoid creation errors if env vars generate empty strings
@@ -387,11 +382,10 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         # Inference Gateway
         "${VLLM_GATEWAY_URL}": os.environ.get("VLLM_GATEWAY_URL", ""),
         
-        # LangSmith (Hot Tier) - Replaces Langfuse
-        "${LANGSMITH_TRACING}": os.environ.get("LANGSMITH_TRACING", "true"),
-        "${LANGSMITH_ENDPOINT}": os.environ.get("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com"),
-        "${LANGSMITH_API_KEY}": os.environ.get("LANGSMITH_API_KEY", os.environ.get("LANGCHAIN_API_KEY", "")),
-        "${LANGSMITH_PROJECT}": os.environ.get("LANGSMITH_PROJECT", "financial-advisor"),
+        # Langfuse (Hot Tier)
+        "${LANGFUSE_HOST}": os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com"),
+        "${LANGFUSE_PUBLIC_KEY}": os.environ.get("LANGFUSE_PUBLIC_KEY", ""),
+        "${LANGFUSE_SECRET_KEY}": os.environ.get("LANGFUSE_SECRET_KEY", ""),
         
         # OpenTelemetry (Cold Tier)
         "${OTEL_EXPORTER_OTLP_ENDPOINT}": os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
@@ -411,11 +405,6 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         "${GATEWAY_URL}": "http://gateway.governance-stack.svc.cluster.local:8080",
         "${GATEWAY_GRPC_PORT}": "50051",
         
-        # --- LangSmith ---
-        "${LANGCHAIN_TRACING_V2}": os.environ.get("LANGCHAIN_TRACING_V2", "true"),
-        "${LANGCHAIN_PROJECT}": os.environ.get("LANGCHAIN_PROJECT", "financial-advisor"),
-        "${LANGCHAIN_PROJECT}": os.environ.get("LANGCHAIN_PROJECT", "financial-advisor"),
-        "${ENABLE_LOGGING}": os.environ.get("ENABLE_LOGGING", "true"),
     }
     
     # Helper: strip surrounding quotes from .env values (they get re-quoted in YAML)
