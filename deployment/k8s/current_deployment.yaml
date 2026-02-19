@@ -58,24 +58,21 @@ spec:
           value: http://vllm-service.governance-stack.svc.cluster.local:8000/v1
         - name: OPA_URL
           value: http://localhost:8181/v1/data/finance/allow
-        - name: LANGSMITH_TRACING
-          value: "true"
-        - name: LANGSMITH_ENDPOINT
-          value: "https://api.smith.langchain.com"
-        - name: LANGSMITH_PROJECT
-          value: "governed-financial-advisor"
-        - name: LANGSMITH_API_KEY
+        - name: LANGFUSE_HOST
           valueFrom:
             secretKeyRef:
-               name: langsmith-secret
-               key: api-key
-        - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "https://api.smith.langchain.com/otel/v1/traces"
-        - name: OTEL_EXPORTER_OTLP_HEADERS
+               name: advisor-secrets
+               key: LANGFUSE_HOST
+        - name: LANGFUSE_PUBLIC_KEY
           valueFrom:
             secretKeyRef:
-               name: langsmith-secret
-               key: otel-headers
+               name: advisor-secrets
+               key: LANGFUSE_PUBLIC_KEY
+        - name: LANGFUSE_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+               name: advisor-secrets
+               key: LANGFUSE_SECRET_KEY
         - name: TRACE_SAMPLING_RATE
           value: "0.01"
         - name: COLD_TIER_GCS_BUCKET
