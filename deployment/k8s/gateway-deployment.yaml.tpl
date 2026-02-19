@@ -49,6 +49,27 @@ spec:
               value: "redis://${REDIS_HOST}:${REDIS_PORT}"
             - name: VLLM_GATEWAY_URL
               value: "${VLLM_GATEWAY_URL}"
+            - name: VLLM_REASONING_API_BASE
+              value: "${VLLM_REASONING_API_BASE}"
+            - name: VLLM_FAST_API_BASE
+              value: "${VLLM_FAST_API_BASE}"
+            # --- LangSmith ---
+            - name: LANGSMITH_TRACING
+              value: "${LANGSMITH_TRACING}"
+            - name: LANGSMITH_ENDPOINT
+              value: "${LANGSMITH_ENDPOINT}"
+            - name: LANGSMITH_API_KEY
+              value: "${LANGSMITH_API_KEY}"
+            - name: LANGSMITH_PROJECT
+              value: "${LANGSMITH_PROJECT}"
+            - name: LANGCHAIN_TRACING_V2
+              value: "${LANGCHAIN_TRACING_V2}"
+            - name: LANGCHAIN_ENDPOINT
+              value: "${LANGSMITH_ENDPOINT}"
+            - name: LANGCHAIN_API_KEY
+              value: "${LANGSMITH_API_KEY}"
+            - name: LANGCHAIN_PROJECT
+              value: "${LANGCHAIN_PROJECT}"
             # OPA Configuration
             - name: OPA_URL
               value: "http://localhost:8181/v1/data/finance/allow"

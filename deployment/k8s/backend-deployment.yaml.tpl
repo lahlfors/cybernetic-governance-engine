@@ -69,9 +69,9 @@ spec:
             - name: OPENAI_API_KEY
               value: "${VLLM_API_KEY}"
             - name: VLLM_FAST_API_BASE
-              value: "${VLLM_FAST_API_BASE}"
+              value: "http://${GATEWAY_HOST}:8080/v1"
             - name: VLLM_REASONING_API_BASE
-              value: "${VLLM_REASONING_API_BASE}"
+              value: "http://${GATEWAY_HOST}:8080/v1"
             - name: VLLM_GATEWAY_URL
               value: "${VLLM_GATEWAY_URL}"
 
@@ -99,6 +99,12 @@ spec:
               value: "${LANGSMITH_PROJECT}"
 
             # --- OpenTelemetry (Cold Tier) ---
+            - name: OTEL_TRACES_EXPORTER
+              value: "none"
+            - name: OTEL_METRICS_EXPORTER
+              value: "none"
+            - name: OTEL_LOGS_EXPORTER
+              value: "none"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "${OTEL_EXPORTER_OTLP_ENDPOINT}"
             - name: OTEL_EXPORTER_OTLP_HEADERS
@@ -117,12 +123,12 @@ spec:
               value: "${GATEWAY_HOST}"
             - name: GATEWAY_GRPC_PORT
               value: "${GATEWAY_GRPC_PORT}"
+            - name: GATEWAY_URL
+              value: "http://gateway:8080"
+            - name: MCP_SERVER_SSE_URL
+              value: "http://gateway:8080/mcp/sse"
 
-            # --- LangSmith ---
-            - name: LANGCHAIN_TRACING_V2
-              value: "${LANGCHAIN_TRACING_V2}"
-            - name: LANGCHAIN_PROJECT
-              value: "${LANGCHAIN_PROJECT}"
+
 
             # --- MCP Configuration ---
             - name: MCP_MODE

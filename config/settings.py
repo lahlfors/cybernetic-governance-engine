@@ -6,15 +6,22 @@ load_dotenv()
 class Config:
     # --- MODEL IDENTIFIERS ---
     # FORCE DeepSeek as the default for Reasoning
-    DEFAULT_REASONING_MODEL = "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B"
+    DEFAULT_REASONING_MODEL = "openai/deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
     
     # Node A: The Brain (Reasoning/Planner)
     VLLM_REASONING_API_BASE = os.getenv("VLLM_REASONING_API_BASE", "http://vllm-reasoning:8000/v1")
     MODEL_REASONING = os.getenv("MODEL_REASONING", DEFAULT_REASONING_MODEL)
 
     # Node B: The Police (Governance/FSM)
-    VLLM_FAST_API_BASE = os.getenv("VLLM_FAST_API_BASE", "http://vllm-governance:8000/v1")
-    MODEL_FAST = os.getenv("MODEL_FAST", "Qwen/Qwen2.5-7B-Instruct")
+    # vLLM / Model Serving
+    VLLM_BASE_URL = os.getenv("VLLM_BASE_URL", "http://localhost:8000/v1")
+    VLLM_API_KEY = os.getenv("VLLM_API_KEY", "EMPTY")
+    
+    # Gateway Configuration
+    GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8080")
+    MCP_SERVER_SSE_URL = os.getenv("MCP_SERVER_SSE_URL", f"{GATEWAY_URL}/mcp/sse")
+    VLLM_FAST_API_BASE = os.getenv("VLLM_FAST_API_BASE", "http://vllm-service:8000/v1")
+    MODEL_FAST = os.getenv("MODEL_FAST", "openai/meta-llama/Meta-Llama-3.1-8B-Instruct")
     MODEL_CONSENSUS = os.getenv("MODEL_CONSENSUS", MODEL_REASONING)
 
     MAX_TOKENS = int(os.getenv("MAX_TOKENS", 8192))

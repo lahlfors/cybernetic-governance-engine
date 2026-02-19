@@ -83,7 +83,13 @@ def get_adk_model(
         **kwargs: Additional arguments to pass to LiteLlm constructor.
     """
     # Resolve configuration
-    base_url = api_base or os.environ.get("VLLM_BASE_URL", DEFAULT_VLLM_BASE_URL)
+    # Enforce Gateway usage if configured, otherwise fallback to vLLM direct (dev mode)
+    gateway_url = os.getenv("GATEWAY_URL", "http://localhost:8080")
+    if gateway_url:
+        base_url = f"{gateway_url}/v1"
+    else:
+        base_url = api_base or os.environ.get("VLLM_BASE_URL", DEFAULT_VLLM_BASE_URL)
+        
     model = model_name or os.environ.get("GUARDRAILS_MODEL_NAME", DEFAULT_MODEL_NAME)
     key = os.environ.get("VLLM_API_KEY", api_key)
     

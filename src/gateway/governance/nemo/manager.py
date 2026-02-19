@@ -72,12 +72,28 @@ class VLLMLLM(BaseChatModel):
         try:
             import litellm
             
-            # Ensure model has openai/ prefix if needed by litellm for generic vLLM
+            # Enable generic vLLM support via OpenAI protocol
+            # We use custom_llm_provider="openai" instead of prefixing model_name 
+            # to avoid sending "openai/" prefix to the vLLM server (which causes 404).
             model_id = self.model_name
-            if not model_id.startswith("openai/") and "gpt" not in model_id:
-                model_id = f"openai/{model_id}"
+            
+            # Dynamic Routing Logic
+            # Check model name for 'reasoning' or 'deepseek' to route to reasoning service
+            # We use the config_manager to get the live env vars (in case they changed or were injected)
+            api_base = self.api_base
+            if "deepseek" in model_id.lower() or "reasoning" in model_id.lower():
+                reasoning_base = config_manager.get("VLLM_REASONING_API_BASE")
+                if reasoning_base:
+                    api_base = reasoning_base
+                    print(f"DEBUG: Routing to Reasoning Service: {api_base}")
+            else:
+                 # Optional: Explicitly check for fast/governance model if needed, or just default to base
+                 fast_base = config_manager.get("VLLM_FAST_API_BASE")
+                 if fast_base:
+                     api_base = fast_base
+                     print(f"DEBUG: Routing to Fast/Governance Service: {api_base}")
 
-            print(f"DEBUG: Calling vLLM via litellm... model={model_id} base={self.api_base}")
+            print(f"DEBUG: Calling vLLM via litellm... model={model_id} base={api_base}")
             
             # Format messages for litellm
             formatted_messages = [{"role": m.type if m.type != "ai" else "assistant", "content": m.content} for m in messages]
@@ -87,7 +103,8 @@ class VLLMLLM(BaseChatModel):
 
             response = litellm.completion(
                 model=model_id,
-                api_base=self.api_base,
+                custom_llm_provider="openai",
+                api_base=api_base,
                 api_key=self.api_key,
                 messages=formatted_messages,
                 stop=stop,
@@ -114,11 +131,28 @@ class VLLMLLM(BaseChatModel):
         try:
             import litellm
             
-            model_id = self.model_name
-            if not model_id.startswith("openai/") and "gpt" not in model_id:
-                model_id = f"openai/{model_id}"
+            # Enable generic vLLM support via OpenAI protocol
+            # We use custom_llm_provider="openai" to force LiteLLM to use the OpenAI client.
+            # However, vLLM might be picky about the model name if it serves multiple models.
+            # If we are routing, we should use the model_name expected by the target service.
+            # For now, we trust the incoming model_name but strip any "openai/" prefix if it exists
+            # just in case, because we explicitly set provider="openai".
+            model_id = self.model_name.replace("openai/", "")
 
-            print(f"DEBUG: Async Calling vLLM via litellm... model={model_id} base={self.api_base}")
+            # Dynamic Routing Logic (Async)
+            api_base = self.api_base
+            if "deepseek" in model_id.lower() or "reasoning" in model_id.lower():
+                reasoning_base = config_manager.get("VLLM_REASONING_API_BASE")
+                if reasoning_base:
+                    api_base = reasoning_base
+                    print(f"DEBUG: Routing to Reasoning Service: {api_base}")
+            else:
+                 fast_base = config_manager.get("VLLM_FAST_API_BASE")
+                 if fast_base:
+                     api_base = fast_base
+                     print(f"DEBUG: Routing to Fast/Governance Service: {api_base}")
+
+            print(f"DEBUG: Async Calling vLLM via litellm... model={model_id} base={api_base}")
             
             formatted_messages = [{"role": m.type if m.type != "ai" else "assistant", "content": m.content} for m in messages]
             for m in formatted_messages:
@@ -126,7 +160,8 @@ class VLLMLLM(BaseChatModel):
 
             response = await litellm.acompletion(
                 model=model_id,
-                api_base=self.api_base,
+                custom_llm_provider="openai",
+                api_base=api_base,
                 api_key=self.api_key,
                 messages=formatted_messages,
                 stop=stop,

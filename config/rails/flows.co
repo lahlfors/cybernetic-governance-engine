@@ -42,12 +42,11 @@ flow financial_analysis
   or match UtteranceUserAction.Finished(final_transcript=regex("(?i)evaluate.*"))
   or match UtteranceUserAction.Finished(final_transcript=regex("(?i)what is.*"))
   or match UtteranceUserAction.Finished(final_transcript=regex("(?i)how.*"))
-  # Allow the LLM to generate the response for these queries
-  # bot continue removed to avoid internal error, allowing pass-through to Graph
+  bot continue
 
 flow catch_all
   match UtteranceUserAction.Finished(final_transcript=regex("(?i).*"))
-  # bot continue
+  bot continue
 
 flow check_authorization
   user said "execute trade"
@@ -99,3 +98,11 @@ flow parallel_governance_check
 
 flow bot continue to execution
   bot say "Proceeding with transaction."
+
+flow bot continue
+  $has_sensitive_data = await DetectSensitiveDataAction(source="output", text=$bot_message)
+  if $has_sensitive_data
+    bot refuse to respond
+    abort
+  # If no sensitive data, we let the flow finish naturally, assuming the response is already queued or handled by the system.
+  # Explicitly calling 'bot continue' here might cause recursion if not handled carefully.

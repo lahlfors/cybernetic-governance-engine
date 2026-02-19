@@ -38,7 +38,16 @@ RUN uv pip install \
     langgraph \
     langgraph-checkpoint-redis \
     nemoguardrails \
-    google-cloud-firestore
+    google-cloud-firestore \
+    yfinance \
+    litellm \
+    spacy \
+    pip \
+    presidio-analyzer \
+    presidio-anonymizer
+
+# Download spaCy model for PII detection
+RUN python -m spacy download en_core_web_sm
 
 # Copy Source Code
 COPY src/gateway /app/src/gateway

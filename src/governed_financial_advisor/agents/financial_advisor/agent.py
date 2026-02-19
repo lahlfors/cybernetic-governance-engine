@@ -19,7 +19,7 @@ import logging
 from google.adk.agents import LlmAgent
 from google.adk.tools import FunctionTool
 
-from config.settings import MODEL_REASONING
+from config.settings import MODEL_FAST, MODEL_REASONING
 from src.governed_financial_advisor.tools.router import route_request
 from src.governed_financial_advisor.utils.telemetry import configure_telemetry
 
@@ -49,8 +49,8 @@ from config.settings import Config
 financial_coordinator = LlmAgent(
     name="financial_coordinator",
     model=get_adk_model(
-        MODEL_REASONING, 
-        api_base=Config.VLLM_GATEWAY_URL or Config.VLLM_REASONING_API_BASE
+        MODEL_FAST, 
+        api_base=Config.VLLM_GATEWAY_URL or Config.VLLM_FAST_API_BASE
     ),
     description=(
         "guide users through a structured process to receive financial "
