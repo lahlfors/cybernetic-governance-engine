@@ -8,7 +8,7 @@ import json
 
 import nest_asyncio
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage, AIMessageChunk, AIMessage
+from langchain_core.messages import BaseMessage, AIMessageChunk, AIMessage, HumanMessage
 from langchain_core.outputs import ChatGenerationChunk, ChatResult, ChatGeneration
 from nemoguardrails import LLMRails, RailsConfig
 from nemoguardrails.context import streaming_handler_var
@@ -229,20 +229,31 @@ class VLLMLLM(BaseChatModel):
         return {"model": self.model_name, "api_base": self.api_base}
 
 
-async def call_vllm_fallback(content: str = "") -> str:
+async def execute_vllm_fallback(content: str = "", **kwargs) -> str:
     """Action to call vLLM directly for fallback responses."""
+    print(f"DEBUG: execute_vllm_fallback CALLED with content='{content}', kwargs={kwargs.keys()}")
     try:
         if not content:
+            print("DEBUG: execute_vllm_fallback returning default due to empty content")
             return "I apologize, but I didn't catch that."
             
-        logger.info(f"DEBUG: Executing call_vllm_fallback with content='{content}'")
-        llm = VLLMLLM()
-        # Create a simple message list
-        messages = [{"role": "user", "content": content}]
-        response = await llm._acall(messages)
-        return response
+        logger.info(f"DEBUG: Executing execute_vllm_fallback with content='{content}'")
+        
+        # BYPASS TEST: Return static string to verify dispatch and avoid crash
+        print(f"DEBUG: execute_vllm_fallback BYPASSING VLLM")
+        return "System is operational. Bypass check successful."
+
+        # llm = VLLMLLM()
+        # # Create a simple message list
+        # messages = [HumanMessage(content=content)]
+        # response = await llm._acall(messages)
+        # print(f"DEBUG: execute_vllm_fallback returning response length={len(response)}")
+        # return response
     except Exception as e:
-        logger.error(f"❌ call_vllm_fallback failed: {e}")
+        logger.error(f"❌ execute_vllm_fallback failed: {e}")
+        print(f"DEBUG: execute_vllm_fallback EXCEPTION: {e}")
+        import traceback
+        traceback.print_exc()
         return "I apologize, but I encountered an error generating a response."
 
 
@@ -322,11 +333,14 @@ def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
         rails.register_action(check_drawdown_limit, "check_drawdown_limit")
         rails.register_action(check_slippage_risk, "check_slippage_risk")
         rails.register_action(check_atomic_execution, "check_atomic_execution")
-        rails.register_action(call_vllm_fallback, "call_vllm_fallback")
         
-        logger.info("✅ NeMo actions registered successfully")
+        logger.info("✅ NeMo actions from module registered successfully")
     except ImportError as e:
         logger.warning(f"⚠️ Could not import NeMo actions: {e}")
+
+    # Register local fallback action (always available)
+    rails.register_action(execute_vllm_fallback, "execute_vllm_fallback")
+
 
     return rails
 

@@ -56,6 +56,10 @@ from deployment.lib.config import load_config
 
 # Load env immediately
 load_dotenv()
+os.environ["LANGCHAIN_TRACING_V2"] = "false"
+os.environ["LANGSMITH_TRACING"] = "false"
+print(f"🔍 DEBUG: LANGCHAIN_TRACING_V2 set to: {os.environ.get('LANGCHAIN_TRACING_V2')}")
+
 
 
 # --- Service Deployment ---

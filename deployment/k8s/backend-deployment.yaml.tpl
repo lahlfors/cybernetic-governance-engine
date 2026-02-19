@@ -73,9 +73,9 @@ spec:
             - name: OPENAI_API_KEY
               value: "${VLLM_API_KEY}"
             - name: VLLM_FAST_API_BASE
-              value: "http://${GATEWAY_HOST}:8080/v1"
+              value: "${VLLM_FAST_API_BASE}"
             - name: VLLM_REASONING_API_BASE
-              value: "http://${GATEWAY_HOST}:8080/v1"
+              value: "${VLLM_REASONING_API_BASE}"
             - name: VLLM_GATEWAY_URL
               value: "${VLLM_GATEWAY_URL}"
 
@@ -94,7 +94,7 @@ spec:
               value: "${LANGSMITH_PROJECT}"
             # Map to LangChain Standard Vars (for automatic instrumentation reliability)
             - name: LANGCHAIN_TRACING_V2
-              value: "${LANGSMITH_TRACING}"
+              value: "${LANGCHAIN_TRACING_V2}"
             - name: LANGCHAIN_ENDPOINT
               value: "${LANGSMITH_ENDPOINT}"
             - name: LANGCHAIN_API_KEY

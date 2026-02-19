@@ -4,11 +4,14 @@
 import core
 import llm
 
+# action execute_vllm_fallback
+
+
+
 # Main flow - required entry point for Colang 2.x
 flow main
   activate llm continuation
   activate greeting
-  activate financial_analysis
   activate catch_all
   activate check_authorization
   activate check_latency
@@ -30,20 +33,24 @@ flow financial_analysis
   or match UtteranceUserAction.Finished(final_transcript=regex("(?i)evaluate.*"))
   or match UtteranceUserAction.Finished(final_transcript=regex("(?i)what is.*"))
   or match UtteranceUserAction.Finished(final_transcript=regex("(?i)how.*"))
-  bot continue
+  $bot_message = "DEBUG: Logic bypassed action (financial_analysis)."
+  bot say $bot_message
 
 flow catch_all
   match UtteranceUserAction.Finished(final_transcript=regex("(?i).*"))
-  bot continue
-
-flow bot continue
-  # Explicitly defined to prevent dynamic generation failure
-  # Use standard llm request instead of custom action to avoid "Internal Error"
-  $bot_message = await call_vllm_fallback(content=$last_user_message)
+  # $bot_message = await execute_vllm_fallback(content=$last_user_message)
+  $bot_message = "DEBUG: Logic bypassed action (catch_all)."
   if $bot_message
     bot say $bot_message
-  else
-    bot say "I apologize, but I encountered an issue generating a response."
+  # else
+  #   bot say "I apologize, but I encountered an issue generating a response."
+
+# flow bot continue
+#   $bot_message = "DEBUG: Logic bypassed action."
+#   if $bot_message
+#     bot say $bot_message
+#   else
+#     bot say "I apologize, but I encountered an issue generating a response."
 
 flow check_authorization
   user said "execute trade"
