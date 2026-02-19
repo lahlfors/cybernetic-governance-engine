@@ -26,7 +26,7 @@ from google.adk.tools import FunctionTool
 
 from config.settings import MODEL_FAST, MODEL_REASONING, Config
 from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
-from src.governed_financial_advisor.tools.market_data_tool import get_market_data
+from src.governed_financial_advisor.infrastructure.mcp_client import create_mcp_tool_adapter, get_mcp_client
 from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
 
 logger = logging.getLogger(__name__)
@@ -54,8 +54,10 @@ Your ONLY job is to call the `get_market_data` tool for the provided ticker.
 Target Ticker: {ticker}
 
 INSTRUCTIONS:
-1. Call `get_market_data(ticker="{ticker}")` immediately.
-2. DO NOT output any text.
+1. You MUST call the `get_market_data` function immediately.
+2. Argument: `ticker="{ticker}"`.
+3. DO NOT write any text. DO NOT say "I will...". JUST CALL THE FUNCTION.
+4. If you output text, you FAIL.
 """
 
 # --- FACTORIES ---
@@ -70,7 +72,7 @@ def create_data_analyst_planner(model_name: str = MODEL_REASONING) -> Agent:
     # Here we set a base instruction.
     
     return Agent(
-        model=get_adk_model(model_name, api_base=Config.VLLM_REASONING_API_BASE),
+        model=get_adk_model(model_name, api_base=Config.GATEWAY_API_BASE),
         name="data_analyst_planner",
         instruction="You are a Data Analyst Planner. Extract the stock ticker from the user request. Output ONLY the ticker.",
         output_key="data_analyst_plan", # The output is the Ticker
@@ -85,8 +87,14 @@ def create_data_analyst_executor(ticker: str, model_name: str = MODEL_FAST) -> A
     """
     instruction = EXECUTOR_PROMPT_TEXT.format(ticker=ticker)
     
+
+    async def get_market_data(ticker: str) -> str:
+        """Fetches comprehensive market data for a given ticker."""
+        # Using MCP Client
+        return await get_mcp_client().call_tool("get_market_data", {"ticker": ticker})
+
     return Agent(
-        model=get_adk_model(model_name, api_base=Config.VLLM_FAST_API_BASE),
+        model=get_adk_model(model_name, api_base=Config.GATEWAY_API_BASE),
         name="data_analyst_executor",
         instruction=instruction,
         output_key="market_data_analysis_output",

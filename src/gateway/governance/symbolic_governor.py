@@ -30,6 +30,7 @@ Residual-Based Control (RBC) and Optimization-Based Control (OPC).
 """
 
 import logging
+import os
 from typing import Any, Dict, List
 
 from src.gateway.core.policy import OPAClient
@@ -75,9 +76,10 @@ class SymbolicGovernor:
         # This applies specifically to trade execution.
         if tool_name == "execute_trade":
             confidence = params.get("confidence", 0.0)
-            if confidence < 0.95:
+            min_confidence = float(os.getenv("GOVERNANCE_MIN_CONFIDENCE", "0.95"))
+            if confidence < min_confidence:
                 raise GovernanceError(
-                    f"SR 11-7 Violation: Model Confidence {confidence} < 0.95. Action Rejected."
+                    f"SR 11-7 Violation: Model Confidence {confidence} < {min_confidence}. Action Rejected."
                 )
 
             # 2. Residual-Based Control (RBC) / Cybernetic Stability: Control Barrier Function (Safety)
@@ -129,18 +131,21 @@ class SymbolicGovernor:
         # Inject simulated latency for Dry Run if missing (assume System is healthy)
         simulated_params = params.copy()
         if "latency_ms" not in simulated_params:
-            simulated_params["latency_ms"] = 10.0 # Simulated low latency
+            simulated_params["latency_ms"] = float(os.getenv("GOVERNANCE_SIM_LATENCY_MS", "10.0"))
         
         stpa_violations = self.stpa_validator.validate(tool_name, simulated_params)
         violations.extend(stpa_violations)
 
         # 1. SR 11-7 Confidence Check (Trade specific)
         if tool_name == "execute_trade":
-            # Default to 0.99 (High Confidence) if not provided by Agent during simulation.
+            # Default to High Confidence if not provided by Agent during simulation.
             # The Agent doesn't calculate confidence itself usually; the Model Mesh does.
-            confidence = params.get("confidence", 0.99)
-            if confidence < 0.95:
-                violations.append(f"SR 11-7 Violation: Model Confidence {confidence} < 0.95.")
+            default_sim_confidence = float(os.getenv("GOVERNANCE_SIM_CONFIDENCE", "0.99"))
+            confidence = params.get("confidence", default_sim_confidence)
+            
+            min_confidence = float(os.getenv("GOVERNANCE_MIN_CONFIDENCE", "0.95"))
+            if confidence < min_confidence:
+                violations.append(f"SR 11-7 Violation: Model Confidence {confidence} < {min_confidence}.")
 
             # 2. CBF Check
             cbf_result = self.safety_filter.verify_action(tool_name, params)

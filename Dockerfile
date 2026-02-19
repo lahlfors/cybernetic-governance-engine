@@ -16,7 +16,8 @@ COPY pyproject.toml uv.lock ./
 ENV PYTHONPATH="${PYTHONPATH}:/app:/app/src"
 RUN pip install uv keyring keyrings.google-artifactregistry-auth && \
     uv export --no-emit-project --no-dev --no-hashes --format requirements-txt > requirements.txt && \
-    pip install --no-cache-dir -r requirements.txt uvicorn fastapi "google-adk[extensions]" opentelemetry-api opentelemetry-sdk opentelemetry-exporter-gcp-trace opentelemetry-instrumentation-fastapi opentelemetry-instrumentation-requests
+    pip install --no-cache-dir -r requirements.txt uvicorn fastapi "google-adk[extensions]" opentelemetry-api opentelemetry-sdk opentelemetry-exporter-gcp-trace opentelemetry-instrumentation-fastapi opentelemetry-instrumentation-requests spacy presidio-analyzer presidio-anonymizer && \
+    python -m spacy download en_core_web_lg
 
 # Copy project files
 COPY . .
@@ -29,7 +30,7 @@ ENV PORT=8080
 EXPOSE 8080
 
 # DEBUG: Check file content
-RUN ls -R src
+RUN ls -R src && ls -R config
 
 # Run the server
 CMD ["python", "-m", "src.governed_financial_advisor.server"]

@@ -22,7 +22,7 @@ class GovernanceClient:
 
     def __init__(
         self,
-        base_url: str = "http://vllm-service.governance-stack.svc.cluster.local:8000/v1",
+        base_url: Optional[str] = None,
         api_key: str = "EMPTY",
         model_name: Optional[str] = None,
         timeout_seconds: float = 30.0
@@ -36,7 +36,8 @@ class GovernanceClient:
             model_name: Model name to request from vLLM.
             timeout_seconds: Request timeout.
         """
-        self.base_url = base_url
+        from config.settings import Config
+        self.base_url = base_url or os.getenv("GATEWAY_API_BASE", Config.GATEWAY_API_BASE)
         self.api_key = api_key
         # Prioritize init arg, then env var, then class constant
         self.model_name = model_name or os.getenv("VLLM_MODEL", self.DEFAULT_MODEL_ID)

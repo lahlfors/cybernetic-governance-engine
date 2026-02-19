@@ -104,7 +104,7 @@ def create_execution_analyst_agent(model_name: str = MODEL_REASONING) -> Agent:
     return Agent(
         model=get_adk_model(
             model_name, 
-            api_base=Config.VLLM_REASONING_API_BASE,
+            api_base=Config.GATEWAY_API_BASE,
             # FSM Enforcement: Pass schema via guided_json (vLLM specific)
             extra_body={"guided_json": ExecutionPlan.model_json_schema()}
         ),

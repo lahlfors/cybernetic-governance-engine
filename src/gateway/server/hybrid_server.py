@@ -21,15 +21,13 @@ from src.gateway.core.market import market_service
 from src.gateway.governance.singletons import symbolic_governor, opa_client
 from src.gateway.governance.symbolic_governor import GovernanceError
 from src.gateway.governance.nemo.manager import initialize_rails, validate_with_nemo
+from src.governed_financial_advisor.tools.market_data_tool import get_market_data
 
-# Configure Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("Gateway.HybridServer")
-
-from src.governed_financial_advisor.utils.telemetry import configure_telemetry
+# Configure Logging via Telemetry (Centralized Control)
+from src.governed_financial_advisor.utils.telemetry import configure_telemetry, logger
 configure_telemetry()
 
-# --- 1. Initialize Global Resources ---
+# Global Resources Initialization
 rails = initialize_rails()
 
 @asynccontextmanager
@@ -103,6 +101,18 @@ async def get_market_sentiment(symbol: str) -> str:
     """Fetches real-time market sentiment and news for a given ticker symbol using AlphaVantage."""
     logger.info(f"Tool Call: get_market_sentiment({symbol})")
     return await market_service.get_sentiment(symbol)
+
+@mcp.tool()
+async def get_market_data(ticker: str) -> str:
+    """Fetches comprehensive market data for a given ticker using yfinance."""
+    logger.info(f"Tool Call: get_market_data({ticker})")
+    # Wrap synchronous tool if necessary, but FastMCP supports async/sync
+    # get_market_data is likely sync, correct?
+    # FunctionTool wrapper in ADK can handle it if we just call it.
+    # But here we are in FastAPI/MCP. FastMCP handles sync functions in threadpool usually?
+    # Let's assume yes or make it async if needed.
+    # The original tool is sync.
+    return get_market_data(ticker)
 
 @mcp.tool()
 async def verify_content_safety(text: str) -> str:
@@ -198,7 +208,12 @@ async def chat_completions(request: ChatCompletionRequest):
 
     try:
         # Convert Pydantic messages to dicts for NeMo
-        messages = [{"role": m.role, "content": m.content} for m in request.messages]
+        messages = []
+        for m in request.messages:
+            role = m.role
+            if role == "assistant":
+                role = "bot"
+            messages.append({"role": role, "content": m.content})
 
         # Inject system instruction if provided (as first message)
         if request.system_instruction:
@@ -277,7 +292,8 @@ async def execute_tool_endpoint(request: ToolExecutionRequest):
             "get_market_sentiment": get_market_sentiment,
             "verify_content_safety": verify_content_safety,
             "evaluate_policy": evaluate_policy,
-            "execute_trade_action": execute_trade_action
+            "execute_trade_action": execute_trade_action,
+            "get_market_data": get_market_data
         }
 
         if request.tool_name not in tool_map:
@@ -301,6 +317,9 @@ async def execute_tool_endpoint(request: ToolExecutionRequest):
         elif request.tool_name == "get_market_sentiment":
              output = await func(request.params.get("symbol"))
 
+        elif request.tool_name == "get_market_data":
+             output = func(request.params.get("ticker"))
+
         elif request.tool_name == "verify_content_safety":
              output = await func(request.params.get("text", ""))
 
@@ -317,4 +336,23 @@ async def execute_tool_endpoint(request: ToolExecutionRequest):
 if __name__ == "__main__":
     import uvicorn
     http_port = int(os.getenv("PORT", 8080))
-    uvicorn.run(app, host="0.0.0.0", port=http_port)
+    
+    # Determine Log Config
+    log_config = None
+    if os.getenv("ENABLE_LOGGING", "true").lower() != "true":
+        # Explicitly disable uvicorn logging
+        log_config = {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "handlers": {
+                "null": {"class": "logging.NullHandler"}
+            },
+            "loggers": {
+                "uvicorn": {"level": "CRITICAL", "handlers": ["null"], "propagate": False},
+                "uvicorn.error": {"level": "CRITICAL", "handlers": ["null"], "propagate": False},
+                "uvicorn.access": {"level": "CRITICAL", "handlers": ["null"], "propagate": False},
+            },
+            "root": {"level": "CRITICAL", "handlers": ["null"]}
+        }
+        
+    uvicorn.run(app, host="0.0.0.0", port=http_port, log_config=log_config)

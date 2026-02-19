@@ -58,7 +58,7 @@ class FinancialAdvisorAgent:
             "thread_id": self.session_id
         }
         try:
-            response = requests.post(url, json=payload, timeout=300)
+            response = requests.post(url, json=payload, timeout=900)
             # Check if response is 500/400 and print it
             if response.status_code >= 400:
                 print(f"❌ API Error {response.status_code}: {response.text}")

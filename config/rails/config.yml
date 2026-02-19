@@ -3,7 +3,7 @@
 models:
   - type: main
     engine: vllm_llama
-    model: deepseek-ai/DeepSeek-R1-Distill-Llama-8B
+    model: gs://laah-cybernetics-models/meta-llama/Meta-Llama-3.1-8B-Instruct
 
 colang_version: "2.x"
 

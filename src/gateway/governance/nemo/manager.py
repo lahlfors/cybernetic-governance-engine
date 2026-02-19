@@ -4,6 +4,7 @@ Factory for creating NeMo Guardrails manager with vLLM/Llama support.
 import logging
 import os
 from typing import Any, List, Optional, AsyncIterator
+import json
 
 import nest_asyncio
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -19,7 +20,11 @@ from src.governed_financial_advisor.infrastructure.telemetry.nemo_exporter impor
 from src.governed_financial_advisor.infrastructure.config_manager import config_manager
 
 # Configure Logging
-logger = logging.getLogger("NeMoManager")
+if os.getenv("ENABLE_LOGGING", "true").lower() == "true":
+    logger = logging.getLogger("NeMoManager")
+else:
+    logger = logging.getLogger("NeMoManager")
+    logger.addHandler(logging.NullHandler())
 
 # --- Monkeypatch NeMo Sensitive Data Detection to use en_core_web_sm ---
 try:
@@ -28,24 +33,30 @@ try:
     from presidio_analyzer.nlp_engine import NlpEngineProvider
     import spacy
 
+    class SafeAnalyzer(AnalyzerEngine):
+        def analyze(self, text, **kwargs):
+            if text is None:
+                return []
+            return super().analyze(text=text, **kwargs)
+
     def _get_analyzer_patch(score_threshold: float = 0.4):
         try:
             import spacy
-            if not spacy.util.is_package("en_core_web_sm"):
-                 logger.warning("en_core_web_sm not found, PII detection might fail.")
+            if not spacy.util.is_package("en_core_web_lg"):
+                 logger.warning("en_core_web_lg not found, PII detection might fail.")
         except:
             pass
 
         configuration = {
             "nlp_engine_name": "spacy",
-            "models": [{"lang_code": "en", "model_name": "en_core_web_sm"}],
+            "models": [{"lang_code": "en", "model_name": "en_core_web_lg"}],
         }
         provider = NlpEngineProvider(nlp_configuration=configuration)
         nlp_engine = provider.create_engine()
-        return AnalyzerEngine(nlp_engine=nlp_engine, default_score_threshold=score_threshold)
+        return SafeAnalyzer(nlp_engine=nlp_engine, default_score_threshold=score_threshold)
 
     sdd_actions._get_analyzer = _get_analyzer_patch
-    logger.info("✅ Monkeypatched NeMo Sensitive Data Detection to use en_core_web_sm")
+    logger.info("✅ Monkeypatched NeMo Sensitive Data Detection to use SafeAnalyzer + en_core_web_lg")
 except ImportError as e:
     logger.warning(f"⚠️ Could not patch Sensitive Data Detection: {e}")
 except Exception as e:
@@ -61,7 +72,7 @@ class VLLMLLM(BaseChatModel):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        print(f"DEBUG: VLLMLLM initialized with model={self.model_name}, base={self.api_base}")
+        logger.info(f"DEBUG: VLLMLLM initialized with model={self.model_name}, base={self.api_base}")
 
     @property
     def _llm_type(self) -> str:
@@ -145,32 +156,38 @@ class VLLMLLM(BaseChatModel):
                 reasoning_base = config_manager.get("VLLM_REASONING_API_BASE")
                 if reasoning_base:
                     api_base = reasoning_base
-                    print(f"DEBUG: Routing to Reasoning Service: {api_base}")
+                    logger.info(f"DEBUG: Routing to Reasoning Service: {api_base}")
             else:
                  fast_base = config_manager.get("VLLM_FAST_API_BASE")
                  if fast_base:
                      api_base = fast_base
-                     print(f"DEBUG: Routing to Fast/Governance Service: {api_base}")
+                     logger.info(f"DEBUG: Routing to Fast/Governance Service: {api_base}")
 
-            print(f"DEBUG: Async Calling vLLM via litellm... model={model_id} base={api_base}")
+            logger.info(f"DEBUG: Async Calling vLLM via litellm... model={model_id} base={api_base}")
+            logger.info(f"DEBUG: vLLM Request Messages: {json.dumps([{'role': m.type if m.type != 'ai' else 'assistant', 'content': m.content} for m in messages])}")
             
             formatted_messages = [{"role": m.type if m.type != "ai" else "assistant", "content": m.content} for m in messages]
             for m in formatted_messages:
                 if m["role"] == "human": m["role"] = "user"
 
-            response = await litellm.acompletion(
-                model=model_id,
-                custom_llm_provider="openai",
-                api_base=api_base,
-                api_key=self.api_key,
-                messages=formatted_messages,
-                stop=stop,
-                **kwargs
-            )
-            content = response.choices[0].message.content
-            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
+            try:
+                response = await litellm.acompletion(
+                    model=model_id,
+                    custom_llm_provider="openai",
+                    api_base=api_base,
+                    api_key=self.api_key,
+                    messages=formatted_messages,
+                    stop=stop,
+                    **kwargs
+                )
+                content = response.choices[0].message.content
+                logger.info(f"DEBUG: vLLM Response Content: {content[:100]}...")
+                return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
+            except Exception as e:
+                logger.error(f"❌ Failed to call vLLM (async): {e}")
+                raise e
         except Exception as e:
-            logger.error(f"Failed to call vLLM (async): {e}")
+            logger.error(f"❌ Failed to initialize/call vLLM: {e}")
             raise e
 
     async def _astream(self, messages: List[BaseMessage], stop: Optional[List[str]] = None, run_manager: Any = None, **kwargs: Any) -> AsyncIterator[ChatGenerationChunk]:
@@ -212,6 +229,23 @@ class VLLMLLM(BaseChatModel):
         return {"model": self.model_name, "api_base": self.api_base}
 
 
+async def call_vllm_fallback(content: str = "") -> str:
+    """Action to call vLLM directly for fallback responses."""
+    try:
+        if not content:
+            return "I apologize, but I didn't catch that."
+            
+        logger.info(f"DEBUG: Executing call_vllm_fallback with content='{content}'")
+        llm = VLLMLLM()
+        # Create a simple message list
+        messages = [{"role": "user", "content": content}]
+        response = await llm._acall(messages)
+        return response
+    except Exception as e:
+        logger.error(f"❌ call_vllm_fallback failed: {e}")
+        return "I apologize, but I encountered an error generating a response."
+
+
 def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
     """
     Creates and initializes a NeMo Guardrails manager with vLLM support.
@@ -242,6 +276,35 @@ def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
 
     print(f"DEBUG: Loading NeMo config from {config_path}")
     config = RailsConfig.from_path(config_path)
+
+    # --- Deduplicate Flows (Workaround for double-loading issue) ---
+    if hasattr(config, "flows"):
+        unique_flows = {}
+        original_count = len(config.flows)
+        deduped_list = []
+        seen_names = set()
+        
+        for flow in config.flows:
+            # Check flow attributes - Colang 2.0 flows should have 'name' or 'id'
+            flow_name = getattr(flow, "name", None)
+            if not flow_name:
+                flow_name = getattr(flow, "id", None)
+            
+            if not flow_name:
+                # Flow might be unnamed or structure is different, keep it to be safe
+                deduped_list.append(flow)
+                continue
+                
+            if flow_name in seen_names:
+                print(f"WARNING: Removing duplicate flow '{flow_name}' to prevent startup crash.")
+                continue
+            
+            seen_names.add(flow_name)
+            deduped_list.append(flow)
+            
+        config.flows = deduped_list
+        print(f"DEBUG: Deduplicated flows from {original_count} to {len(config.flows)}")
+    # -------------------------------------------------------------
     
     rails = LLMRails(config)
 
@@ -259,6 +322,8 @@ def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
         rails.register_action(check_drawdown_limit, "check_drawdown_limit")
         rails.register_action(check_slippage_risk, "check_slippage_risk")
         rails.register_action(check_atomic_execution, "check_atomic_execution")
+        rails.register_action(call_vllm_fallback, "call_vllm_fallback")
+        
         logger.info("✅ NeMo actions registered successfully")
     except ImportError as e:
         logger.warning(f"⚠️ Could not import NeMo actions: {e}")

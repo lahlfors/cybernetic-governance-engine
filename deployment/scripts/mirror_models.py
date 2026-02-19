@@ -9,12 +9,31 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configuration
-BUCKET_NAME = "laah-cybernetics-models"
+# Configuration
+BUCKET_NAME = os.getenv("GCS_BUCKET_NAME", "laah-cybernetics-models")
+
+def get_base_model_name(model_id: str) -> str:
+    """Strips openai/ prefix or other provider prefixes."""
+    if not model_id:
+        return ""
+    if "/" in model_id:
+        parts = model_id.split("/", 1)
+        # If it starts with openai/, strip it
+        if parts[0] == "openai":
+            return parts[1]
+    return model_id
+
+# Pull from env (aligned with settings.py)
+MODEL_FAST = os.getenv("MODEL_FAST", "meta-llama/Meta-Llama-3.1-8B-Instruct")
+MODEL_REASONING = os.getenv("MODEL_REASONING", "deepseek-ai/DeepSeek-R1-Distill-Llama-8B")
+
 MODELS_TO_MIRROR = [
-    "meta-llama/Meta-Llama-3.1-8B-Instruct",
-    # "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
-    # "casperhansen/deepseek-r1-distill-llama-8b-awq" # Already done
+    get_base_model_name(MODEL_FAST),
+    get_base_model_name(MODEL_REASONING)
 ]
+
+# Filter out empty or duplicates
+MODELS_TO_MIRROR = list(set([m for m in MODELS_TO_MIRROR if m]))
 
 def check_gsutil():
     if shutil.which("gsutil") is None:

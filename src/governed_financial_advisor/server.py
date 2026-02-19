@@ -16,11 +16,13 @@ from pydantic import BaseModel
 
 from config.settings import Config
 from src.governed_financial_advisor.demo.router import demo_router
+from src.governed_financial_advisor.tools.api import tools_router
 from src.governed_financial_advisor.graph.graph import create_graph
 from src.governed_financial_advisor.utils.context import user_context
 from src.gateway.governance.nemo.manager import load_rails, validate_with_nemo
 from src.governed_financial_advisor.utils.telemetry import configure_telemetry
-from src.governed_financial_advisor.infrastructure.gateway_client import gateway_client
+from src.governed_financial_advisor.utils.telemetry import configure_telemetry
+from src.governed_financial_advisor.infrastructure.mcp_client import get_mcp_client
 
 # Observability
 configure_telemetry()
@@ -51,11 +53,12 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown
     print("🛑 Shutting down...")
-    await gateway_client.close()
+    await get_mcp_client().close()
 
 app = FastAPI(title="Governed Financial Advisor (Graph Orchestrated)", lifespan=lifespan)
 FastAPIInstrumentor.instrument_app(app) # Enable automatic request tracing
 app.include_router(demo_router)
+app.include_router(tools_router)
 
 # --- GLOBAL SINGLETONS ---
 rails = load_rails()
@@ -125,4 +128,4 @@ async def query_agent(req: QueryRequest, request: Request):
         user_context.reset(token)
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=Config.PORT)
+    uvicorn.run(app, host="0.0.0.0", port=Config.PORT, log_config=None)

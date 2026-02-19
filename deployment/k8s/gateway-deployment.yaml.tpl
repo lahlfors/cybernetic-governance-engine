@@ -41,18 +41,26 @@ spec:
               value: "${GOOGLE_CLOUD_PROJECT}"
             - name: GOOGLE_CLOUD_LOCATION
               value: "${GOOGLE_CLOUD_LOCATION}"
+            - name: ENABLE_LOGGING
+              value: "${ENABLE_LOGGING}"
+            - name: OTEL_TRACES_EXPORTER
+              value: "none"
             - name: REDIS_PORT
               value: "${REDIS_PORT}"
             - name: REDIS_HOST
               value: "${REDIS_HOST}"
             - name: REDIS_URL
               value: "redis://${REDIS_HOST}:${REDIS_PORT}"
+            - name: VLLM_BASE_URL
+              value: "${VLLM_BASE_URL}"
             - name: VLLM_GATEWAY_URL
               value: "${VLLM_GATEWAY_URL}"
             - name: VLLM_REASONING_API_BASE
               value: "${VLLM_REASONING_API_BASE}"
             - name: VLLM_FAST_API_BASE
               value: "${VLLM_FAST_API_BASE}"
+            - name: GUARDRAILS_MODEL_NAME
+              value: "${GUARDRAILS_MODEL_NAME}"
             # --- LangSmith ---
             - name: LANGSMITH_TRACING
               value: "${LANGSMITH_TRACING}"
@@ -75,11 +83,11 @@ spec:
               value: "http://localhost:8181/v1/data/finance/allow"
           resources:
             requests:
-              cpu: "250m"
-              memory: "512Mi"
+              cpu: "1000m"
+              memory: "2Gi"
             limits:
-              cpu: "500m"
-              memory: "1Gi"
+              cpu: "2000m"
+              memory: "4Gi"
 
         # OPA Sidecar
         - name: opa

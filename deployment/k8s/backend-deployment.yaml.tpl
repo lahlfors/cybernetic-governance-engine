@@ -42,6 +42,10 @@ spec:
               value: "${GOOGLE_CLOUD_PROJECT}"
             - name: GOOGLE_CLOUD_LOCATION
               value: "${GOOGLE_CLOUD_LOCATION}"
+            - name: ENABLE_LOGGING
+              value: "${ENABLE_LOGGING}"
+            - name: OTEL_TRACES_EXPORTER
+              value: "none"
 
             # --- Redis Session Management ---
             - name: REDIS_HOST
@@ -124,7 +128,7 @@ spec:
             - name: GATEWAY_GRPC_PORT
               value: "${GATEWAY_GRPC_PORT}"
             - name: GATEWAY_URL
-              value: "http://gateway:8080"
+              value: "${GATEWAY_URL}"
             - name: MCP_SERVER_SSE_URL
               value: "http://gateway:8080/mcp/sse"
 
@@ -146,10 +150,10 @@ spec:
           resources:
             requests:
               cpu: "500m"
-              memory: "1Gi"
+              memory: "2Gi"
             limits:
               cpu: "1000m"
-              memory: "2Gi"
+              memory: "4Gi"
 
         # OPA Sidecar
         - name: opa

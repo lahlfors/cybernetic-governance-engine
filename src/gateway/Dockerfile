@@ -47,7 +47,7 @@ RUN uv pip install \
     presidio-anonymizer
 
 # Download spaCy model for PII detection
-RUN python -m spacy download en_core_web_sm
+RUN python -m spacy download en_core_web_lg
 
 # Copy Source Code
 COPY src/gateway /app/src/gateway

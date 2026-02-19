@@ -21,7 +21,7 @@ from google.adk import Agent
 from google.adk.tools import FunctionTool
 
 from config.settings import MODEL_FAST
-from src.governed_financial_advisor.tools.trades import execute_trade
+from src.governed_financial_advisor.infrastructure.mcp_client import get_mcp_client
 from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
 
 logger = logging.getLogger("GovernedTrader")
@@ -73,10 +73,24 @@ from src.governed_financial_advisor.infrastructure.llm.config import get_adk_mod
 
 from config.settings import Config
 
+
+async def execute_trade(symbol: str, amount: float, currency: str, transaction_id: str, confidence: float) -> str:
+    """
+    Executes a financial trade via the Gateway (MCP).
+    """
+    params = {
+        "symbol": symbol,
+        "amount": amount,
+        "currency": currency,
+        "transaction_id": transaction_id,
+        "confidence": confidence
+    }
+    return await get_mcp_client().call_tool("execute_trade_action", params)
+
 def create_governed_trader_agent(model_name: str = MODEL_FAST) -> Agent:
     """Factory to create the Dumb Executor agent."""
     return Agent(
-        model=get_adk_model(model_name, api_base=Config.VLLM_FAST_API_BASE),
+        model=get_adk_model(model_name, api_base=Config.GATEWAY_API_BASE),
         name="governed_trader_agent",
         instruction=get_executor_instruction(),
         output_key="execution_result",

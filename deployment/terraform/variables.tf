@@ -35,5 +35,5 @@ variable "gpu_count" {
 variable "machine_type" {
   description = "Machine type for GKE nodes"
   type        = string
-  default     = "g2-standard-8"
+  default     = "g2-standard-16"
 }

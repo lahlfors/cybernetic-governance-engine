@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from config.settings import MODEL_REASONING
 from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
-from src.governed_financial_advisor.infrastructure.gateway_client import gateway_client
+from src.governed_financial_advisor.infrastructure.mcp_client import get_mcp_client
 
 logger = logging.getLogger("EvaluatorAgent")
 
@@ -19,7 +19,7 @@ async def check_market_status(symbol: str) -> str:
     Checks real market status via Gateway (MCP).
     """
     try:
-        return await gateway_client.execute_tool("check_market_status", {"symbol": symbol})
+        return await get_mcp_client().call_tool("check_market_status", {"symbol": symbol})
     except Exception as e:
         logger.error(f"Market Check Failed: {e}")
         return f"ERROR: Could not fetch market status: {e}"
@@ -49,7 +49,7 @@ async def verify_policy_opa(action: str, params: str) -> str:
              params_dict['action'] = action
 
         # Call the generic policy tool
-        return await gateway_client.execute_tool("evaluate_policy", params_dict)
+        return await get_mcp_client().call_tool("evaluate_policy", params_dict)
     except Exception as e:
         logger.error(f"OPA Check Failed: {e}")
         return f"DENIED: System Error: {e}"
@@ -59,7 +59,7 @@ async def verify_semantic_nemo(text: str) -> str:
     Checks Semantic Safety via Gateway (MCP).
     """
     try:
-        return await gateway_client.execute_tool("verify_content_safety", {"text": text})
+        return await get_mcp_client().call_tool("verify_content_safety", {"text": text})
     except Exception as e:
         logger.error(f"Semantic Check Failed: {e}")
         return f"BLOCKED: System Error: {e}"
@@ -69,7 +69,7 @@ async def check_safety_constraints(target_tool: str, target_params: dict[str, An
     Calls the Gateway's SymbolicGovernor to perform a full 'Dry Run' safety check.
     """
     try:
-        return await gateway_client.execute_tool(
+        return await get_mcp_client().call_tool(
             "check_safety_constraints",
             {
                 "target_tool": target_tool,
@@ -90,7 +90,7 @@ async def safety_intervention(reason: str) -> str:
     logger.warning(f"🛑 Evaluator Triggering Intervention: {reason}")
     try:
         # Call the intervention tool on Gateway (which sets Redis key)
-        return await gateway_client.execute_tool("trigger_safety_intervention", {"reason": reason})
+        return await get_mcp_client().call_tool("trigger_safety_intervention", {"reason": reason})
     except Exception as e:
         logger.critical(f"FATAL: Could not trigger intervention: {e}")
         return f"ERROR: Intervention Failed: {e}"

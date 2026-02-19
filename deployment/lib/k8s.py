@@ -152,11 +152,23 @@ def ensure_gke_cluster(project_id, config):
     print("🔑 Configuring kubectl credentials...")
     location_flag = "--zone" if zone else "--region"
     location_value = zone if zone else region
-    run_command([
+    # Attempt to get credentials, but don't exit hard if it fails (cluster might be in ERROR state but functional)
+    res = run_command([
         "gcloud", "container", "clusters", "get-credentials", cluster_name,
         location_flag, location_value,
         "--project", project_id
-    ])
+    ], check=False)
+
+    if res.returncode != 0:
+        print(f"⚠️ Failed to get credentials (exit code {res.returncode})")
+        print("   Checking if kubectl is already configured...")
+        try:
+            run_command(["kubectl", "get", "nodes"], check=True, capture_output=True)
+            print("✅ kubectl is already configured and working. Ignoring get-credentials failure.")
+        except Exception:
+            print("❌ kubectl is NOT working and get-credentials failed. Deployment cannot proceed.")
+            # Verify if this was indeed the error we want to raise
+            raise RuntimeError(f"kubectl configuration failed: {res}")
 
     # Ensure Namespace
     subprocess.run("kubectl create namespace governance-stack --dry-run=client -o yaml | kubectl apply -f -", shell=True, check=False)
@@ -363,6 +375,7 @@ def deploy_k8s_infra(project_id, config, args=None):
             "enforce_eager": True,
             # "load_format": "runai_streamer", # Removed to allow auto-detection/fallback in renderer.py
             "enable_prefix_caching": True, # Optimize for ReAct loop
+            "served_name": "deepseek-ai/DeepSeek-R1-Distill-Llama-8B",
         }
         
         # Generate Manifest

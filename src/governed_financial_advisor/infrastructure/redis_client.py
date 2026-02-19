@@ -2,6 +2,7 @@ import logging
 import os
 import redis
 from opentelemetry import trace
+from urllib.parse import urlparse
 from src.governed_financial_advisor.utils.telemetry import get_tracer
 
 logger = logging.getLogger("Infrastructure.Redis")
@@ -13,8 +14,30 @@ class RedisClient:
     Falls back to in-memory dictionary if Redis is not configured or unavailable.
     """
     def __init__(self):
-        self.redis_host = os.getenv("REDIS_HOST")
-        self.redis_port = int(os.getenv("REDIS_PORT", 6379))
+        self.redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+        
+        # Parse URL first to get best defaults
+        try:
+            parsed = urlparse(self.redis_url)
+            default_host = parsed.hostname or "localhost"
+            default_port = parsed.port or 6379
+        except Exception:
+            default_host = "localhost"
+            default_port = 6379
+
+        self.redis_host = os.getenv("REDIS_HOST", default_host)
+        
+        # Handle K8s Service collision for REDIS_PORT (it sets "tcp://ip:port" string)
+        redis_port_env = os.getenv("REDIS_PORT")
+        if redis_port_env and "tcp://" in redis_port_env:
+            # Ignore K8s service env var, fallback to URL-derived port
+            self.redis_port = default_port
+        else:
+            try:
+                self.redis_port = int(redis_port_env) if redis_port_env else default_port
+            except ValueError:
+                self.redis_port = default_port
+        
         self.use_redis = bool(self.redis_host) and self.redis_host.lower() not in ["", "none", "false"]
         
         self.client = None

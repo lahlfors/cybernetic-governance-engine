@@ -38,7 +38,26 @@ async def safety_check_node(state: AgentState) -> dict[str, Any]:
     }
 
     # 3. Query OPA (Governance Layer) - ASYNC
-    decision = await opa_client.evaluate_policy(opa_input)
+    # 3. Query OPA (Governance Layer) - ASYNC
+    from src.governed_financial_advisor.infrastructure.mcp_client import get_mcp_client
+    
+    # Using Gateway MCP logic
+    client = get_mcp_client()
+    try:
+        # evaluate_policy calls OPA on Gateway
+        decision_response = await client.call_tool("evaluate_policy", opa_input)
+        
+        # Parse standard Gateway response format "APPROVED: ...", "DENIED: ..."
+        if "APPROVED" in decision_response:
+             decision = "ALLOW"
+        elif "MANUAL_REVIEW" in decision_response:
+             decision = "MANUAL_REVIEW"
+        else:
+             decision = "DENY"
+             
+    except Exception as e:
+        logger.error(f"MCP OPA Check Failed: {e}")
+        decision = "DENY" # Fail safe
 
     if decision == "ALLOW":
         logger.info(f"✅ Safety Check PASSED: {opa_input['action']}")

@@ -40,12 +40,24 @@ spec:
               value: "laah-cybernetics"
             - name: GOOGLE_CLOUD_LOCATION
               value: "northamerica-northeast2"
+            - name: MODEL_FAST
+              value: "openai/gs://laah-cybernetics-models/meta-llama/Meta-Llama-3.1-8B-Instruct"
+            - name: MODEL_REASONING
+              value: "openai/gs://laah-cybernetics-models/casperhansen/deepseek-r1-distill-llama-8b-awq"
+            - name: MODEL_CONSENSUS
+              value: "openai/gs://laah-cybernetics-models/casperhansen/deepseek-r1-distill-llama-8b-awq"
             - name: VLLM_BASE_URL
               value: "http://vllm-service.governance-stack.svc.cluster.local:8000/v1"
             - name: OPA_URL
               value: "http://localhost:8181/v1/data/finance/allow"
             - name: DEPLOY_TIMESTAMP
               value: "20260127214321"
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_URL
+              value: "redis://redis:6379"
           # Load secrets from K8s Secret (optional, fallback to GSM)
           envFrom:
             - secretRef:
@@ -73,7 +85,9 @@ spec:
             - name: GOOGLE_CLOUD_LOCATION
               value: "northamerica-northeast2"
             - name: REDIS_URL
-              value: "redis://redis-master.governance-stack.svc.cluster.local:6379"
+              value: "redis://redis:6379"
+            - name: REDIS_PORT
+              value: "6379"
           resources:
             requests:
               cpu: "250m"
@@ -81,7 +95,13 @@ spec:
             limits:
               cpu: "500m"
               memory: "1Gi"
+          envFrom:
+            - secretRef:
+                name: advisor-secrets
+                optional: true
 
+        # OPA Sidecar
+        - name: opa
           image: openpolicyagent/opa:latest-static
           ports:
             - containerPort: 8181

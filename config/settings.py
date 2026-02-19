@@ -19,6 +19,7 @@ class Config:
     
     # Gateway Configuration
     GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8080")
+    GATEWAY_API_BASE = f"{GATEWAY_URL}/v1" # Standard OpenAI-compatible endpoint
     MCP_SERVER_SSE_URL = os.getenv("MCP_SERVER_SSE_URL", f"{GATEWAY_URL}/mcp/sse")
     VLLM_FAST_API_BASE = os.getenv("VLLM_FAST_API_BASE", "http://vllm-service:8000/v1")
     MODEL_FAST = os.getenv("MODEL_FAST", "openai/meta-llama/Meta-Llama-3.1-8B-Instruct")
@@ -54,6 +55,7 @@ MODEL_CONSENSUS = Config.MODEL_CONSENSUS
 VLLM_FAST_API_BASE = Config.VLLM_FAST_API_BASE
 VLLM_REASONING_API_BASE = Config.VLLM_REASONING_API_BASE
 VLLM_GATEWAY_URL = Config.VLLM_GATEWAY_URL
+GATEWAY_API_BASE = Config.GATEWAY_API_BASE
 PORT = Config.PORT
 REDIS_URL = Config.REDIS_URL
 OPA_URL = Config.OPA_URL

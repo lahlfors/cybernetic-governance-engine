@@ -1,6 +1,6 @@
 import logging
 from src.gateway.core.structs import TradeOrder
-from src.governed_financial_advisor.infrastructure.gateway_client import gateway_client
+from src.gateway.core.structs import TradeOrder
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,9 @@ async def execute_trade(order: dict) -> str:
 
     logger.info(f"Delegating trade execution to Gateway: {tid} (Confidence: {conf})")
 
-    # Call Gateway
-    result = await gateway_client.execute_tool("execute_trade", params)
+    # Call Gateway via MCP
+    from src.governed_financial_advisor.infrastructure.mcp_client import get_mcp_client
+    # The MCP tool is named 'execute_trade_action' in hybrid_server.py
+    result = await get_mcp_client().call_tool("execute_trade_action", params)
 
     return result

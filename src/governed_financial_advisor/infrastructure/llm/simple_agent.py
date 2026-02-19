@@ -67,7 +67,8 @@ class Agent:
         self.extra_config = kwargs
         
         # Determine API Base
-        self.api_base = config_manager.get("VLLM_BASE_URL", "http://localhost:8000/v1")
+        from config.settings import Config
+        self.api_base = config_manager.get("GATEWAY_API_BASE", Config.GATEWAY_API_BASE)
         self.api_key = config_manager.get("VLLM_API_KEY", "EMPTY")
 
     def chat(self, user_message: str, history: List[dict] = None) -> str:

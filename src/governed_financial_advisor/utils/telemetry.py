@@ -27,6 +27,15 @@ class TraceIdFilter(logging.Filter):
             pass
         return True
 
+class ServiceContextFilter(logging.Filter):
+    """Injects serviceContext for GCP Cloud Logging/Error Reporting."""
+    def filter(self, record):
+        record.serviceContext = {
+            "service": os.getenv("SERVICE_NAME", "financial-advisor"),
+            "version": os.getenv("DEPLOY_TIMESTAMP", "unknown")
+        }
+        return True
+
 def setup_canonical_logging():
     """Configures the root logger to output structured JSON with trace correlation."""
     root_logger = logging.getLogger()
@@ -42,12 +51,35 @@ def setup_canonical_logging():
     )
     logHandler.setFormatter(formatter)
     logHandler.addFilter(TraceIdFilter())
+    logHandler.addFilter(ServiceContextFilter())
     root_logger.addHandler(logHandler)
     root_logger.setLevel(logging.INFO)
 
+    # Force uvicorn loggers to use our handler
+    for log_name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
+        log = logging.getLogger(log_name)
+        log.handlers = []
+        log.propagate = True
+
 # Initialize logging early
-setup_canonical_logging()
-logger = logging.getLogger("FinancialAdvisor")
+if os.getenv("ENABLE_LOGGING", "true").lower() == "true":
+    setup_canonical_logging()
+    logger = logging.getLogger("FinancialAdvisor")
+else:
+    logger = logging.getLogger("FinancialAdvisor")
+    # If logging is disabled or OTEL not configured, ensure we have at least a console handler
+    if not HANDLER_ADDED:
+        # Default to Console Logging if no other handler is added
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        console_handler.setFormatter(formatter)
+        
+        root_logger = logging.getLogger()
+        root_logger.addHandler(console_handler)
+        # Avoid duplicate handlers if called multiple times
+        HANDLER_ADDED = True
+        logger.info("⚠️ OTEL disabled. Falling back to standard Console Logging.")
 
 _telemetry_configured = False
 
@@ -57,19 +89,36 @@ def configure_telemetry():
     Uses standard async BatchSpanProcessors to capture payloads for LangSmith,
     while AgentSight handles system-level correlation via HTTP headers.
     """
+    global HANDLER_ADDED
     global _telemetry_configured
     if _telemetry_configured:
         return
 
+    if os.getenv("ENABLE_LOGGING", "true").lower() != "true":
+         return
+
     try:
+        if os.getenv("OTEL_TRACES_EXPORTER") == "none":
+
+            logger.info("🚫 OTEL Telemetry explicitly disabled via environment variable.")
+            return
+
         # Import optional dependencies
         from opentelemetry import trace
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter, Compression
 
+        from opentelemetry.sdk.resources import Resource
+
+        # Configure Resource with service.name for LangSmith Project mapping
+        resource = Resource.create({
+            "service.name": os.getenv("LANGCHAIN_PROJECT", "financial-advisor"),
+            "service.version": os.getenv("DEPLOY_TIMESTAMP", "unknown"),
+        })
+
         # Set up tracer provider
-        provider = TracerProvider()
+        provider = TracerProvider(resource=resource)
         trace.set_tracer_provider(provider)
 
         # 1. Hot Tier: Cloud Trace (or OTLP fallback)

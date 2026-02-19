@@ -375,6 +375,7 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         "${VLLM_API_KEY}": os.environ.get("VLLM_API_KEY", "EMPTY"),
         "${VLLM_FAST_API_BASE}": "http://vllm-service.governance-stack.svc.cluster.local:8000/v1",
         "${VLLM_REASONING_API_BASE}": "http://vllm-reasoning.governance-stack.svc.cluster.local:8000/v1",
+        "${GUARDRAILS_MODEL_NAME}": os.environ.get("GUARDRAILS_MODEL_NAME", "meta-llama/Meta-Llama-3.1-8B-Instruct"),
         
         # Policy Engine
         "${OPA_URL}": os.environ.get("OPA_URL", "http://localhost:8181/v1/data/finance/allow"),
@@ -385,7 +386,7 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         # LangSmith (Hot Tier) - Replaces Langfuse
         "${LANGSMITH_TRACING}": os.environ.get("LANGSMITH_TRACING", "true"),
         "${LANGSMITH_ENDPOINT}": os.environ.get("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com"),
-        "${LANGSMITH_API_KEY}": os.environ.get("LANGSMITH_API_KEY", ""),
+        "${LANGSMITH_API_KEY}": os.environ.get("LANGSMITH_API_KEY", os.environ.get("LANGCHAIN_API_KEY", "")),
         "${LANGSMITH_PROJECT}": os.environ.get("LANGSMITH_PROJECT", "financial-advisor"),
         
         # OpenTelemetry (Cold Tier)
@@ -403,11 +404,14 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         
         # Gateway Configuration
         "${GATEWAY_HOST}": "gateway.governance-stack.svc.cluster.local",
+        "${GATEWAY_URL}": "http://gateway.governance-stack.svc.cluster.local:8080",
         "${GATEWAY_GRPC_PORT}": "50051",
         
         # --- LangSmith ---
         "${LANGCHAIN_TRACING_V2}": os.environ.get("LANGCHAIN_TRACING_V2", "true"),
         "${LANGCHAIN_PROJECT}": os.environ.get("LANGCHAIN_PROJECT", "financial-advisor"),
+        "${LANGCHAIN_PROJECT}": os.environ.get("LANGCHAIN_PROJECT", "financial-advisor"),
+        "${ENABLE_LOGGING}": os.environ.get("ENABLE_LOGGING", "true"),
     }
     
     # Helper: strip surrounding quotes from .env values (they get re-quoted in YAML)

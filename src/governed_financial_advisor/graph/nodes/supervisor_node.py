@@ -90,16 +90,9 @@ def supervisor_node(state):
                 elif "human" in target_lower or "review" in target_lower:
                     next_step = "human_review"
 
-    # 2b. FALLBACK HEURISTICS (If LLM refuses to call tool but intent is clear)
-    # 2b. FALLBACK HEURISTICS (If LLM refuses to call tool but intent is clear)
-    if next_step == "FINISH":
-         last_msg_lower = last_msg_text.lower()
-         if any(t in last_msg_lower for t in ["strategy", "plan", "trade", "buy", "sell", "execution", "risk", "evaluate"]):
-             print("--- [Graph] Heuristic Route: Forcing Execution Analyst ---")
-             next_step = "execution_analyst"
-         elif any(t in last_msg_lower for t in ["analyze", "price", "stock", "ticker", "market"]):
-             print("--- [Graph] Heuristic Route: Forcing Data Analyst ---")
-             next_step = "data_analyst"
+    # 2b. FALLBACK HEURISTICS REMOVED
+    # We strictly rely on the 'route_request' tool or the agent's natural response.
+    # If no tool is called, next_step remains "FINISH" (or whatever default).
 
     # 3. Return updated state and routing signal
     # We must return the 'updated_state' dictionary, not the original 'state'

@@ -333,10 +333,33 @@ def data_analyst_node(state):
     # If we pass 'ticker' to factory, it bakes it into system prompt.
     # So we should extract the ticker cleanly.
     
-    ticker = plan_content.split()[-1] # Simple fallback extraction if it talks a lot
+    ticker = "UNKNOWN"
+    if plan_content:
+        # If plan has content, try to extract ticker
+        tokens = plan_content.split()
+        if tokens:
+            ticker = tokens[-1]
+        else:
+            ticker = plan_content
+    else:
+        # Fallback if planner returns nothing
+        logger.warning("Planner returned empty response. Falling back to last message.")
+        if last_msg:
+             tokens = last_msg.split()
+             if tokens:
+                 ticker = tokens[-1]
+    
     # Ideally Planner just outputs the ticker.
     if len(plan_content) < 10:
          ticker = plan_content
+         
+    # Final fallback if ticker is still empty/unknown
+    if not ticker or ticker == "UNKNOWN":
+        print("--- [Graph] Could not extract ticker -> Asking User ---")
+        return {
+            "messages": [("ai", "I couldn't determine which stock you'd like me to analyze. Could you please specify the **ticker symbol** (e.g., AAPL, GOOGL)?")],
+            "data_analyst_ticker": None
+        }
     
     print(f"--- [Executor] Initializing for Ticker: {ticker} ---")
     executor = get_agent(f"{executor_agent_name}_{ticker}", lambda: create_data_analyst_executor(ticker))
@@ -381,23 +404,23 @@ def execution_analyst_node(state):
             "execution_plan_output": None
         }
 
-    # 1. PROFILE CHECK: DISABLED to allow Agent to extract it from context
-    # if not state.get("risk_attitude") or not state.get("investment_period"):
-    #     print("--- [Graph] Missing Profile -> Asking User ---")
-    #     msg = (
-    #         "I have the market analysis. To tailor the strategy, please select your **Risk Tolerance** and **Time Frame**:\n\n"
-    #         "Stock trading strategies generally fall into three levels of aggressiveness:\n"
-    #         "- **Aggressive** (High Risk, High Growth): Maximizes returns with higher volatility exposure.\n"
-    #         "- **Moderate** (Balanced Risk/Reward): Balances growth and capital preservation.\n"
-    #         "- **Conservative** (Low Risk, Capital Preservation): Prioritizes stability and lower turnover.\n\n"
-    #         "Please copy and paste your choice (e.g., 'Aggressive') and specify your **Time Frame** (Short, Medium, or Long)."
-    #     )
-    #     return {
-    #         "messages": [("ai", msg)],
-    #         "next_step": "FINISH",
-    #         "risk_status": "UNKNOWN",
-    #         "execution_plan_output": None
-    #     }
+    # 1. PROFILE CHECK: Enabled to enforce risk profile collection
+    if not state.get("risk_attitude") or not state.get("investment_period"):
+        print("--- [Graph] Missing Profile -> Asking User ---")
+        msg = (
+            "I have the market analysis. To tailor the strategy, please select your **Risk Tolerance** and **Time Frame**:\n\n"
+            "Stock trading strategies generally fall into three levels of aggressiveness:\n"
+            "- **Aggressive** (High Risk, High Growth): Maximizes returns with higher volatility exposure.\n"
+            "- **Moderate** (Balanced Risk/Reward): Balances growth and capital preservation.\n"
+            "- **Conservative** (Low Risk, Capital Preservation): Prioritizes stability and lower turnover.\n\n"
+            "Please copy and paste your choice (e.g., 'Aggressive') and specify your **Time Frame** (Short, Medium, or Long)."
+        )
+        return {
+            "messages": [("ai", msg)],
+            "next_step": "FINISH",
+            "risk_status": "UNKNOWN",
+            "execution_plan_output": None
+        }
 
     # INJECT FEEDBACK if the loop pushed us back here
     if state.get("risk_status") == "REJECTED_REVISE":

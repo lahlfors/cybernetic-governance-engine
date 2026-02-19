@@ -1,0 +1,134 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-reasoning
+  namespace: governance-stack
+  labels:
+    app: vllm-reasoning
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-reasoning
+  template:
+    metadata:
+      labels:
+        app: vllm-reasoning
+    spec:
+      serviceAccountName: financial-advisor-sa
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: "16Gi"  # vLLM requires large shared memory
+      containers:
+        - name: vllm
+          # Ensure image has runai extensions: pip install vllm[runai]
+          image: gcr.io/laah-cybernetics/vllm-streamer:latest
+          imagePullPolicy: IfNotPresent
+          resources:
+            limits:
+              nvidia.com/gpu: "1"
+              memory: "64Gi"
+              cpu: "16"
+            requests:
+              nvidia.com/gpu: "1"
+              memory: "10Gi"
+              cpu: "3"
+          volumeMounts:
+            - mountPath: /dev/shm
+              name: dshm
+          env:
+
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token-secret
+                  key: token
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: gcs-credentials-secret
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gcs-credentials-secret
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: AWS_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: gcs-credentials-secret
+                  key: AWS_REGION
+            - name: AWS_ENDPOINT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: gcs-credentials-secret
+                  key: AWS_ENDPOINT_URL
+            - name: AWS_EC2_METADATA_DISABLED
+              value: "true"
+            - name: AC_LOG_VERBOSITY
+              value: "info"
+            - name: RUNAI_STREAMER_S3_USE_VIRTUAL_ADDRESSING
+              value: "0"
+            - name: VLLM_ATTENTION_BACKEND
+              value: "TORCH_SDPA"
+          ports:
+            - containerPort: 8000
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 120
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 600
+            periodSeconds: 15
+          command:
+            - "vllm"
+            - "serve"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8000"
+            - "--model"
+            - "gs://laah-cybernetics-models/casperhansen/deepseek-r1-distill-llama-8b-awq"
+            - "--served-model-name"
+            - "deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
+            - "--enable-auto-tool-choice"
+            - "--tool-call-parser"
+            - "llama3_json"
+            - "--enforce-eager"
+            - "--load-format"
+            - "runai_streamer"
+            - "--model-loader-extra-config"
+            - '{"concurrency": 8}'
+            - "--quantization"
+            - "awq"
+            - "--max-model-len"
+            - "32768"
+            - "--gpu-memory-utilization"
+            - "0.9"
+            - "--enable-prefix-caching"
+            - "--dtype"
+            - "float16"
+      nodeSelector:
+        cloud.google.com/gke-accelerator: nvidia-l4
+      tolerations:
+
+
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - vllm-inference
+            topologyKey: "kubernetes.io/hostname"
+    

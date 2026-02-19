@@ -75,14 +75,14 @@ resource "google_container_node_pool" "gpu_pool" {
 
   autoscaling {
     min_node_count = 0 # Scale to zero if no inference needed (optional cost saving)
-    max_node_count = 2
+    max_node_count = 4
   }
 
   node_config {
     machine_type = var.machine_type # Default: g2-standard-8 (L4)
 
-    # Standardization: Use Spot VMs for Cost Efficiency (L4 GPU Pattern)
-    spot = true
+    # Standardization: Use Standard VMs for Reliability (User Requested)
+    spot = false
 
     # Enable Image Streaming (Phase 2: Eliminate Latency)
     gcfs_config {

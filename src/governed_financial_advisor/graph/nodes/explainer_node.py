@@ -41,7 +41,7 @@ async def explainer_node(state: AgentState) -> dict[str, Any]:
     try:
         response = await acompletion(
             model=MODEL_FAST, 
-            api_base=Config.VLLM_FAST_API_BASE,
+            api_base=Config.GATEWAY_API_BASE,
             api_key="EMPTY",
             messages=[{"role": "user", "content": user_msg}]
         )

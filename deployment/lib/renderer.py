@@ -76,7 +76,7 @@ def generate_vllm_manifest(accelerator, config, app_name="vllm-inference"):
         '            - "--model"',
         f'            - "{model_path}"',
         f'            - "--served-model-name"',
-        f'            - "{model_name}"',
+        f'            - "{config.get("model", {}).get("served_name", model_name)}"',
         '            - "--enable-auto-tool-choice"',
         '            - "--tool-call-parser"',
         f'            - "{tool_parser}"',
