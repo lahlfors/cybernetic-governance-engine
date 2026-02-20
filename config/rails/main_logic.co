@@ -4,9 +4,11 @@
 import core
 import llm
 
-# action execute_vllm_fallback
-
-
+# Wrapper flow for execute_vllm_fallback
+# This flow calls the registered Python action 'invoke_vllm_fallback'
+flow execute_vllm_fallback($content)
+  $res = await invoke_vllm_fallback(content=$content)
+  return $res
 
 # Main flow - required entry point for Colang 2.x
 flow main
@@ -38,12 +40,11 @@ flow financial_analysis
 
 flow catch_all
   match UtteranceUserAction.Finished(final_transcript=regex("(?i).*"))
-  # $bot_message = await execute_vllm_fallback(content=$last_user_message)
-  $bot_message = "DEBUG: Logic bypassed action (catch_all)."
+  $bot_message = await execute_vllm_fallback(content=$last_user_message)
   if $bot_message
     bot say $bot_message
-  # else
-  #   bot say "I apologize, but I encountered an issue generating a response."
+  else
+    bot say "I apologize, but I encountered an issue generating a response."
 
 # flow bot continue
 #   $bot_message = "DEBUG: Logic bypassed action."
