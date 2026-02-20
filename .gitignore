@@ -107,3 +107,12 @@ gateway_cloudbuild.yaml
 
 # Gateway Logs
 gateway.logs*
+gateway_logs*.txt
+
+# Debug scripts
+debug_*.py
+check_vllm.py
+tests/verify_*.py
+tests/debug_*.py
+debug_output.txt
+deployment_patch.yaml

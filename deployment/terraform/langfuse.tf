@@ -177,19 +177,9 @@ resource "google_cloud_run_v2_service" "langfuse" {
         }
       }
 
-      # Environment Configuration
       env {
         name  = "NEXTAUTH_URL"
-        # Since we don't know the URL beforehand, Cloud Run allows updating it later OR relying on HOST header?
-        # Langfuse typically needs this.
-        # We can use a placeholder or handle it post-deployment.
-        # Actually, for Cloud Run v2 (declarative), the URL is predictable if we use custom domains,
-        # otherwise it's generated.
-        # Workaround: Use a placeholder and update it via a script OR use a fixed custom domain if available.
-        # For simplicity in this plan, we might need a post-deploy step to update it.
-        # However, for initial deployment, let's just set a dummy value and rely on `deploy_sw.py` to fix it?
-        # Or even better: If we use Cloud Run Domain Mapping.
-        value = "https://placeholder-url"
+        value = "https://langfuse-server-104563134786.us-central1.run.app"
       }
       env {
         name  = "TELEMETRY_ENABLED"
@@ -211,7 +201,7 @@ resource "google_cloud_run_v2_service" "langfuse" {
       }
       env {
         name  = "LANGFUSE_INIT_PROJECT_NAME"
-        value = "Governance Engine"
+        value = "reliable-financial-advisor"
       }
       env {
         name  = "LANGFUSE_INIT_USER_EMAIL"
