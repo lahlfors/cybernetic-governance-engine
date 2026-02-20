@@ -62,6 +62,8 @@ def setup_canonical_logging():
         log.propagate = True
 
 # Initialize logging early
+HANDLER_ADDED = False
+
 if os.getenv("ENABLE_LOGGING", "true").lower() == "true":
     setup_canonical_logging()
     logger = logging.getLogger("FinancialAdvisor")

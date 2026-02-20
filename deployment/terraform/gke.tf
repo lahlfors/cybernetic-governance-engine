@@ -42,10 +42,9 @@ resource "google_container_cluster" "primary" {
 
 # 1. General Purpose Node Pool (System + Lightweight Apps)
 resource "google_container_node_pool" "general_pool" {
-  name       = "general-pool"
-  location   = var.zone
-  cluster    = google_container_cluster.primary.name
-  node_count = 1
+  name     = "general-pool"
+  location = var.zone
+  cluster  = google_container_cluster.primary.name
 
   autoscaling {
     min_node_count = 1

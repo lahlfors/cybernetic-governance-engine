@@ -220,20 +220,59 @@ async def chat_completions(request: ChatCompletionRequest):
             if not messages or messages[0]["role"] != "system":
                 messages.insert(0, {"role": "system", "content": request.system_instruction})
 
-        # Generate with NeMo (enforces rails)
-        # Using generate_async calls NeMo's LLM (VLLM) with the conversation history
-        # and applies Input/Output rails.
-        res = await rails.generate_async(messages=messages)
+        # 1. Guardrails Check (Input Rails Only - PII Masking & Safety)
+        res = await rails.generate_async(
+            messages=messages,
+            options={"rails": ["input"]}
+        )
 
-        response_text = ""
-        # Handle NeMo response variations (Dict or String)
-        if isinstance(res, dict) and "content" in res:
-            response_text = res["content"]
-        elif isinstance(res, str):
-            response_text = res
+        bot_response = ""
+        if hasattr(res, "response") and isinstance(res.response, list) and len(res.response) > 0:
+            bot_response = res.response[0].get("content", "")
+        # Fallback for dictionaries if NeMo changes API
+        elif isinstance(res, dict) and "response" in res and len(res["response"]) > 0:
+            bot_response = res["response"][0].get("content", "")
+
+        # If NeMo generated a bot response during the input rail phase, 
+        # it means a guardrail blocked the input and provided a canned refusal.
+        if bot_response:
+            final_response = bot_response
         else:
-             # Fallback
-             response_text = str(res)
+            # 2. Native LLM Call (Bypassing NeMo Dialog Logic)
+            from src.gateway.governance.nemo.vllm_client import VLLMLLM
+            from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+
+            llm = VLLMLLM()
+            
+            # Convert dict messages to Langchain messages
+            lc_messages = []
+            for m in messages:
+                if m["role"] == "system":
+                    lc_messages.append(SystemMessage(content=m["content"]))
+                elif m["role"] == "assistant" or m["role"] == "bot":
+                    lc_messages.append(AIMessage(content=m["content"]))
+                else:
+                    lc_messages.append(HumanMessage(content=m["content"]))
+                    
+            # Generate completion
+            llm_response = await llm._acall(lc_messages)
+            response_text = llm_response
+
+            # 3. Guardrails Check (Output Rails - Unsafe Dialogues & PII Masking)
+            messages.append({"role": "bot", "content": response_text})
+            output_res = await rails.generate_async(
+                messages=messages,
+                options={"rails": ["output"]}
+            )
+            
+            if hasattr(output_res, "response") and isinstance(output_res.response, list) and len(output_res.response) > 0:
+                out_content = output_res.response[0].get("content", "")
+                final_response = out_content if out_content else response_text
+            elif isinstance(output_res, dict) and "response" in output_res and len(output_res["response"]) > 0:
+                out_content = output_res["response"][0].get("content", "")
+                final_response = out_content if out_content else response_text
+            else:
+                final_response = response_text
 
         # Build OpenAI Response
         import time
@@ -249,15 +288,15 @@ async def chat_completions(request: ChatCompletionRequest):
                     "index": 0,
                     "message": {
                         "role": "assistant",
-                        "content": response_text
+                        "content": final_response
                     },
                     "finish_reason": "stop"
                 }
             ],
             "usage": {
                 "prompt_tokens": 0,
-                "completion_tokens": len(response_text) // 4,
-                "total_tokens": len(response_text) // 4
+                "completion_tokens": len(final_response) // 4,
+                "total_tokens": len(final_response) // 4
             }
         }
 
@@ -338,21 +377,27 @@ if __name__ == "__main__":
     http_port = int(os.getenv("PORT", 8080))
     
     # Determine Log Config
+    # Determine Log Config
+    # Force Enable Logging for Debugging
     log_config = None
-    if os.getenv("ENABLE_LOGGING", "true").lower() != "true":
-        # Explicitly disable uvicorn logging
-        log_config = {
-            "version": 1,
-            "disable_existing_loggers": False,
-            "handlers": {
-                "null": {"class": "logging.NullHandler"}
-            },
-            "loggers": {
-                "uvicorn": {"level": "CRITICAL", "handlers": ["null"], "propagate": False},
-                "uvicorn.error": {"level": "CRITICAL", "handlers": ["null"], "propagate": False},
-                "uvicorn.access": {"level": "CRITICAL", "handlers": ["null"], "propagate": False},
-            },
-            "root": {"level": "CRITICAL", "handlers": ["null"]}
-        }
+    # if os.getenv("ENABLE_LOGGING", "true").lower() != "true":
+    #     # Explicitly disable uvicorn logging
+    #     log_config = {
+    #         "version": 1,
+    #         "disable_existing_loggers": False,
+    #         "handlers": {
+    #             "null": {"class": "logging.NullHandler"}
+    #         },
+    #         "loggers": {
+    #             "uvicorn": {"level": "CRITICAL", "handlers": ["null"], "propagate": False},
+    #             "uvicorn.error": {"level": "CRITICAL", "handlers": ["null"], "propagate": False},
+    #             "uvicorn.access": {"level": "CRITICAL", "handlers": ["null"], "propagate": False},
+    #         },
+    #         "root": {"level": "CRITICAL", "handlers": ["null"]}
+    #     }
+    
+    # Configure root logger to INFO/DEBUG
+    logging.basicConfig(level=logging.INFO)
+    logger.info("DEBUG: forced logging in hybrid_server.py")
         
     uvicorn.run(app, host="0.0.0.0", port=http_port, log_config=log_config)

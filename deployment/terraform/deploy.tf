@@ -5,7 +5,7 @@ resource "null_resource" "app_deployment" {
     tpl_sha    = sha256(file("../../deployment/k8s/backend-deployment.yaml.tpl"))
 
     # Also trigger if infra changes
-    cluster    = google_container_cluster.primary.endpoint
+    cluster = google_container_cluster.primary.endpoint
   }
 
   depends_on = [
@@ -18,7 +18,7 @@ resource "null_resource" "app_deployment" {
 
   provisioner "local-exec" {
     working_dir = "${path.module}/../../"
-    command = <<EOT
+    command     = <<EOT
       python3 deployment/deploy_sw.py \
         --project-id ${var.project_id} \
         --region ${var.region} \

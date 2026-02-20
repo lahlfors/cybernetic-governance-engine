@@ -32,12 +32,27 @@ resource "random_id" "encryption_key" {
   byte_length = 32
 }
 
+# --- Langfuse Init Keys ---
+resource "random_id" "langfuse_public_key" {
+  byte_length = 16 # pk-lf-... usually 32 chars hex, so 16 bytes
+  prefix      = "pk-lf-"
+}
+
+resource "random_id" "langfuse_secret_key" {
+  byte_length = 16 # sk-lf-... usually 32 chars hex
+  prefix      = "sk-lf-"
+}
+
+resource "random_id" "langfuse_project_salt" {
+  byte_length = 32
+}
+
 # --- Secrets Storage ---
 
 resource "google_secret_manager_secret" "database_url" {
   secret_id = "langfuse-database-url"
   replication {
-    automatic = true
+    auto {}
   }
   depends_on = [google_project_service.apis]
 }
@@ -52,7 +67,7 @@ resource "google_secret_manager_secret_version" "database_url_version" {
 resource "google_secret_manager_secret" "nextauth_secret" {
   secret_id = "langfuse-nextauth-secret"
   replication {
-    automatic = true
+    auto {}
   }
   depends_on = [google_project_service.apis]
 }
@@ -64,7 +79,7 @@ resource "google_secret_manager_secret_version" "nextauth_secret_version" {
 resource "google_secret_manager_secret" "salt" {
   secret_id = "langfuse-salt"
   replication {
-    automatic = true
+    auto {}
   }
   depends_on = [google_project_service.apis]
 }
@@ -76,7 +91,7 @@ resource "google_secret_manager_secret_version" "salt_version" {
 resource "google_secret_manager_secret" "encryption_key" {
   secret_id = "langfuse-encryption-key"
   replication {
-    automatic = true
+    auto {}
   }
   depends_on = [google_project_service.apis]
 }
@@ -107,7 +122,7 @@ resource "google_cloud_run_v2_service" "langfuse" {
     }
 
     containers {
-      image = "langfuse/langfuse:latest"
+      image = "langfuse/langfuse:2"
 
       ports {
         container_port = 3000
@@ -184,6 +199,28 @@ resource "google_cloud_run_v2_service" "langfuse" {
         name  = "LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES"
         value = "true"
       }
+
+      # --- Langfuse Auto-Initialization ---
+      env {
+        name  = "LANGFUSE_INIT_PROJECT_PUBLIC_KEY"
+        value = random_id.langfuse_public_key.hex
+      }
+      env {
+        name  = "LANGFUSE_INIT_PROJECT_SECRET_KEY"
+        value = random_id.langfuse_secret_key.hex
+      }
+      env {
+        name  = "LANGFUSE_INIT_PROJECT_NAME"
+        value = "Governance Engine"
+      }
+      env {
+        name  = "LANGFUSE_INIT_USER_EMAIL"
+        value = "admin@governance.ai"
+      }
+      env {
+        name  = "LANGFUSE_INIT_USER_PASSWORD"
+        value = "G0v3rn@nce!2025" # Change this in production or use a secret
+      }
     }
   }
 
@@ -193,9 +230,6 @@ resource "google_cloud_run_v2_service" "langfuse" {
   ]
 }
 
-resource "google_cloud_run_service_iam_member" "public_access" {
-  location = google_cloud_run_v2_service.langfuse.location
-  service  = google_cloud_run_v2_service.langfuse.name
-  role     = "roles/run.invoker"
-  member   = "allUsers"
-}
+
+
+
