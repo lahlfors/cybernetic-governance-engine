@@ -335,24 +335,29 @@ async def execute_tool_endpoint(request: ToolExecutionRequest):
 
 if __name__ == "__main__":
     import uvicorn
+
+    # Force INFO logging for debugging fixed19
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+
     http_port = int(os.getenv("PORT", 8080))
     
-    # Determine Log Config
+    # Force default log config (None means uvicorn default)
     log_config = None
-    if os.getenv("ENABLE_LOGGING", "true").lower() != "true":
-        # Explicitly disable uvicorn logging
-        log_config = {
-            "version": 1,
-            "disable_existing_loggers": False,
-            "handlers": {
-                "null": {"class": "logging.NullHandler"}
-            },
-            "loggers": {
-                "uvicorn": {"level": "CRITICAL", "handlers": ["null"], "propagate": False},
-                "uvicorn.error": {"level": "CRITICAL", "handlers": ["null"], "propagate": False},
-                "uvicorn.access": {"level": "CRITICAL", "handlers": ["null"], "propagate": False},
-            },
-            "root": {"level": "CRITICAL", "handlers": ["null"]}
-        }
+
+    # if os.getenv("ENABLE_LOGGING", "true").lower() != "true":
+    #     # Explicitly disable uvicorn logging
+    #     log_config = {
+    #         "version": 1,
+    #         "disable_existing_loggers": False,
+    #         "handlers": {
+    #             "null": {"class": "logging.NullHandler"}
+    #         },
+    #         "loggers": {
+    #             "uvicorn": {"level": "CRITICAL", "handlers": ["null"], "propagate": False},
+    #             "uvicorn.error": {"level": "CRITICAL", "handlers": ["null"], "propagate": False},
+    #             "uvicorn.access": {"level": "CRITICAL", "handlers": ["null"], "propagate": False},
+    #         },
+    #         "root": {"level": "CRITICAL", "handlers": ["null"]}
+    #     }
         
     uvicorn.run(app, host="0.0.0.0", port=http_port, log_config=log_config)
