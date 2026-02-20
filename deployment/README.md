@@ -24,6 +24,7 @@ The system is deployed as a distributed microservices architecture on GKE:
 4.  **Governance Sidecars/Services**:
     *   `opa-service`: Open Policy Agent server.
     *   `nemo-service`: NeMo Guardrails server.
+    *   `langfuse-server`: Langfuse v3 observability stack (Web, Worker, ClickHouse, MinIO, Redis).
 
 ## Prerequisites
 
@@ -95,6 +96,10 @@ Expected output should show `Running` status for:
 *   `governed-financial-advisor-*`
 *   `vllm-fast-*` (if enabled)
 *   `financial-advisor-ui-*`
+*   `langfuse-web-*`
+*   `langfuse-worker-*`
+*   `clickhouse-0`
+*   `minio-*`
 
 ### 2. Access the UI
 

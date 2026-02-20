@@ -10,7 +10,7 @@ The system is designed not just as a software pipeline, but as a **Cybernetic Co
 
 | VSM System | Role | Component | Function |
 | :--- | :--- | :--- | :--- |
-| **System 5** | Identity / Policy | **Constitution** | Defines high-level goals ("Helpful & Harmless") and risk policies. |
+| **System 5** | Identity / Policy23: 1.  **Langfuse (Async):** Captures high-level application flow (Chain of Thought, Tool Use) using a self-hosted stack (ClickHouse + MinIO) without blocking the main event loop.
 | **System 4** | Intelligence / Feedforward | **Execution Analyst (Planner)** | Anticipates future states; generates plans; simulates outcomes (via Evaluator). |
 | **System 3** | Control / Optimization | **Evaluator Agent** | The "Internal Regulator". Enforces constraints via simulation and policy checks. |
 | **System 2** | Coordination | **Graph State & Schema** | Ensures data integrity and synchronization between agents (JSON Schemas). |
@@ -71,6 +71,8 @@ The `GatewayClient` (`src/gateway/core/llm.py`) connects to the Inference Gatewa
 
 1.  **Node A: The Brain (Reasoning Plane)**
     *   **Use Case:** High-order reasoning, Planning (System 4), and Evaluation (System 3).
+    *   **Application Layer:** Async **Langfuse** tracing for prompt engineering, execution trees, and cost tracking (Self-Hosted on GKE).
+    *   **System Layer:** AgentSight (eBPF sidecar) for deep payload inspection and security monitoring (syscalls).
     *   **Model:** `deepseek-ai/DeepSeek-R1-Distill-Qwen-32B` (Hosted on GKE with NVIDIA L4).
     *   **Why:** Provides advanced reasoning capabilities for complex financial analysis.
 
@@ -122,4 +124,7 @@ The `GatewayClient` (`src/gateway/core/llm.py`) connects to the Inference Gatewa
 The system uses **Redis** for state persistence (`langgraph-checkpoint-redis`), ensuring reliable recovery across stateless compute instances.
 
 ### 6.2. Observability
-We use **OpenTelemetry** with OTLP exporters for distributed tracing across the Gateway and Agents.
+We use **Langfuse** (v3) for distributed tracing and observability. The self-hosted stack includes:
+*   **ClickHouse:** Analytical database for high-volume traces.
+*   **MinIO:** S3-compatible object storage for raw event ingestion.
+*   **Langfuse Worker:** Async processing to ensure zero-latency impact on the critical path.

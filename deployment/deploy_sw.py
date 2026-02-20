@@ -273,6 +273,9 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         "LANGFUSE_PUBLIC_KEY": os.environ.get("LANGFUSE_PUBLIC_KEY", ""),
         "LANGFUSE_SECRET_KEY": os.environ.get("LANGFUSE_SECRET_KEY", ""),
         "LANGFUSE_HOST": os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com"),
+        "CLICKHOUSE_URL": os.environ.get("CLICKHOUSE_URL", "http://clickhouse.governance-stack.svc.cluster.local:8123"),
+        "CLICKHOUSE_USER": os.environ.get("CLICKHOUSE_USER", "default"),
+        "CLICKHOUSE_PASSWORD": os.environ.get("CLICKHOUSE_PASSWORD", ""),
     }
     
     # Filter out empty keys to avoid creation errors if env vars generate empty strings
@@ -441,6 +444,23 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         print("✅ Gateway manifest applied.")
     else:
         print("⚠️ Gateway template not found. Skipping.")
+
+    # 6.5 Deploy Langfuse (GKE)
+    print("\n--- 🕯️ Deploying Langfuse Stack (ClickHouse + Web + Worker) ---")
+    langfuse_manifests = [
+        "deployment/k8s/langfuse-db.yaml",
+        "deployment/k8s/langfuse-web.yaml",
+        "deployment/k8s/langfuse-worker.yaml"
+    ]
+    for manifest in langfuse_manifests:
+        if Path(manifest).exists():
+            print(f"Applying {manifest}...")
+            # We might need to substitute env vars if we used templates, but these are static for now
+            # except for maybe secrets which are ref'd by name. 
+            # The manifests use envFrom: secretRef: name: advisor-secrets, which we created above.
+            run_command(["kubectl", "apply", "-f", manifest])
+        else:
+            print(f"⚠️ Manifest {manifest} not found. Skipping.")
 
     # 7. Deploy Backend
     print("\n--- ☸️ Deploying Backend to GKE ---")

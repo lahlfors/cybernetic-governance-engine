@@ -1,85 +1,54 @@
-# Deploying Langfuse on Google Cloud Run
+# Deploying Langfuse v3 on GKE
 
-This guide explains how to deploy a self-hosted Langfuse instance on Google Cloud Run using `gcloud`.
+This directory contains the configuration for deploying a self-hosted Langfuse v3 stack on Google Kubernetes Engine (GKE).
+
+## Architecture
+
+The Langfuse v3 deployment on GKE consists of:
+
+*   **Langfuse Web**: Next.js frontend and API server (`langfuse-web`).
+*   **Langfuse Worker**: Asynchronous event processor (`langfuse-worker`).
+*   **ClickHouse**: OLAP database for high-volume trace data (Single-node statefulset).
+*   **MinIO**: S3-compatible object storage for raw event ingestion (Required for v3).
+*   **Redis**: Queue and caching (shared with other services).
+*   **PostgreSQL**: Metadata storage (Cloud SQL via `advisor-secrets`).
 
 ## Prerequisites
 
-1.  **Google Cloud SDK**: Ensure `gcloud` is installed and authenticated.
-2.  **PostgreSQL Database**: You need a PostgreSQL database (e.g., Cloud SQL). Note the connection string (`postgresql://user:password@host:5432/dbname`).
-3.  **Secrets**: You need to create secrets in Secret Manager for sensitive configuration.
+1.  **GKE Cluster**: A running GKE cluster.
+2.  **Secret Manager**: Secrets must be populated in `advisor-secrets`.
+3.  **kubectl**: Configured to point to your cluster.
 
-## Setup Steps
+## Deployment
 
-### 1. Create Secrets
-
-Run the following commands to create the necessary secrets in Google Secret Manager. Replace the values with your actual secrets.
+The deployment is managed via the main `deployment/deploy_sw.py` script, but can be applied manually:
 
 ```bash
-# Database Connection String
-echo -n "postgresql://user:password@host:5432/langfuse" | gcloud secrets create langfuse-database-url --data-file=-
-# Or if you already have it:
-# gcloud secrets versions add langfuse-database-url --data-file=-
-
-# Generate Random Secrets
-openssl rand -base64 32 | gcloud secrets create langfuse-nextauth-secret --data-file=-
-openssl rand -base64 32 | gcloud secrets create langfuse-salt --data-file=-
-openssl rand -base64 32 | gcloud secrets create langfuse-encryption-key --data-file=-
+kubectl apply -f deployment/k8s/minio.yaml
+kubectl apply -f deployment/k8s/langfuse-db.yaml
+kubectl apply -f deployment/k8s/langfuse-web.yaml
+kubectl apply -f deployment/k8s/langfuse-worker.yaml
 ```
 
-### 2. Grant Access to Secrets
+## MinIO Configuration
 
-The Cloud Run service account needs permission to access these secrets.
+Langfuse v3 **requires** S3-compatible storage. We use a self-hosted MinIO instance for this purpose to keep costs low and avoid external dependencies for development environments.
+
+*   **Bucket**: `langfuse-events` (Automatically created by `mc-setup` job or manual setup).
+*   **Access**: Internal only via `http://minio.governance-stack.svc.cluster.local:9000`.
+
+## Accessing Langfuse
+
+Port-forward the web service to access the UI:
 
 ```bash
-SERVICE_ACCOUNT=$(gcloud run services describe langfuse-server --format 'value(spec.template.spec.serviceAccountName)' || echo "default-compute@developer.gserviceaccount.com")
-# Note: For initial deployment, use the default compute service account or create one first.
-
-# Grant Secret Accessor role to the service account for all secrets created above.
-gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
-    --member="serviceAccount:$SERVICE_ACCOUNT" \
-    --role="roles/secretmanager.secretAccessor"
+kubectl port-forward svc/langfuse-web 3000:80 -n governance-stack
 ```
 
-### 3. Deploy Langfuse Service
+Visit `http://localhost:3000`.
 
-Apply the `service.yaml` configuration:
+## Troubleshooting
 
-```bash
-gcloud run services replace service.yaml
-```
-
-Alternatively, deploy using `gcloud run deploy`:
-
-```bash
-gcloud run deploy langfuse-server \
-    --image langfuse/langfuse:latest \
-    --region us-central1 \
-    --set-secrets="DATABASE_URL=langfuse-database-url:latest,NEXTAUTH_SECRET=langfuse-nextauth-secret:latest,SALT=langfuse-salt:latest,ENCRYPTION_KEY=langfuse-encryption-key:latest" \
-    --set-env-vars="NEXTAUTH_URL=https://langfuse-server-uc.a.run.app,TELEMETRY_ENABLED=false,LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES=true"
-```
-
-### 4. Post-Deployment Configuration
-
-1.  **Update NEXTAUTH_URL**: After deployment, get the actual service URL and update the `NEXTAUTH_URL` environment variable if it differs from the placeholder.
-    ```bash
-    SERVICE_URL=$(gcloud run services describe langfuse-server --format 'value(status.url)')
-    gcloud run services update langfuse-server --update-env-vars NEXTAUTH_URL=$SERVICE_URL
-    ```
-
-2.  **Create API Keys**:
-    - Access the Langfuse dashboard at the service URL.
-    - Create a new project.
-    - Generate public/secret API keys.
-    - Update your application configuration (e.g., `deployment/k8s/current_deployment.yaml`) with these keys.
-
-## Database Note
-
-Ensure your Cloud Run service can connect to your Cloud SQL instance. You may need to enable the Cloud SQL Admin API and use the Cloud SQL Auth Proxy or Private IP connection.
-If using Cloud SQL, add the instance connection name:
-
-```yaml
-      annotations:
-        run.googleapis.com/cloudsql-instances: PROJECT_ID:REGION:INSTANCE_NAME
-```
-
-And update the `DATABASE_URL` format appropriately.
+*   **500 Errors on Startup**: Check `REDIS_HOST` and `REDIS_PORT` env vars.
+*   **Ingestion Hangs**: Verify MinIO connectivity and that the `langfuse-events` bucket exists.
+*   **ClickHouse Connection**: Ensure `advisor-secrets` has the correct `CLICKHOUSE_PASSWORD`.

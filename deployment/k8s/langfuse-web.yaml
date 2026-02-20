@@ -1,0 +1,122 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langfuse-web
+  namespace: governance-stack
+  labels:
+    app: langfuse-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: langfuse-web
+  template:
+    metadata:
+      labels:
+        app: langfuse-web
+    spec:
+      # Stable Tier: Avoid Spot nodes to prevent downtime at minReplicas=1
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: cloud.google.com/gke-spot
+                operator: NotIn
+                values:
+                - "true"
+      containers:
+      - name: langfuse-web
+        image: langfuse/langfuse:3
+        ports:
+        - containerPort: 3000
+        envFrom:
+        - secretRef:
+            name: advisor-secrets
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: DATABASE_URL
+        - name: CLICKHOUSE_URL
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: CLICKHOUSE_URL
+        - name: CLICKHOUSE_USER
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: CLICKHOUSE_USER
+        - name: CLICKHOUSE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: CLICKHOUSE_PASSWORD
+        # NEXTAUTH_URL needs to be set properly. 
+        # For internal GKE, it might not be reachable from browser if set to internal DNS.
+        # But for container-to-container checks it works.
+        # Usually NEXTAUTH_URL must be the PUBLIC URL the user visits.
+        # We will let the deployment script inject or override this if needed, 
+        # but for now we pull from secrets or env.
+        - name: NEXTAUTH_URL
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: NEXTAUTH_URL
+              optional: true
+        - name: LANGFUSE_S3_ENDPOINT
+          value: "http://minio.governance-stack.svc.cluster.local:9000"
+        - name: LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE
+          value: "true"
+        - name: NEXT_PUBLIC_LANGFUSE_BASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: NEXTAUTH_URL
+              optional: true
+        - name: AUTH_SECRET # For NextAuth v5 compatibility if needed
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: NEXTAUTH_SECRET
+        - name: CLICKHOUSE_CLUSTER_ENABLED
+          value: "false"
+        - name: REDIS_HOST
+          value: "redis"
+        - name: REDIS_PORT
+          value: "6379"
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "512Mi"
+          limits:
+            cpu: "1000m"
+            memory: "2Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: langfuse-web
+  namespace: governance-stack
+spec:
+  selector:
+    app: langfuse-web
+  ports:
+  - port: 80
+    targetPort: 3000
+  type: ClusterIP
+---
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: langfuse-web-vpa
+  namespace: governance-stack
+spec:
+  targetRef:
+    apiVersion: "apps/v1"
+    kind: Deployment
+    name: langfuse-web
+  updatePolicy:
+    updateMode: "Auto"
