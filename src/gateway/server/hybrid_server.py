@@ -1,30 +1,29 @@
-import asyncio
-import logging
-import json
 import os
 import sys
-from typing import List, Optional, Dict, Any, Union
 from contextlib import asynccontextmanager
+from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 # Adjust path so we can import from src
 sys.path.append(".")
 
 from mcp.server.fastmcp import FastMCP
 
-# Core logic
-from src.gateway.core.tools import execute_trade, TradeOrder
 from src.gateway.core.market import market_service
-from src.gateway.governance.singletons import symbolic_governor, opa_client
-from src.gateway.governance.symbolic_governor import GovernanceError
+
+# Core logic
+from src.gateway.core.tools import TradeOrder, execute_trade
 from src.gateway.governance.nemo.manager import initialize_rails, validate_with_nemo
+from src.gateway.governance.singletons import opa_client, symbolic_governor
+from src.gateway.governance.symbolic_governor import GovernanceError
 from src.governed_financial_advisor.tools.market_data_tool import get_market_data
 
 # Configure Logging via Telemetry (Centralized Control)
 from src.governed_financial_advisor.utils.telemetry import configure_telemetry, logger
+
 configure_telemetry()
 
 # Global Resources Initialization
@@ -38,6 +37,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("🛑 Hybrid Gateway Shutting Down...")
     await opa_client.close()
+    await market_service.close()
 
 # --- 2. Initialize FastAPI App ---
 app = FastAPI(title="Governed Financial Advisor Gateway (Hybrid)", lifespan=lifespan)
@@ -69,10 +69,10 @@ async def check_safety_constraints(target_tool: str, target_params: dict, risk_p
     Used by the Evaluator Agent (System 3) to verify safety before execution.
     """
     logger.info(f"🔍 Evaluator verifying proposed action: {target_tool} (Risk: {risk_profile})")
-    
+
     verification_params = target_params.copy()
     verification_params["risk_profile"] = risk_profile
-    
+
     violations = await symbolic_governor.verify(target_tool, verification_params)
 
     if not violations:
@@ -94,7 +94,7 @@ async def trigger_safety_intervention(reason: str) -> str:
 async def check_market_status(symbol: str) -> str:
     """Checks the current market status and price for a given ticker symbol."""
     logger.info(f"Tool Call: check_market_status({symbol})")
-    return market_service.check_status(symbol)
+    return await market_service.check_status(symbol)
 
 @mcp.tool()
 async def get_market_sentiment(symbol: str) -> str:
@@ -189,14 +189,14 @@ class ChatMessage(BaseModel):
     content: str
 
 class ChatCompletionRequest(BaseModel):
-    model: Optional[str] = "default"
-    messages: List[ChatMessage]
-    temperature: Optional[float] = 0.7
-    stream: Optional[bool] = False
-    system_instruction: Optional[str] = None
-    guided_json: Optional[Dict[str, Any]] = None
-    guided_regex: Optional[str] = None
-    guided_choice: Optional[List[str]] = None
+    model: str | None = "default"
+    messages: list[ChatMessage]
+    temperature: float | None = 0.7
+    stream: bool | None = False
+    system_instruction: str | None = None
+    guided_json: dict[str, Any] | None = None
+    guided_regex: str | None = None
+    guided_choice: list[str] | None = None
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
@@ -272,7 +272,7 @@ async def chat_completions(request: ChatCompletionRequest):
 
 class ToolExecutionRequest(BaseModel):
     tool_name: str
-    params: Dict[str, Any]
+    params: dict[str, Any]
 
 @app.post("/tools/execute")
 async def execute_tool_endpoint(request: ToolExecutionRequest):
@@ -280,10 +280,10 @@ async def execute_tool_endpoint(request: ToolExecutionRequest):
     Executes a named tool directly via HTTP.
     """
     logger.info(f"Tool Execution Request: {request.tool_name}")
-    
+
     try:
         output = None
-        
+
         # Dispatcher Mapping
         tool_map = {
             "check_safety_constraints": check_safety_constraints,
@@ -326,7 +326,7 @@ async def execute_tool_endpoint(request: ToolExecutionRequest):
         else:
              # evaluate_policy and execute_trade_action accept kwargs
              output = await func(**request.params)
-        
+
         return {"status": "SUCCESS", "output": str(output)}
 
     except Exception as e:
@@ -336,7 +336,7 @@ async def execute_tool_endpoint(request: ToolExecutionRequest):
 if __name__ == "__main__":
     import uvicorn
     http_port = int(os.getenv("PORT", 8080))
-    
+
     # Determine Log Config
     log_config = None
     if os.getenv("ENABLE_LOGGING", "true").lower() != "true":
@@ -354,5 +354,5 @@ if __name__ == "__main__":
             },
             "root": {"level": "CRITICAL", "handlers": ["null"]}
         }
-        
+
     uvicorn.run(app, host="0.0.0.0", port=http_port, log_config=log_config)
