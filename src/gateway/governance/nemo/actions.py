@@ -1,7 +1,9 @@
 import logging
-from typing import Any
+from typing import Any, List, Optional
 
 from src.gateway.governance.singletons import symbolic_governor
+from src.gateway.governance.nemo.vllm_client import VLLMLLM
+from langchain_core.messages import HumanMessage
 
 logger = logging.getLogger("NeMo.Actions")
 
@@ -84,3 +86,41 @@ async def check_atomic_execution(context: dict[str, Any] = {}, event: dict[str, 
     """
     logger.warning("🛡️ NeMo Action BLOCKED: check_atomic_execution - Multi-leg execution not supported yet (Fail Closed).")
     return False
+
+async def invoke_vllm_fallback(context: dict = {}, events: list = [], content: str = None, **kwargs) -> str:
+    """
+    Action to call vLLM directly for fallback responses.
+    Renamed from perform_vllm_fallback (fixed16/17).
+    Flexible signature to handle NeMo context/events injection.
+    """
+    # Extract content if passed via kwargs or context if primary arg is None
+    if content is None:
+        content = kwargs.get("content")
+
+    print(f"DEBUG: invoke_vllm_fallback CALLED with content='{content}', kwargs={kwargs.keys()}")
+
+    try:
+        if not content:
+            print("DEBUG: invoke_vllm_fallback returning default due to empty content")
+            return "I apologize, but I didn't catch that."
+
+        logger.info(f"DEBUG: Executing invoke_vllm_fallback with content='{content}'")
+
+        # Instantiate VLLM Client
+        llm = VLLMLLM()
+
+        # Create a simple message list
+        messages = [HumanMessage(content=content)]
+
+        # Call LLM
+        response = await llm._acall(messages)
+
+        print(f"DEBUG: invoke_vllm_fallback returning response length={len(response)}")
+        return response
+
+    except Exception as e:
+        logger.error(f"❌ invoke_vllm_fallback failed: {e}")
+        print(f"DEBUG: invoke_vllm_fallback EXCEPTION: {e}")
+        import traceback
+        traceback.print_exc()
+        return "I apologize, but I encountered an error generating a response."

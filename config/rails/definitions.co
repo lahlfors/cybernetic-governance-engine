@@ -1,0 +1,4 @@
+# Action Definitions for NeMo Guardrails
+# Explicit declaration is required for Colang 2.x flows to see the action
+
+action invoke_vllm_fallback
