@@ -27,15 +27,7 @@ from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Pro
 logger = logging.getLogger("GovernedTrader")
 
 # --- EXECUTOR PROMPT ---
-EXECUTOR_PROMPT_OBJ = Prompt(
-    prompt_data=PromptData(
-        model=MODEL_FAST,
-        contents=[
-            Content(
-                parts=[
-                    Part(
-                        text="""
-You are the **Governed Trader (Executor)**, the "System 1 Implementation" arm of the MACAW architecture.
+EXECUTOR_FALLBACK_PROMPT = """You are the **Governed Trader (Executor)**, the "System 1 Implementation" arm of the MACAW architecture.
 Your role is to **EXECUTE** the plan provided to you. You are a "Dumb Executor" - you do not reason, plan, or strategize.
 
 **Input Context:**
@@ -59,15 +51,10 @@ Your role is to **EXECUTE** the plan provided to you. You are a "Dumb Executor" 
 - You do NOT ask the user for clarification. (The Planner should have done that).
 - If the plan is empty or unclear, do nothing.
 """
-                    )
-                ]
-            )
-        ]
-    )
-)
 
 def get_executor_instruction() -> str:
-    return EXECUTOR_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
+    from src.governed_financial_advisor.utils.langfuse_utils import get_managed_prompt
+    return get_managed_prompt("agent/governed_trader", EXECUTOR_FALLBACK_PROMPT)
 
 from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
 

@@ -17,10 +17,10 @@ The test suite (`run_red_team.py`) sends a series of malicious payloads to the a
 
 ## Prerequisites
 
-1.  **Deployed Service**: The `governed-financial-advisor` service must be running (locally or on Cloud Run).
-2.  **Proxy (if using Cloud Run)**: You must proxy the Cloud Run service to localhost if running against the cloud deployment.
+1.  **Deployed Service**: The `gateway` service must be running (locally or on GKE).
+2.  **Proxy (if using GKE)**: You must port-forward the GKE service to localhost if running against the cloud deployment.
     ```bash
-    gcloud run services proxy governed-financial-advisor --project <PROJECT_ID> --region <REGION> --port 8082
+    kubectl port-forward svc/gateway 8082:8080 -n governance-stack
     ```
 3.  **Python Environment**: No external dependencies required (uses standard library `urllib`).
 

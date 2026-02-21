@@ -12,7 +12,7 @@ resource "google_secret_manager_secret" "opa_auth_token" {
 }
 
 resource "google_secret_manager_secret_version" "opa_auth_token_version" {
-  secret = google_secret_manager_secret.opa_auth_token.id
+  secret      = google_secret_manager_secret.opa_auth_token.id
   secret_data = random_password.opa_token.result
 }
 
@@ -51,16 +51,16 @@ resource "google_secret_manager_secret" "opa_config" {
 # Let's populate them using `file()`.
 
 resource "google_secret_manager_secret_version" "system_authz_version" {
-  secret = google_secret_manager_secret.system_authz.id
+  secret      = google_secret_manager_secret.system_authz.id
   secret_data = file("../../deployment/system_authz.rego")
 }
 
 resource "google_secret_manager_secret_version" "finance_policy_version" {
-  secret = google_secret_manager_secret.finance_policy.id
+  secret      = google_secret_manager_secret.finance_policy.id
   secret_data = file("../../src/governed_financial_advisor/governance/policy/finance_policy.rego")
 }
 
 resource "google_secret_manager_secret_version" "opa_config_version" {
-  secret = google_secret_manager_secret.opa_config.id
+  secret      = google_secret_manager_secret.opa_config.id
   secret_data = file("../../deployment/opa_config.yaml")
 }

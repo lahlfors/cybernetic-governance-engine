@@ -266,19 +266,28 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
     else:
         print("⚠️ No HF_TOKEN found. vLLM model download may fail.")
 
-    # Advisor Secrets (LangSmith, AlphaVantage, etc.)
+    # Advisor Secrets (Langfuse, AlphaVantage, etc.)
     print("🔑 Creating advisor-secrets...")
-    advisor_secrets = {
-        "LANGCHAIN_TRACING_V2": os.environ.get("LANGCHAIN_TRACING_V2", "true"),
-        "LANGCHAIN_ENDPOINT": os.environ.get("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com"),
-        "LANGCHAIN_API_KEY": os.environ.get("LANGCHAIN_API_KEY", ""),
-        "LANGCHAIN_PROJECT": os.environ.get("LANGCHAIN_PROJECT", "financial-advisor"),
-        "LANGSMITH_TRACING": os.environ.get("LANGCHAIN_TRACING_V2", "true"),
-        "LANGSMITH_ENDPOINT": os.environ.get("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com"),
-        "LANGSMITH_API_KEY": os.environ.get("LANGCHAIN_API_KEY", ""),
-        "LANGSMITH_PROJECT": os.environ.get("LANGCHAIN_PROJECT", "financial-advisor"),
-        "ALPHAVANTAGE_API_KEY": os.environ.get("ALPHAVANTAGE_API_KEY", "")
+    advisor_secrets_raw = {
+        "ALPHAVANTAGE_API_KEY": os.environ.get("ALPHAVANTAGE_API_KEY", ""),
+        "LANGFUSE_PUBLIC_KEY": os.environ.get("LANGFUSE_PUBLIC_KEY", ""),
+        "LANGFUSE_SECRET_KEY": os.environ.get("LANGFUSE_SECRET_KEY", ""),
+        "LANGFUSE_HOST": os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com"),
+        "CLICKHOUSE_URL": os.environ.get("CLICKHOUSE_URL", "http://clickhouse.governance-stack.svc.cluster.local:8123"),
+        "CLICKHOUSE_USER": os.environ.get("CLICKHOUSE_USER", "default"),
+        "CLICKHOUSE_PASSWORD": os.environ.get("CLICKHOUSE_PASSWORD", ""),
+        "LANGFUSE_S3_ACCESS_KEY_ID": os.environ.get("LANGFUSE_S3_ACCESS_KEY_ID", ""),
+        "LANGFUSE_S3_SECRET_ACCESS_KEY": os.environ.get("LANGFUSE_S3_SECRET_ACCESS_KEY", ""),
+        "LANGFUSE_S3_EVENT_UPLOAD_BUCKET": os.environ.get("LANGFUSE_S3_EVENT_UPLOAD_BUCKET", ""),
     }
+    
+    import re
+    def strip_ansi(s):
+        if not s: return ""
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        return ansi_escape.sub('', s)
+        
+    advisor_secrets = {k: strip_ansi(v) for k, v in advisor_secrets_raw.items()}
     
     # Filter out empty keys to avoid creation errors if env vars generate empty strings
     secret_args = []
@@ -367,6 +376,7 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         "${GOOGLE_CLOUD_LOCATION}": region,
         "${DEPLOY_TIMESTAMP}": timestamp,
         "${PORT}": os.environ.get("PORT", "8080"),
+        "${ENABLE_LOGGING}": os.environ.get("ENABLE_LOGGING", "true"),
         
         # Model Configuration (Tiered)
         "${MODEL_FAST}": f"openai/{os.environ.get('MODEL_FAST')}" if os.environ.get("MODEL_FAST") and not os.environ.get("MODEL_FAST").startswith("openai/") else os.environ.get("MODEL_FAST", ""),
@@ -387,11 +397,10 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         # Inference Gateway
         "${VLLM_GATEWAY_URL}": os.environ.get("VLLM_GATEWAY_URL", ""),
         
-        # LangSmith (Hot Tier) - Replaces Langfuse
-        "${LANGSMITH_TRACING}": os.environ.get("LANGSMITH_TRACING", "true"),
-        "${LANGSMITH_ENDPOINT}": os.environ.get("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com"),
-        "${LANGSMITH_API_KEY}": os.environ.get("LANGSMITH_API_KEY", os.environ.get("LANGCHAIN_API_KEY", "")),
-        "${LANGSMITH_PROJECT}": os.environ.get("LANGSMITH_PROJECT", "financial-advisor"),
+        # Langfuse (Hot Tier)
+        "${LANGFUSE_HOST}": os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com"),
+        "${LANGFUSE_PUBLIC_KEY}": os.environ.get("LANGFUSE_PUBLIC_KEY", ""),
+        "${LANGFUSE_SECRET_KEY}": os.environ.get("LANGFUSE_SECRET_KEY", ""),
         
         # OpenTelemetry (Cold Tier)
         "${OTEL_EXPORTER_OTLP_ENDPOINT}": os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
@@ -411,11 +420,6 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         "${GATEWAY_URL}": "http://gateway.governance-stack.svc.cluster.local:8080",
         "${GATEWAY_GRPC_PORT}": "50051",
         
-        # --- LangSmith ---
-        "${LANGCHAIN_TRACING_V2}": os.environ.get("LANGCHAIN_TRACING_V2", "true"),
-        "${LANGCHAIN_PROJECT}": os.environ.get("LANGCHAIN_PROJECT", "financial-advisor"),
-        "${LANGCHAIN_PROJECT}": os.environ.get("LANGCHAIN_PROJECT", "financial-advisor"),
-        "${ENABLE_LOGGING}": os.environ.get("ENABLE_LOGGING", "true"),
     }
     
     # Helper: strip surrounding quotes from .env values (they get re-quoted in YAML)
@@ -452,6 +456,61 @@ def deploy_application_stack(project_id, region, image_uri, redis_host, redis_po
         print("✅ Gateway manifest applied.")
     else:
         print("⚠️ Gateway template not found. Skipping.")
+
+    # 6.2 Deploy OTel Collector (Centralized Telemetry)
+    print("\n--- 📡 Deploying OTel Collector ---")
+    otel_tpl = Path("deployment/k8s/otel-collector.yaml.tpl")
+    if otel_tpl.exists():
+        with open(otel_tpl) as f:
+            otel_content = f.read()
+        
+        # Prepare Basic Auth for Langfuse OTLP
+        import base64
+        lf_pub = os.environ.get("LANGFUSE_PUBLIC_KEY", "")
+        lf_sec = os.environ.get("LANGFUSE_SECRET_KEY", "")
+        if lf_pub and lf_sec:
+            auth_str = f"{lf_pub}:{lf_sec}"
+            b64_auth = base64.b64encode(auth_str.encode()).decode()
+            
+            # Create a Secret for the Collector instead of replacing in ConfigMap directly if preferred,
+            # but our current TPL requires the secret. Let's create the secret here if we haven't already.
+            secret_cmd = [
+                "kubectl", "create", "secret", "generic", "langfuse-secrets",
+                f"--from-literal=basic-auth={b64_auth}",
+                "-n", "governance-stack",
+                "--dry-run=client", "-o", "yaml"
+            ]
+            try:
+                secret_yaml = subprocess.check_output(secret_cmd, text=True)
+                subprocess.run(["kubectl", "apply", "-f", "-"], input=secret_yaml, text=True, check=True)
+                print("✅ langfuse-secrets applied for OTel Collector.")
+            except subprocess.CalledProcessError as e:
+                print(f"❌ Failed to create langfuse-secrets for OTel: {e}")
+        else:
+             print("⚠️ LANGFUSE_PUBLIC_KEY or LANGFUSE_SECRET_KEY not set. OTel Collector may fail to export to Langfuse.")
+
+        # The otel-collector.yaml.tpl uses envFrom secretKeyRef, so no string replacement needed for auth internally.
+        run_command(["kubectl", "apply", "-f", str(otel_tpl)])
+        print("✅ OTel Collector manifest applied.")
+    else:
+        print("⚠️ OTel Collector template not found. Skipping.")
+
+    # 6.5 Deploy Langfuse (GKE)
+    print("\n--- 🕯️ Deploying Langfuse Stack (ClickHouse + Web + Worker) ---")
+    langfuse_manifests = [
+        "deployment/k8s/langfuse-db.yaml",
+        "deployment/k8s/langfuse-web.yaml",
+        "deployment/k8s/langfuse-worker.yaml"
+    ]
+    for manifest in langfuse_manifests:
+        if Path(manifest).exists():
+            print(f"Applying {manifest}...")
+            # We might need to substitute env vars if we used templates, but these are static for now
+            # except for maybe secrets which are ref'd by name. 
+            # The manifests use envFrom: secretRef: name: advisor-secrets, which we created above.
+            run_command(["kubectl", "apply", "-f", manifest])
+        else:
+            print(f"⚠️ Manifest {manifest} not found. Skipping.")
 
     # 7. Deploy Backend
     print("\n--- ☸️ Deploying Backend to GKE ---")

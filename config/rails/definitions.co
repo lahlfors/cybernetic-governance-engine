@@ -1,0 +1,11 @@
+
+# Action definitions for Colang 2.x resolution
+
+# We use bare action declarations to avoid 'Unexpected token )' errors seen in fixed10.
+# The wrapper flow in main_logic.co will handle argument passing.
+action invoke_vllm_fallback
+# action check_approval_token
+# action check_data_latency
+# action check_drawdown_limit
+# action check_slippage_risk
+# action check_atomic_execution

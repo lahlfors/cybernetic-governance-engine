@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: db-reset
+  namespace: governance-stack
+spec:
+  restartPolicy: Never
+  containers:
+  - name: reset
+    image: postgres:alpine
+    envFrom:
+    - secretRef:
+        name: advisor-secrets
+    command: ["sh", "-c"]
+    args:
+    - "psql $DATABASE_URL -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'"

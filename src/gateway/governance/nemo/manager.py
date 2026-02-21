@@ -1,5 +1,6 @@
 """
 Factory for creating NeMo Guardrails manager with vLLM/Llama support.
+# Force rebuild 3
 """
 import logging
 import os
@@ -7,9 +8,6 @@ from typing import Any, List, Optional, AsyncIterator
 import json
 
 import nest_asyncio
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage, AIMessageChunk, AIMessage, HumanMessage
-from langchain_core.outputs import ChatGenerationChunk, ChatResult, ChatGeneration
 from nemoguardrails import LLMRails, RailsConfig
 from nemoguardrails.context import streaming_handler_var
 from nemoguardrails.llm.providers import register_llm_provider
@@ -18,13 +16,20 @@ from opentelemetry.trace import Status, StatusCode
 
 from src.governed_financial_advisor.infrastructure.telemetry.nemo_exporter import NeMoOTelCallback
 from src.governed_financial_advisor.infrastructure.config_manager import config_manager
+# VLLMLLM moved to src/gateway/governance/nemo/vllm_client.py
+from src.gateway.governance.nemo.vllm_client import VLLMLLM
 
 # Configure Logging
-if os.getenv("ENABLE_LOGGING", "true").lower() == "true":
-    logger = logging.getLogger("NeMoManager")
-else:
-    logger = logging.getLogger("NeMoManager")
-    logger.addHandler(logging.NullHandler())
+# Configure Logging
+# Force stdout logging for debugging
+logger = logging.getLogger("NeMoManager")
+handler = logging.StreamHandler()
+handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+print("DEBUG: Logging explicitly configured to stdout in manager.py")
 
 # --- Monkeypatch NeMo Sensitive Data Detection to use en_core_web_sm ---
 try:
@@ -63,200 +68,6 @@ except Exception as e:
     logger.warning(f"⚠️ Error patching Sensitive Data Detection: {e}")
 tracer = trace.get_tracer(__name__)
 
-class VLLMLLM(BaseChatModel):
-    """Custom LangChain-compatible wrapper for vLLM using LiteLLM."""
-
-    model_name: str = config_manager.get("GUARDRAILS_MODEL_NAME", "meta-llama/Meta-Llama-3.1-8B-Instruct")
-    api_base: str = config_manager.get("VLLM_BASE_URL", "http://localhost:8000/v1")
-    api_key: str = config_manager.get("VLLM_API_KEY", "EMPTY")
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        logger.info(f"DEBUG: VLLMLLM initialized with model={self.model_name}, base={self.api_base}")
-
-    @property
-    def _llm_type(self) -> str:
-        return "vllm"
-
-    def _generate(self, messages: List[BaseMessage], stop: list[str] | None = None, run_manager: Any = None, **kwargs: Any) -> ChatResult:
-        """Call the vLLM model via LiteLLM."""
-        try:
-            import litellm
-            
-            # Enable generic vLLM support via OpenAI protocol
-            # We use custom_llm_provider="openai" instead of prefixing model_name 
-            # to avoid sending "openai/" prefix to the vLLM server (which causes 404).
-            model_id = self.model_name
-            
-            # Dynamic Routing Logic
-            # Check model name for 'reasoning' or 'deepseek' to route to reasoning service
-            # We use the config_manager to get the live env vars (in case they changed or were injected)
-            api_base = self.api_base
-            if "deepseek" in model_id.lower() or "reasoning" in model_id.lower():
-                reasoning_base = config_manager.get("VLLM_REASONING_API_BASE")
-                if reasoning_base:
-                    api_base = reasoning_base
-                    print(f"DEBUG: Routing to Reasoning Service: {api_base}")
-            else:
-                 # Optional: Explicitly check for fast/governance model if needed, or just default to base
-                 fast_base = config_manager.get("VLLM_FAST_API_BASE")
-                 if fast_base:
-                     api_base = fast_base
-                     print(f"DEBUG: Routing to Fast/Governance Service: {api_base}")
-
-            print(f"DEBUG: Calling vLLM via litellm... model={model_id} base={api_base}")
-            
-            # Format messages for litellm
-            formatted_messages = [{"role": m.type if m.type != "ai" else "assistant", "content": m.content} for m in messages]
-            # Map 'human' to 'user' if needed, though 'user' is standard. BaseMessage usually has 'human', 'ai', 'system'.
-            for m in formatted_messages:
-                if m["role"] == "human": m["role"] = "user"
-
-            response = litellm.completion(
-                model=model_id,
-                custom_llm_provider="openai",
-                api_base=api_base,
-                api_key=self.api_key,
-                messages=formatted_messages,
-                stop=stop,
-                **kwargs
-            )
-
-            content = response.choices[0].message.content
-            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
-
-        except Exception as e:
-            logger.error(f"Failed to call vLLM: {e}")
-            raise e
-
-    async def _acall(self, messages: List[BaseMessage], stop: Optional[List[str]] = None, run_manager: Any = None, **kwargs: Any) -> str:
-        """NeMo 0.10.0+ Compat: Wraps _agenerate to return string."""
-        if not messages:
-            return ""
-            
-        result = await self._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
-        return result.generations[0].message.content
-
-    async def _agenerate(self, messages: List[BaseMessage], stop: list[str] | None = None, run_manager: Any = None, **kwargs: Any) -> ChatResult:
-        """Async call to the vLLM model via LiteLLM."""
-        try:
-            import litellm
-            
-            # Enable generic vLLM support via OpenAI protocol
-            # We use custom_llm_provider="openai" to force LiteLLM to use the OpenAI client.
-            # However, vLLM might be picky about the model name if it serves multiple models.
-            # If we are routing, we should use the model_name expected by the target service.
-            # For now, we trust the incoming model_name but strip any "openai/" prefix if it exists
-            # just in case, because we explicitly set provider="openai".
-            model_id = self.model_name.replace("openai/", "")
-
-            # Dynamic Routing Logic (Async)
-            api_base = self.api_base
-            if "deepseek" in model_id.lower() or "reasoning" in model_id.lower():
-                reasoning_base = config_manager.get("VLLM_REASONING_API_BASE")
-                if reasoning_base:
-                    api_base = reasoning_base
-                    logger.info(f"DEBUG: Routing to Reasoning Service: {api_base}")
-            else:
-                 fast_base = config_manager.get("VLLM_FAST_API_BASE")
-                 if fast_base:
-                     api_base = fast_base
-                     logger.info(f"DEBUG: Routing to Fast/Governance Service: {api_base}")
-
-            logger.info(f"DEBUG: Async Calling vLLM via litellm... model={model_id} base={api_base}")
-            logger.info(f"DEBUG: vLLM Request Messages: {json.dumps([{'role': m.type if m.type != 'ai' else 'assistant', 'content': m.content} for m in messages])}")
-            
-            formatted_messages = [{"role": m.type if m.type != "ai" else "assistant", "content": m.content} for m in messages]
-            for m in formatted_messages:
-                if m["role"] == "human": m["role"] = "user"
-
-            try:
-                response = await litellm.acompletion(
-                    model=model_id,
-                    custom_llm_provider="openai",
-                    api_base=api_base,
-                    api_key=self.api_key,
-                    messages=formatted_messages,
-                    stop=stop,
-                    **kwargs
-                )
-                content = response.choices[0].message.content
-                logger.info(f"DEBUG: vLLM Response Content: {content[:100]}...")
-                return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content))])
-            except Exception as e:
-                logger.error(f"❌ Failed to call vLLM (async): {e}")
-                raise e
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize/call vLLM: {e}")
-            raise e
-
-    async def _astream(self, messages: List[BaseMessage], stop: Optional[List[str]] = None, run_manager: Any = None, **kwargs: Any) -> AsyncIterator[ChatGenerationChunk]:
-        """
-        Enables Optimistic Streaming for NeMo Guardrails.
-        """
-        import litellm
-
-        model_id = self.model_name
-        if not model_id.startswith("openai/") and "gpt" not in model_id:
-            model_id = f"openai/{model_id}"
-
-        formatted_messages = [{"role": m.type if m.type != "ai" else "assistant", "content": m.content} for m in messages]
-        for m in formatted_messages:
-            if m["role"] == "human": m["role"] = "user"
-
-        # Use litellm with stream=True
-        stream = await litellm.acompletion(
-            model=model_id,
-            messages=formatted_messages,
-            api_base=self.api_base,
-            api_key=self.api_key,
-            stream=True,
-            stop=stop,
-            **kwargs
-        )
-
-        async for chunk in stream:
-            content = chunk.choices[0].delta.content
-            if content:
-                # Yield it as a LangChain Chunk for NeMo
-                yield ChatGenerationChunk(message=AIMessageChunk(content=content))
-                # Optional: Notify callbacks
-                if run_manager:
-                    await run_manager.on_llm_new_token(content)
-
-    @property
-    def _identifying_params(self) -> dict:
-        return {"model": self.model_name, "api_base": self.api_base}
-
-
-async def execute_vllm_fallback(content: str = "", **kwargs) -> str:
-    """Action to call vLLM directly for fallback responses."""
-    print(f"DEBUG: execute_vllm_fallback CALLED with content='{content}', kwargs={kwargs.keys()}")
-    try:
-        if not content:
-            print("DEBUG: execute_vllm_fallback returning default due to empty content")
-            return "I apologize, but I didn't catch that."
-            
-        logger.info(f"DEBUG: Executing execute_vllm_fallback with content='{content}'")
-        
-        # BYPASS TEST: Return static string to verify dispatch and avoid crash
-        print(f"DEBUG: execute_vllm_fallback BYPASSING VLLM")
-        return "System is operational. Bypass check successful."
-
-        # llm = VLLMLLM()
-        # # Create a simple message list
-        # messages = [HumanMessage(content=content)]
-        # response = await llm._acall(messages)
-        # print(f"DEBUG: execute_vllm_fallback returning response length={len(response)}")
-        # return response
-    except Exception as e:
-        logger.error(f"❌ execute_vllm_fallback failed: {e}")
-        print(f"DEBUG: execute_vllm_fallback EXCEPTION: {e}")
-        import traceback
-        traceback.print_exc()
-        return "I apologize, but I encountered an error generating a response."
-
-
 def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
     """
     Creates and initializes a NeMo Guardrails manager with vLLM support.
@@ -288,6 +99,22 @@ def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
     print(f"DEBUG: Loading NeMo config from {config_path}")
     config = RailsConfig.from_path(config_path)
 
+    # --- Langfuse Prompt Injection ---
+    try:
+        from src.gateway.governance.nemo.prompt_fetcher import fetch_managed_prompts
+        dynamic_prompts_yaml = fetch_managed_prompts()
+        if dynamic_prompts_yaml:
+            print("🚀 Dynamically overriding NeMo prompts with Langfuse Managed Prompts...")
+            # We can parse the YAML and merge it
+            import yaml
+            parsed_yaml = yaml.safe_load(dynamic_prompts_yaml)
+            if "prompts" in parsed_yaml:
+                config.prompts = parsed_yaml["prompts"]
+                print("✅ Successfully merged remote prompts into RailsConfig")
+    except Exception as e:
+        logger.error(f"Failed to load dynamic Langfuse prompts: {e}")
+        print(f"⚠️ Falling back to static prompt configs due to: {e}")
+
     # --- Deduplicate Flows (Workaround for double-loading issue) ---
     if hasattr(config, "flows"):
         unique_flows = {}
@@ -314,35 +141,46 @@ def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
             deduped_list.append(flow)
             
         config.flows = deduped_list
-        print(f"DEBUG: Deduplicated flows from {original_count} to {len(config.flows)}")
+        config.flows = deduped_list
+        logger.info(f"✅ Deduplicated flows from {original_count} to {len(config.flows)}")
+    else:
+        logger.warning(f"⚠️ No flows found in config object! Has flows: {hasattr(config, 'flows')}")
     # -------------------------------------------------------------
     
     rails = LLMRails(config)
 
     # Explicitly register actions
+    print("DEBUG: Attempting to register NeMo actions...")
     try:
         from src.gateway.governance.nemo.actions import (
-            check_approval_token,
-            check_data_latency,
-            check_drawdown_limit,
-            check_slippage_risk,
-            check_atomic_execution,
+            CheckApprovalTokenAction,
+            CheckDataLatencyAction,
+            CheckDrawdownLimitAction,
+            CheckSlippageRiskAction,
+            CheckAtomicExecutionAction,
+            InvokeVllmFallbackAction
         )
-        rails.register_action(check_approval_token, "check_approval_token")
-        rails.register_action(check_data_latency, "check_data_latency")
-        rails.register_action(check_drawdown_limit, "check_drawdown_limit")
-        rails.register_action(check_slippage_risk, "check_slippage_risk")
-        rails.register_action(check_atomic_execution, "check_atomic_execution")
+        print(f"DEBUG: Imported actions successfully. InvokeVllmFallbackAction={InvokeVllmFallbackAction}")
         
+        rails.register_action(CheckApprovalTokenAction, "CheckApprovalTokenAction")
+        rails.register_action(CheckDataLatencyAction, "CheckDataLatencyAction")
+        rails.register_action(CheckDrawdownLimitAction, "CheckDrawdownLimitAction")
+        rails.register_action(CheckSlippageRiskAction, "CheckSlippageRiskAction")
+        rails.register_action(CheckAtomicExecutionAction, "CheckAtomicExecutionAction")
+        rails.register_action(InvokeVllmFallbackAction, "InvokeVllmFallbackAction")
+        
+        print("✅ NeMo actions from module registered successfully (via print)")
         logger.info("✅ NeMo actions from module registered successfully")
     except ImportError as e:
+        print(f"⚠️ Could not import NeMo actions (via print): {e}")
         logger.warning(f"⚠️ Could not import NeMo actions: {e}")
-
-    # Register local fallback action (always available)
-    rails.register_action(execute_vllm_fallback, "execute_vllm_fallback")
-
+    except Exception as e:
+        print(f"❌ Error during action registration (via print): {e}")
+        logger.error(f"❌ Error during action registration: {e}")
 
     return rails
+
+
 
 # --- Adapters ---
 
@@ -403,6 +241,7 @@ async def validate_with_nemo(user_input: str, rails: LLMRails) -> tuple[bool, st
             logger.error(f"NeMo Validation Error: {e}")
             span.record_exception(e)
             span.set_status(Status(StatusCode.ERROR))
-            return True, ""
+            # Production Rule: Fail closed on security check exception
+            return False, "Validation failed due to internal governance error."
         finally:
             streaming_handler_var.reset(token)

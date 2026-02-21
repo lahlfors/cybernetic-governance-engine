@@ -58,6 +58,8 @@ spec:
               value: "6379"
             - name: REDIS_URL
               value: "redis://redis:6379"
+            - name: LANGFUSE_HOST
+              value: "http://langfuse-web.governance-stack.svc.cluster.local"
           # Load secrets from K8s Secret (optional, fallback to GSM)
           envFrom:
             - secretRef:
@@ -88,6 +90,8 @@ spec:
               value: "redis://redis:6379"
             - name: REDIS_PORT
               value: "6379"
+            - name: LANGFUSE_HOST
+              value: "http://langfuse-web.governance-stack.svc.cluster.local"
           resources:
             requests:
               cpu: "250m"

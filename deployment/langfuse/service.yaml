@@ -1,0 +1,51 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: langfuse-server
+  labels:
+    cloud.googleapis.com/location: us-central1
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/ingress-status: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: '10'
+        run.googleapis.com/execution-environment: gen2
+    spec:
+      containers:
+      - image: langfuse/langfuse:latest
+        ports:
+        - containerPort: 3000
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: langfuse-database-url
+              key: latest
+        - name: NEXTAUTH_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: langfuse-nextauth-secret
+              key: latest
+        - name: SALT
+          valueFrom:
+            secretKeyRef:
+              name: langfuse-salt
+              key: latest
+        - name: ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: langfuse-encryption-key
+              key: latest
+        - name: NEXTAUTH_URL
+          value: "https://langfuse-server-uc.a.run.app"
+        - name: TELEMETRY_ENABLED
+          value: "false"
+        - name: LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES
+          value: "true"

@@ -1,0 +1,161 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langfuse-web
+  namespace: governance-stack
+  labels:
+    app: langfuse-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: langfuse-web
+  template:
+    metadata:
+      labels:
+        app: langfuse-web
+    spec:
+      # Stable Tier: Avoid Spot nodes to prevent downtime at minReplicas=1
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: cloud.google.com/gke-spot
+                operator: NotIn
+                values:
+                - "true"
+      containers:
+      - name: langfuse-web
+        image: langfuse/langfuse:3
+        ports:
+        - containerPort: 3000
+        envFrom:
+        - secretRef:
+            name: advisor-secrets
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: DATABASE_URL
+        - name: CLICKHOUSE_URL
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: CLICKHOUSE_URL
+        - name: CLICKHOUSE_USER
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: CLICKHOUSE_USER
+        - name: CLICKHOUSE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: CLICKHOUSE_PASSWORD
+        # NEXTAUTH_URL needs to be set properly to localhost for port-forwarding
+        - name: NEXTAUTH_URL
+          value: "http://localhost:3000"
+        - name: AUTH_TRUST_HOST
+          value: "true"
+        - name: LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT
+          value: "https://storage.googleapis.com"
+        - name: AWS_ENDPOINT_URL_S3
+          value: "https://storage.googleapis.com"
+        - name: LANGFUSE_S3_EVENT_UPLOAD_BUCKET
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: LANGFUSE_S3_EVENT_UPLOAD_BUCKET
+        - name: LANGFUSE_S3_EVENT_UPLOAD_REGION
+          value: "auto"
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: LANGFUSE_S3_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: LANGFUSE_S3_SECRET_ACCESS_KEY
+        - name: NEXT_PUBLIC_LANGFUSE_BASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: NEXTAUTH_URL
+              optional: true
+        - name: AUTH_SECRET # For NextAuth v5 compatibility if needed
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: NEXTAUTH_SECRET
+        - name: HOSTNAME
+          value: "0.0.0.0"
+        - name: CLICKHOUSE_CLUSTER_ENABLED
+          value: "false"
+        - name: REDIS_CONNECTION_STRING
+          value: "redis://redis:6379"
+        - name: REDIS_HOST
+          value: "redis"
+        - name: REDIS_PORT
+          value: "6379"
+        # --- Langfuse Auto-Initialization ---
+        - name: LANGFUSE_INIT_ORG_ID
+          value: "governance-org"
+        - name: LANGFUSE_INIT_ORG_NAME
+          value: "Governance AI"
+        - name: LANGFUSE_INIT_PROJECT_ID
+          value: "cli-project-id-123"
+        - name: LANGFUSE_INIT_PROJECT_PUBLIC_KEY
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: LANGFUSE_PUBLIC_KEY
+              optional: true
+        - name: LANGFUSE_INIT_PROJECT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: LANGFUSE_SECRET_KEY
+              optional: true
+        - name: LANGFUSE_INIT_PROJECT_NAME
+          value: "reliable-financial-trader"
+        - name: LANGFUSE_INIT_USER_EMAIL
+          value: "admin@governance.ai"
+        - name: LANGFUSE_INIT_USER_PASSWORD
+          value: "G0v3rn@nce!2026"
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "512Mi"
+          limits:
+            cpu: "1000m"
+            memory: "2Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: langfuse-web
+  namespace: governance-stack
+spec:
+  selector:
+    app: langfuse-web
+  ports:
+  - port: 80
+    targetPort: 3000
+  type: ClusterIP
+---
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: langfuse-web-vpa
+  namespace: governance-stack
+spec:
+  targetRef:
+    apiVersion: "apps/v1"
+    kind: Deployment
+    name: langfuse-web
+  updatePolicy:
+    updateMode: "Auto"

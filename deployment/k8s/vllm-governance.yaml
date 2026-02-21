@@ -34,12 +34,16 @@ spec:
         - "--trust-remote-code"
         - "--port"
         - "8000"
+        - "--otlp-traces-endpoint"
+        - "http://otel-collector.governance-stack:4317"
         env:
         - name: HUGGING_FACE_HUB_TOKEN
           valueFrom:
             secretKeyRef:
               name: hf-token-secret
               key: token
+        - name: OTEL_SERVICE_NAME
+          value: "vllm-governance"
         resources:
           limits:
             nvidia.com/gpu: 1

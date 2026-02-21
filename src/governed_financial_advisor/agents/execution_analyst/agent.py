@@ -41,15 +41,7 @@ class ExecutionPlan(BaseModel):
     user_risk_attitude: Optional[str] = Field(None, description="The user's stated risk attitude")
     user_investment_period: Optional[str] = Field(None, description="The user's investment horizon")
 
-EXECUTION_ANALYST_PROMPT_OBJ = Prompt(
-    prompt_data=PromptData(
-        model=MODEL_REASONING, # Using reasoning model for planning
-        contents=[
-            Content(
-                parts=[
-                    Part(
-                        text="""
-You are the **Execution Analyst (Planner)**, the "System 4 Feedforward" engine of the MACAW architecture.
+EXECUTION_ANALYST_FALLBACK_PROMPT = """You are the **Execution Analyst (Planner)**, the "System 4 Feedforward" engine of the MACAW architecture.
 Your role is to translate high-level user intent into a concrete, machine-verifiable **Execution Plan**.
 
 **Core Responsibilities:**
@@ -85,15 +77,10 @@ You are called when a STRATEGY is needed, but you need context to generate it.
 If your previous plan was REJECTED by the Evaluator, you will receive `risk_feedback`.
 You MUST revise your plan to address the specific feedback (e.g., "Market Closed" -> "Schedule for Open").
 """
-                    )
-                ]
-            )
-        ]
-    )
-)
 
 def get_execution_analyst_instruction() -> str:
-    return EXECUTION_ANALYST_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
+    from src.governed_financial_advisor.utils.langfuse_utils import get_managed_prompt
+    return get_managed_prompt("agent/execution_analyst", EXECUTION_ANALYST_FALLBACK_PROMPT)
 
 from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
 

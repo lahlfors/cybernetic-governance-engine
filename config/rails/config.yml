@@ -32,4 +32,8 @@ rails:
           - CREDIT_CARD
           - US_SSN
 
+    flows:
+      - definitions.co
+      - main_logic.co
+
 # Actions are registered programmatically in nemo_manager.py

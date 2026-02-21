@@ -5,6 +5,7 @@ Uses Dependency Injection pattern to allow mocking during tests.
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 from collections.abc import Callable
@@ -15,16 +16,7 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
 from src.governed_financial_advisor.utils.text_utils import strip_thinking_tags
-
-# LangSmith Deep Integration
-try:
-    from langsmith import traceable
-except ImportError:
-    # No-op decorator if langsmith is not installed (e.g., during minimal tests)
-    def traceable(**kwargs):
-        def decorator(func):
-            return func
-        return decorator
+from src.governed_financial_advisor.utils.telemetry import get_tracer
 
 # Import Factory Functions
 from src.governed_financial_advisor.agents.data_analyst.agent import create_data_analyst_agent
@@ -106,11 +98,11 @@ class AgentResponse:
         self.answer = answer
         self.function_calls = function_calls or []
 
-@traceable(run_type="chain", name="ADK Agent Runner")
 def run_adk_agent(agent_instance, user_msg: str, session_id: str = "default", user_id: str = "default_user"):
     """
     Wraps the ADK Agent Runner to execute a turn and return the result object.
     Uses the updated Runner.run() API: run(user_id, session_id, new_message)
+    Manually instrumented with OpenTelemetry for Langfuse compatibility.
     """
     import nest_asyncio
     nest_asyncio.apply()
@@ -139,147 +131,167 @@ def run_adk_agent(agent_instance, user_msg: str, session_id: str = "default", us
     # Use nest_asyncio to allow re-entrant loop if needed
     loop.run_until_complete(ensure_session())
 
-    runner = Runner(
-        agent=agent_instance,
-        session_service=session_service,
-        app_name="financial_advisor"
-    )
+    tracer = get_tracer()
 
-    # Format the message as Content
-    new_message = types.Content(
-        role="user",
-        parts=[types.Part(text=user_msg)]
-    )
+    # Manual instrumentation equivalent to @traceable
+    # Check if tracer exists (in case telemetry is disabled)
+    span_ctx = tracer.start_as_current_span("ADK Agent Runner") if tracer else contextlib.nullcontext()
 
-    # Run and collect events to extract answer
-    final_answer_parts = []
-    
-    # Tool Loop
-    max_turns = 10
-    current_turn = 0
-    
-    # We loop until the model stops calling tools or we hit max_turns
-    while current_turn < max_turns:
-        current_turn += 1
+    with span_ctx as span:
+        if span and tracer: # contextlib.nullcontext yields None or Enter result, check if it's a real span
+             # Ensure span is valid object
+             if hasattr(span, "set_attribute"):
+                span.set_attribute("gen_ai.system", "google-adk")
+                span.set_attribute("gen_ai.request.model", getattr(agent_instance, "model_name", "unknown"))
+
+        runner = Runner(
+            agent=agent_instance,
+            session_service=session_service,
+            app_name="financial_advisor"
+        )
+
+        # Format the message as Content
+        new_message = types.Content(
+            role="user",
+            parts=[types.Part(text=user_msg)]
+        )
+
+        # Run and collect events to extract answer
+        final_answer_parts = []
         
-        turn_answer_parts = []
-        turn_function_calls = []
+        # Tool Loop
+        max_turns = 10
+        current_turn = 0
         
-        try:
-            # Execute Runner for this turn
-            for event in runner.run(user_id=user_id, session_id=session_id, new_message=new_message):
-                print(f"🔎 ADK Event: {type(event)} - {event}")
+        # We loop until the model stops calling tools or we hit max_turns
+        while current_turn < max_turns:
+            current_turn += 1
 
-                if hasattr(event, 'content') and event.content:
-                    for part in event.content.parts:
-                        if hasattr(part, 'text') and part.text:
-                            print(f"📝 Event Content Part: {part.text[:50]}...")
-                            turn_answer_parts.append(part.text)
-                        if hasattr(part, 'function_call') and part.function_call:
-                            print(f"🛠️ Event Function Call: {part.function_call}")
-                            turn_function_calls.append(part.function_call)
-                            
-        except Exception as e:
-            logger.error(f"Error running ADK agent: {e}")
-            return AgentResponse(answer=f"Error: {e!s}")
+            turn_answer_parts = []
+            turn_function_calls = []
 
-        # If no tool calls, we are done with this turn and the whole conversation for now
-        if not turn_function_calls:
-            # Accumulate the text from this final turn
-            final_answer_parts.extend(turn_answer_parts)
-            break
-            
-        # If we have tool calls, we must execute them and feed results back
-        # The text generated ALONGSIDE the tool call (e.g. "I will check...") is usually kept?
-        # Typically we might want to keep it if it's relevant, but for the final answer we usually want the LAST response.
-        # But let's accumulate it just in case, or ignore it if we want only the final result.
-        # For now, let's NOT accumulate intermediate text to avoid clutter, UNLESS it's the final answer.
-        # Actually, sometimes the model explains what it is doing first.
-        # Let's log it but not return it as the 'answer' unless it's the only thing.
-        if turn_answer_parts:
-             logger.info(f"Intermediate thought: {''.join(turn_answer_parts)}")
+            try:
+                # Execute Runner for this turn
+                for event in runner.run(user_id=user_id, session_id=session_id, new_message=new_message):
+                    print(f"🔎 ADK Event: {type(event)} - {event}")
 
-        tool_outputs = []
-        for call in turn_function_calls:
-            logger.info(f"🔎 Executing Tool: {call.name}")
-            
-            # Find the tool in the agent's registry
-            target_tool = None
-            if hasattr(agent_instance, 'tools'):
-                for tool in agent_instance.tools:
-                    # Check 'name' attribute or 'fn.__name__' if it's a FunctionTool
-                    t_name = getattr(tool, 'name', None)
-                    if not t_name and hasattr(tool, 'fn'):
-                         t_name = tool.fn.__name__
-                    
-                    if t_name == call.name:
-                        target_tool = tool
-                        break
-            
-            result_content = {}
-            if target_tool:
-                try:
-                    # Extract arguments
-                    args = dict(call.args) if call.args else {}
-                    
-                    # Execute
-                    # Support both .run() and direct .fn() call
-                    if hasattr(target_tool, 'run'):
-                        # checks if run takes **kwargs
-                        res = target_tool.run(**args)
-                    elif hasattr(target_tool, 'fn'):
-                        res = target_tool.fn(**args)
-                    elif callable(target_tool):
-                        res = target_tool(**args)
-                    else:
-                        res = f"Error: Tool {call.name} is not callable."
-                    
-                    # Handle Async Tools
-                    if asyncio.iscoroutine(res):
-                        try:
-                            # We expect a loop to exist since we created/got one earlier
-                            # nest_asyncio was applied at start of function
-                            curr_loop = asyncio.get_running_loop()
-                            if curr_loop.is_running():
-                                res = curr_loop.run_until_complete(res)
-                            else:
-                                res = curr_loop.run_until_complete(res)
-                        except RuntimeError:
-                            # Fallback if no running loop found (unlikely)
-                            res = asyncio.run(res)
+                    if hasattr(event, 'content') and event.content:
+                        for part in event.content.parts:
+                            if hasattr(part, 'text') and part.text:
+                                print(f"📝 Event Content Part: {part.text[:50]}...")
+                                turn_answer_parts.append(part.text)
+                            if hasattr(part, 'function_call') and part.function_call:
+                                print(f"🛠️ Event Function Call: {part.function_call}")
+                                turn_function_calls.append(part.function_call)
 
-                    # Ensure result is serializable (usually dict or str)
-                    result_content = res if isinstance(res, (dict, list, str, int, float, bool)) else str(res)
-                    
-                except Exception as e:
-                    logger.error(f"Tool execution failed: {e}")
-                    result_content = {"error": str(e)}
-            else:
-                logger.error(f"Tool {call.name} not found in agent tools.")
-                result_content = {"error": f"Tool {call.name} not found."}
+            except Exception as e:
+                logger.error(f"Error running ADK agent: {e}")
+                if span and hasattr(span, "record_exception"):
+                    span.record_exception(e)
+                return AgentResponse(answer=f"Error: {e!s}")
 
-            tool_outputs.append(
-                types.Part(
-                    function_response=types.FunctionResponse(
-                        name=call.name,
-                        response={"result": result_content}
+            # If no tool calls, we are done with this turn and the whole conversation for now
+            if not turn_function_calls:
+                # Accumulate the text from this final turn
+                final_answer_parts.extend(turn_answer_parts)
+                break
+
+            # If we have tool calls, we must execute them and feed results back
+            # The text generated ALONGSIDE the tool call (e.g. "I will check...") is usually kept?
+            # Typically we might want to keep it if it's relevant, but for the final answer we usually want the LAST response.
+            # But let's accumulate it just in case, or ignore it if we want only the final result.
+            # For now, let's NOT accumulate intermediate text to avoid clutter, UNLESS it's the final answer.
+            # Actually, sometimes the model explains what it is doing first.
+            # Let's log it but not return it as the 'answer' unless it's the only thing.
+            if turn_answer_parts:
+                 logger.info(f"Intermediate thought: {''.join(turn_answer_parts)}")
+
+            tool_outputs = []
+            for call in turn_function_calls:
+                logger.info(f"🔎 Executing Tool: {call.name}")
+
+                # Find the tool in the agent's registry
+                target_tool = None
+                if hasattr(agent_instance, 'tools'):
+                    for tool in agent_instance.tools:
+                        # Check 'name' attribute or 'fn.__name__' if it's a FunctionTool
+                        t_name = getattr(tool, 'name', None)
+                        if not t_name and hasattr(tool, 'fn'):
+                             t_name = tool.fn.__name__
+
+                        if t_name == call.name:
+                            target_tool = tool
+                            break
+
+                result_content = {}
+                if target_tool:
+                    try:
+                        # Extract arguments
+                        args = dict(call.args) if call.args else {}
+
+                        # Execute
+                        # Support both .run() and direct .fn() call
+                        if hasattr(target_tool, 'run'):
+                            # checks if run takes **kwargs
+                            res = target_tool.run(**args)
+                        elif hasattr(target_tool, 'fn'):
+                            res = target_tool.fn(**args)
+                        elif callable(target_tool):
+                            res = target_tool(**args)
+                        else:
+                            res = f"Error: Tool {call.name} is not callable."
+
+                        # Handle Async Tools
+                        if asyncio.iscoroutine(res):
+                            try:
+                                # We expect a loop to exist since we created/got one earlier
+                                # nest_asyncio was applied at start of function
+                                curr_loop = asyncio.get_running_loop()
+                                if curr_loop.is_running():
+                                    res = curr_loop.run_until_complete(res)
+                                else:
+                                    res = curr_loop.run_until_complete(res)
+                            except RuntimeError:
+                                # Fallback if no running loop found (unlikely)
+                                res = asyncio.run(res)
+
+                        # Ensure result is serializable (usually dict or str)
+                        result_content = res if isinstance(res, (dict, list, str, int, float, bool)) else str(res)
+
+                    except Exception as e:
+                        logger.error(f"Tool execution failed: {e}")
+                        result_content = {"error": str(e)}
+                else:
+                    logger.error(f"Tool {call.name} not found in agent tools.")
+                    result_content = {"error": f"Tool {call.name} not found."}
+
+                tool_outputs.append(
+                    types.Part(
+                        function_response=types.FunctionResponse(
+                            name=call.name,
+                            response={"result": result_content}
+                        )
                     )
                 )
-            )
-        
-        # Prepare the NEXT message (inputs for the next turn)
-        # This message contains the tool outputs
-        if tool_outputs:
-            new_message = types.Content(
-                role="tool", # or 'function' depending on API, types.Content usually uses 'tool' for function responses in Gemini
-                parts=tool_outputs
-            )
-            logger.info(f"Feeding back {len(tool_outputs)} tool results...")
-        else:
-            # Should not reach here if turn_function_calls was not empty
-            break
 
-    return AgentResponse(answer=strip_thinking_tags("".join(final_answer_parts)), function_calls=[])
+            # Prepare the NEXT message (inputs for the next turn)
+            # This message contains the tool outputs
+            if tool_outputs:
+                new_message = types.Content(
+                    role="tool", # or 'function' depending on API, types.Content usually uses 'tool' for function responses in Gemini
+                    parts=tool_outputs
+                )
+                logger.info(f"Feeding back {len(tool_outputs)} tool results...")
+            else:
+                # Should not reach here if turn_function_calls was not empty
+                break
+        
+        # End of loop
+        final_answer = strip_thinking_tags("".join(final_answer_parts))
+        if span and hasattr(span, "set_attribute"):
+             span.set_attribute("gen_ai.content.completion", final_answer)
+
+        return AgentResponse(answer=final_answer, function_calls=[])
 
 
 # --- Node Implementations ---

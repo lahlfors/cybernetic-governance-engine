@@ -1,0 +1,117 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: langfuse-worker
+  namespace: governance-stack
+  labels:
+    app: langfuse-worker
+spec:
+  replicas: 1 # Managed by HPA
+  selector:
+    matchLabels:
+      app: langfuse-worker
+  template:
+    metadata:
+      labels:
+        app: langfuse-worker
+    spec:
+      # Cost Optimization: Prefer Spot nodes
+      nodeSelector:
+        cloud.google.com/gke-spot: "true"
+      # Required for GKE Spot node scheduling
+      tolerations:
+      - key: "cloud.google.com/gke-spot"
+        operator: "Equal"
+#         value: "true"
+        effect: "NoSchedule"
+      terminationGracePeriodSeconds: 30 # Time for async traces to finish
+      containers:
+      - name: worker
+        image: langfuse/langfuse-worker:3
+        # args: ["npm", "run", "worker:start"] # Removed, using default CMD
+        envFrom:
+        - secretRef:
+            name: advisor-secrets
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: DATABASE_URL
+        - name: NEXTAUTH_URL
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: NEXTAUTH_URL
+              optional: true
+        - name: LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT
+          value: "https://storage.googleapis.com"
+        - name: AWS_ENDPOINT_URL_S3
+          value: "https://storage.googleapis.com"
+        - name: LANGFUSE_S3_EVENT_UPLOAD_BUCKET
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: LANGFUSE_S3_EVENT_UPLOAD_BUCKET
+        - name: LANGFUSE_S3_EVENT_UPLOAD_REGION
+          value: "auto"
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: LANGFUSE_S3_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: LANGFUSE_S3_SECRET_ACCESS_KEY
+        - name: CLICKHOUSE_CLUSTER_ENABLED
+          value: "false"
+        - name: REDIS_CONNECTION_STRING
+          value: "redis://redis:6379"
+        - name: REDIS_HOST
+          value: "redis"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: CLICKHOUSE_URL
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: CLICKHOUSE_URL 
+        - name: CLICKHOUSE_USER
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: CLICKHOUSE_USER
+        - name: CLICKHOUSE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: CLICKHOUSE_PASSWORD
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "1Gi"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: langfuse-worker-hpa
+  namespace: governance-stack
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: langfuse-worker
+  minReplicas: 1 # Baseline footprint for low load
+  maxReplicas: 5 # Budget ceiling
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60 # Scale-out trigger

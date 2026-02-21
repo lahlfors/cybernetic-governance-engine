@@ -38,14 +38,17 @@ resource "google_container_cluster" "primary" {
   workload_identity_config {
     workload_pool = "${var.project_id}.svc.id.goog"
   }
+
+  vertical_pod_autoscaling {
+    enabled = true
+  }
 }
 
 # 1. General Purpose Node Pool (System + Lightweight Apps)
 resource "google_container_node_pool" "general_pool" {
-  name       = "general-pool"
-  location   = var.zone
-  cluster    = google_container_cluster.primary.name
-  node_count = 1
+  name     = "general-pool"
+  location = var.zone
+  cluster  = google_container_cluster.primary.name
 
   autoscaling {
     min_node_count = 1
@@ -115,6 +118,32 @@ resource "google_container_node_pool" "gpu_pool" {
         max_shared_clients_per_gpu = 8
       }
     }
+
+    oauth_scopes = [
+      "https://www.googleapis.com/auth/cloud-platform"
+    ]
+
+    shielded_instance_config {
+      enable_secure_boot          = true
+      enable_integrity_monitoring = true
+    }
+  }
+}
+
+# 3. Spot Node Pool (Cost-Optimized for Async Workers)
+resource "google_container_node_pool" "spot_pool" {
+  name     = "spot-pool"
+  location = var.zone
+  cluster  = google_container_cluster.primary.name
+
+  autoscaling {
+    min_node_count = 0
+    max_node_count = 5
+  }
+
+  node_config {
+    machine_type = "e2-standard-4"
+    spot         = true
 
     oauth_scopes = [
       "https://www.googleapis.com/auth/cloud-platform"

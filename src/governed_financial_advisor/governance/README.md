@@ -8,11 +8,11 @@ This directory now primarily contains **Client-Side Stubs** (`nemo_actions.py`) 
 
 The governance architecture has been refactored to decouple policy generation (System 2) from runtime enforcement (System 1).
 
-### 1. Offline Pipeline (Vertex AI + Cloud Run)
+### 1. Offline Pipeline (Vertex AI + GKE)
 Instead of real-time transpilation, policy updates are handled by an offline pipeline orchestrated by Kubeflow Pipelines (KFP).
 
 *   **Trigger:** Eventarc detects new STAMP specifications (`.yaml`) in the GCS Policy Registry.
-*   **Execution:** A Cloud Run Job (`scripts/run_transpiler_job.py`) is triggered.
+*   **Execution:** A Kubernetes Job (`scripts/run_transpiler_job.py`) is triggered.
 *   **Logic:**
     1.  **PolicyLoader:** Fetches the STAMP spec from GCS.
     2.  **Transpiler:** Converts STAMP hazards into OPA Rego and NeMo Python actions.

@@ -51,14 +51,26 @@ class FinancialAdvisorAgent:
         return self._send_request(prompt)
 
     def _send_request(self, prompt: str) -> str:
-        url = f"{self.backend_url}/agent/query"
-        payload = {
-            "prompt": prompt,
-            "user_id": f"eval_user_{self.session_id}",
-            "thread_id": self.session_id
-        }
+        use_gateway = os.environ.get("USE_GATEWAY", "false").lower() == "true"
+        
+        if use_gateway:
+            url = f"{self.backend_url}/v1/chat/completions"
+            payload = {
+                "model": "default",
+                "messages": [{"role": "user", "content": prompt}]
+            }
+            headers = {"x-session-id": self.session_id}
+        else:
+            url = f"{self.backend_url}/agent/query"
+            payload = {
+                "prompt": prompt,
+                "user_id": f"eval_user_{self.session_id}",
+                "thread_id": self.session_id
+            }
+            headers = {"x-session-id": self.session_id}
+            
         try:
-            response = requests.post(url, json=payload, timeout=900)
+            response = requests.post(url, json=payload, headers=headers, timeout=900)
             # Check if response is 500/400 and print it
             if response.status_code >= 400:
                 print(f"❌ API Error {response.status_code}: {response.text}")
@@ -67,7 +79,9 @@ class FinancialAdvisorAgent:
             
             # Handle standard agent response format
             resp_json = response.json()
-            if isinstance(resp_json, dict) and "response" in resp_json:
+            if use_gateway and "choices" in resp_json:
+                return resp_json["choices"][0]["message"]["content"]
+            elif isinstance(resp_json, dict) and "response" in resp_json:
                 return resp_json["response"]
             return str(resp_json)
             
