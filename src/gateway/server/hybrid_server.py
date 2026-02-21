@@ -1,30 +1,30 @@
-import asyncio
 import logging
-import json
 import os
 import sys
-from typing import List, Optional, Dict, Any, Union
 from contextlib import asynccontextmanager
+from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 # Adjust path so we can import from src
 sys.path.append(".")
 
 from mcp.server.fastmcp import FastMCP
 
-# Core logic
-from src.gateway.core.tools import execute_trade, TradeOrder
 from src.gateway.core.market import market_service
-from src.gateway.governance.singletons import symbolic_governor, opa_client
-from src.gateway.governance.symbolic_governor import GovernanceError
+
+# Core logic
+from src.gateway.core.tools import TradeOrder, execute_trade
 from src.gateway.governance.nemo.manager import initialize_rails, validate_with_nemo
-from src.governed_financial_advisor.tools.market_data_tool import get_market_data
+from src.gateway.governance.singletons import opa_client, symbolic_governor
+from src.gateway.governance.symbolic_governor import GovernanceError
+from src.governed_financial_advisor.tools.market_data_tool import get_market_data as get_market_data_impl
 
 # Configure Logging via Telemetry (Centralized Control)
 from src.governed_financial_advisor.utils.telemetry import configure_telemetry, logger
+
 configure_telemetry()
 
 # Global Resources Initialization
@@ -38,13 +38,14 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("🛑 Hybrid Gateway Shutting Down...")
     await opa_client.close()
+    await market_service.close()
 
 # --- 2. Initialize FastAPI App ---
 app = FastAPI(title="Governed Financial Advisor Gateway (Hybrid)", lifespan=lifespan)
 
 try:
     from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-    
+
     def server_request_hook(span, scope):
         if not span or not span.is_recording():
             return
@@ -53,7 +54,7 @@ try:
         session_id = headers.get("x-session-id")
         if session_id:
             span.set_attribute("langfuse.session.id", session_id)
-            
+
     FastAPIInstrumentor.instrument_app(app, server_request_hook=server_request_hook)
     logger.info("✅ FastAPI OpenTelemetry instrumentation activated with Session IDs.")
 except ImportError:
@@ -86,10 +87,10 @@ async def check_safety_constraints(target_tool: str, target_params: dict, risk_p
     Used by the Evaluator Agent (System 3) to verify safety before execution.
     """
     logger.info(f"🔍 Evaluator verifying proposed action: {target_tool} (Risk: {risk_profile})")
-    
+
     verification_params = target_params.copy()
     verification_params["risk_profile"] = risk_profile
-    
+
     violations = await symbolic_governor.verify(target_tool, verification_params)
 
     if not violations:
@@ -111,7 +112,7 @@ async def trigger_safety_intervention(reason: str) -> str:
 async def check_market_status(symbol: str) -> str:
     """Checks the current market status and price for a given ticker symbol."""
     logger.info(f"Tool Call: check_market_status({symbol})")
-    return market_service.check_status(symbol)
+    return await market_service.check_status(symbol)
 
 @mcp.tool()
 async def get_market_sentiment(symbol: str) -> str:
@@ -129,7 +130,7 @@ async def get_market_data(ticker: str) -> str:
     # But here we are in FastAPI/MCP. FastMCP handles sync functions in threadpool usually?
     # Let's assume yes or make it async if needed.
     # The original tool is sync.
-    return get_market_data(ticker)
+    return get_market_data_impl(ticker)
 
 @mcp.tool()
 async def verify_content_safety(text: str) -> str:
@@ -206,14 +207,14 @@ class ChatMessage(BaseModel):
     content: str
 
 class ChatCompletionRequest(BaseModel):
-    model: Optional[str] = "default"
-    messages: List[ChatMessage]
-    temperature: Optional[float] = 0.7
-    stream: Optional[bool] = False
-    system_instruction: Optional[str] = None
-    guided_json: Optional[Dict[str, Any]] = None
-    guided_regex: Optional[str] = None
-    guided_choice: Optional[List[str]] = None
+    model: str | None = "default"
+    messages: list[ChatMessage]
+    temperature: float | None = 0.7
+    stream: bool | None = False
+    system_instruction: str | None = None
+    guided_json: dict[str, Any] | None = None
+    guided_regex: str | None = None
+    guided_choice: list[str] | None = None
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
@@ -250,17 +251,18 @@ async def chat_completions(request: ChatCompletionRequest):
         elif isinstance(res, dict) and "response" in res and len(res["response"]) > 0:
             bot_response = res["response"][0].get("content", "")
 
-        # If NeMo generated a bot response during the input rail phase, 
+        # If NeMo generated a bot response during the input rail phase,
         # it means a guardrail blocked the input and provided a canned refusal.
         if bot_response:
             final_response = bot_response
         else:
             # 2. Native LLM Call (Bypassing NeMo Dialog Logic)
+            from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+
             from src.gateway.governance.nemo.vllm_client import VLLMLLM
-            from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 
             llm = VLLMLLM()
-            
+
             # Convert dict messages to Langchain messages
             lc_messages = []
             for m in messages:
@@ -270,7 +272,7 @@ async def chat_completions(request: ChatCompletionRequest):
                     lc_messages.append(AIMessage(content=m["content"]))
                 else:
                     lc_messages.append(HumanMessage(content=m["content"]))
-                    
+
             # Generate completion
             llm_response = await llm._acall(lc_messages)
             response_text = llm_response
@@ -281,7 +283,7 @@ async def chat_completions(request: ChatCompletionRequest):
                 messages=messages,
                 options={"rails": ["output"]}
             )
-            
+
             if hasattr(output_res, "response") and isinstance(output_res.response, list) and len(output_res.response) > 0:
                 out_content = output_res.response[0].get("content", "")
                 final_response = out_content if out_content else response_text
@@ -328,7 +330,7 @@ async def chat_completions(request: ChatCompletionRequest):
 
 class ToolExecutionRequest(BaseModel):
     tool_name: str
-    params: Dict[str, Any]
+    params: dict[str, Any]
 
 @app.post("/tools/execute")
 async def execute_tool_endpoint(request: ToolExecutionRequest):
@@ -336,10 +338,10 @@ async def execute_tool_endpoint(request: ToolExecutionRequest):
     Executes a named tool directly via HTTP.
     """
     logger.info(f"Tool Execution Request: {request.tool_name}")
-    
+
     try:
         output = None
-        
+
         # Dispatcher Mapping
         tool_map = {
             "check_safety_constraints": check_safety_constraints,
@@ -374,7 +376,7 @@ async def execute_tool_endpoint(request: ToolExecutionRequest):
              output = await func(request.params.get("symbol"))
 
         elif request.tool_name == "get_market_data":
-             output = func(request.params.get("ticker"))
+             output = await func(request.params.get("ticker"))
 
         elif request.tool_name == "verify_content_safety":
              output = await func(request.params.get("text", ""))
@@ -382,7 +384,7 @@ async def execute_tool_endpoint(request: ToolExecutionRequest):
         else:
              # evaluate_policy and execute_trade_action accept kwargs
              output = await func(**request.params)
-        
+
         return {"status": "SUCCESS", "output": str(output)}
 
     except Exception as e:
@@ -392,7 +394,7 @@ async def execute_tool_endpoint(request: ToolExecutionRequest):
 if __name__ == "__main__":
     import uvicorn
     http_port = int(os.getenv("PORT", 8080))
-    
+
     # Determine Log Config
     # Determine Log Config
     # Force Enable Logging for Debugging
@@ -412,9 +414,9 @@ if __name__ == "__main__":
     #         },
     #         "root": {"level": "CRITICAL", "handlers": ["null"]}
     #     }
-    
+
     # Configure root logger to INFO/DEBUG
     logging.basicConfig(level=logging.INFO)
     logger.info("DEBUG: forced logging in hybrid_server.py")
-        
+
     uvicorn.run(app, host="0.0.0.0", port=http_port, log_config=log_config)
