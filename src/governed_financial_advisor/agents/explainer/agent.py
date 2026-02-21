@@ -20,15 +20,7 @@ from google.adk.tools import transfer_to_agent
 from config.settings import MODEL_FAST
 from src.governed_financial_advisor.utils.prompt_utils import Content, Part, Prompt, PromptData
 
-EXPLAINER_PROMPT_OBJ = Prompt(
-    prompt_data=PromptData(
-        model=MODEL_FAST,
-        contents=[
-            Content(
-                parts=[
-                    Part(
-                        text="""
-You are the **Explainer Agent**, the final node in the MACAW pipeline.
+EXPLAINER_FALLBACK_PROMPT = """You are the **Explainer Agent**, the final node in the MACAW pipeline.
 Your role is to verify **Faithfulness** and translate technical execution results into a user-friendly response.
 
 **Inputs:**
@@ -54,15 +46,10 @@ Before answering, verify:
 
 After generating the response, call `transfer_to_agent("supervisor")` or end the turn.
 """
-                    )
-                ]
-            )
-        ]
-    )
-)
 
 def get_explainer_instruction() -> str:
-    return EXPLAINER_PROMPT_OBJ.prompt_data.contents[0].parts[0].text
+    from src.governed_financial_advisor.utils.langfuse_utils import get_managed_prompt
+    return get_managed_prompt("agent/explainer", EXPLAINER_FALLBACK_PROMPT)
 
 from src.governed_financial_advisor.infrastructure.llm.config import get_adk_model
 

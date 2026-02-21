@@ -4,9 +4,9 @@ resource "random_password" "db_password" {
 }
 
 resource "google_sql_database_instance" "langfuse_instance" {
-  name             = "langfuse-instance-${var.project_id}"
-  database_version = "POSTGRES_15"
-  region           = var.region
+  name                = "langfuse-instance-${var.project_id}"
+  database_version    = "POSTGRES_15"
+  region              = var.region
   deletion_protection = false
 
   settings {
@@ -14,10 +14,11 @@ resource "google_sql_database_instance" "langfuse_instance" {
 
     ip_configuration {
       ipv4_enabled    = true
+      private_network = "projects/${var.project_id}/global/networks/default"
     }
   }
 
-  depends_on          = [google_project_service.apis]
+  depends_on = [google_project_service.apis]
 }
 
 resource "google_sql_database" "langfuse_db" {

@@ -71,7 +71,7 @@ The `GatewayClient` (`src/gateway/core/llm.py`) connects to the Inference Gatewa
 
 1.  **Node A: The Brain (Reasoning Plane)**
     *   **Use Case:** High-order reasoning, Planning (System 4), and Evaluation (System 3).
-    *   **Application Layer:** Async **Langfuse** tracing for prompt engineering, execution trees, and cost tracking (Self-Hosted on GKE).
+    *   **Application Layer:** Async **OpenTelemetry** tracing exported to **Langfuse** for prompt engineering, execution trees, and cost tracking (Self-Hosted on GKE).
     *   **System Layer:** AgentSight (eBPF sidecar) for deep payload inspection and security monitoring (syscalls).
     *   **Model:** `deepseek-ai/DeepSeek-R1-Distill-Qwen-32B` (Hosted on GKE with NVIDIA L4).
     *   **Why:** Provides advanced reasoning capabilities for complex financial analysis.

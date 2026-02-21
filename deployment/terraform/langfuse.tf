@@ -100,126 +100,28 @@ resource "google_secret_manager_secret_version" "encryption_key_version" {
   secret_data = random_id.encryption_key.hex
 }
 
-# --- Cloud Run Service ---
+# --- Cloud Storage (GCS) for Langfuse Traces ---
 
-resource "google_cloud_run_v2_service" "langfuse" {
-  name     = "langfuse-server"
-  location = var.region
-  ingress  = "INGRESS_TRAFFIC_ALL"
-
-  template {
-    service_account = google_service_account.langfuse_sa.email
-
-    scaling {
-      max_instance_count = 10
-    }
-
-    volumes {
-      name = "cloudsql"
-      cloud_sql_instance {
-        instances = [google_sql_database_instance.langfuse_instance.connection_name]
-      }
-    }
-
-    containers {
-      image = "langfuse/langfuse:2"
-
-      ports {
-        container_port = 3000
-      }
-
-      resources {
-        limits = {
-          cpu    = "1000m"
-          memory = "2Gi"
-        }
-      }
-
-      volume_mounts {
-        name       = "cloudsql"
-        mount_path = "/cloudsql"
-      }
-
-      env {
-        name = "DATABASE_URL"
-        value_source {
-          secret_key_ref {
-            secret = google_secret_manager_secret.database_url.secret_id
-            version = "latest"
-          }
-        }
-      }
-      env {
-        name = "NEXTAUTH_SECRET"
-        value_source {
-          secret_key_ref {
-            secret = google_secret_manager_secret.nextauth_secret.secret_id
-            version = "latest"
-          }
-        }
-      }
-      env {
-        name = "SALT"
-        value_source {
-          secret_key_ref {
-            secret = google_secret_manager_secret.salt.secret_id
-            version = "latest"
-          }
-        }
-      }
-      env {
-        name = "ENCRYPTION_KEY"
-        value_source {
-          secret_key_ref {
-            secret = google_secret_manager_secret.encryption_key.secret_id
-            version = "latest"
-          }
-        }
-      }
-
-      env {
-        name  = "NEXTAUTH_URL"
-        value = "https://langfuse-server-104563134786.us-central1.run.app"
-      }
-      env {
-        name  = "TELEMETRY_ENABLED"
-        value = "false"
-      }
-      env {
-        name  = "LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES"
-        value = "true"
-      }
-
-      # --- Langfuse Auto-Initialization ---
-      env {
-        name  = "LANGFUSE_INIT_PROJECT_PUBLIC_KEY"
-        value = random_id.langfuse_public_key.hex
-      }
-      env {
-        name  = "LANGFUSE_INIT_PROJECT_SECRET_KEY"
-        value = random_id.langfuse_secret_key.hex
-      }
-      env {
-        name  = "LANGFUSE_INIT_PROJECT_NAME"
-        value = "reliable-financial-advisor"
-      }
-      env {
-        name  = "LANGFUSE_INIT_USER_EMAIL"
-        value = "admin@governance.ai"
-      }
-      env {
-        name  = "LANGFUSE_INIT_USER_PASSWORD"
-        value = "G0v3rn@nce!2025" # Change this in production or use a secret
-      }
-    }
-  }
-
-  depends_on = [
-    google_project_service.apis,
-    google_secret_manager_secret_version.database_url_version
-  ]
+resource "random_id" "bucket_suffix" {
+  byte_length = 4
 }
 
+resource "google_storage_bucket" "langfuse_events" {
+  name          = "langfuse-events-${var.project_id}-${random_id.bucket_suffix.hex}"
+  location      = "US" # Or var.region if strict regionality is needed
+  force_destroy = true
+  
+  uniform_bucket_level_access = true
+  
+  # Ensure the bucket is private
+  public_access_prevention = "enforced"
+}
 
+# Grant Storage Object Admin to Langfuse SA
+resource "google_storage_bucket_iam_member" "langfuse_storage_admin" {
+  bucket = google_storage_bucket.langfuse_events.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.langfuse_sa.email}"
+}
 
 

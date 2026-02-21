@@ -15,7 +15,7 @@ spec:
       labels:
         app: gateway
     spec:
-      serviceAccountName: financial-advisor-sa # Needs access to Firestore/etc if applicable, or same SA
+      serviceAccountName: financial-advisor-sa
       volumes:
         - name: policy-volume
           secret:
@@ -32,6 +32,9 @@ spec:
               name: http
             - containerPort: 50051
               name: grpc
+          envFrom:
+            - secretRef:
+                name: advisor-secrets
           env:
             - name: PORT
               value: "8080"
@@ -44,7 +47,9 @@ spec:
             - name: ENABLE_LOGGING
               value: "${ENABLE_LOGGING}"
             - name: OTEL_TRACES_EXPORTER
-              value: "none"
+              value: "otlp"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.governance-stack:4318/v1/traces"
             - name: REDIS_PORT
               value: "${REDIS_PORT}"
             - name: REDIS_HOST
@@ -61,23 +66,8 @@ spec:
               value: "${VLLM_FAST_API_BASE}"
             - name: GUARDRAILS_MODEL_NAME
               value: "${GUARDRAILS_MODEL_NAME}"
-            # --- LangSmith ---
-            - name: LANGSMITH_TRACING
-              value: "${LANGSMITH_TRACING}"
-            - name: LANGSMITH_ENDPOINT
-              value: "${LANGSMITH_ENDPOINT}"
-            - name: LANGSMITH_API_KEY
-              value: "${LANGSMITH_API_KEY}"
-            - name: LANGSMITH_PROJECT
-              value: "${LANGSMITH_PROJECT}"
-            - name: LANGCHAIN_TRACING_V2
-              value: "${LANGCHAIN_TRACING_V2}"
-            - name: LANGCHAIN_ENDPOINT
-              value: "${LANGSMITH_ENDPOINT}"
-            - name: LANGCHAIN_API_KEY
-              value: "${LANGSMITH_API_KEY}"
-            - name: LANGCHAIN_PROJECT
-              value: "${LANGCHAIN_PROJECT}"
+            - name: SERVICE_NAME
+              value: "hybrid-gateway"
             # OPA Configuration
             - name: OPA_URL
               value: "http://localhost:8181/v1/data/finance/allow"

@@ -10,8 +10,8 @@ This guide explains how to run the observability demo script and visualize the "
     # Local via Docker
     docker run -d -p 6379:6379 redis:latest
     ```
-3.  **Langfuse**: Application must be configured to send traces to Langfuse (Cloud or Local).
-    - Ensure `.env` has `LANGFUSE_SECRET_KEY`, `LANGFUSE_PUBLIC_KEY`, and `LANGFUSE_HOST`.
+3.  **Observability**: Application must be configured to send traces to the OpenTelemetry Collector on GKE, which forwards to Langfuse.
+    - Ensure `.env` has `ENABLE_LOGGING=true`. The system routes telemetry automatically in K8s.
 
 ## 🚀 Running the Demo Script
 
@@ -73,6 +73,6 @@ Navigate to your Langfuse Dashboard and check the **Agentic DevOps** board.
 
 ## Troubleshooting
 
-*   **No Traces?** Check `LANGFUSE_HOST` in `.env`.
+*   **No Traces?** Check that the `otel-collector` and `gateway` pods are running in GKE, and `ENABLE_LOGGING=true`.
 *   **Redis Error?** Ensure Redis is running on port 6379.
 *   **Wrong Attributes?** Verify the spans in Langfuse "Traces" view have attributes starting with `governance.` and `safety.`.

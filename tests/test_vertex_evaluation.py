@@ -59,6 +59,7 @@ class FinancialAdvisorAgent:
                 "model": "default",
                 "messages": [{"role": "user", "content": prompt}]
             }
+            headers = {"x-session-id": self.session_id}
         else:
             url = f"{self.backend_url}/agent/query"
             payload = {
@@ -66,9 +67,10 @@ class FinancialAdvisorAgent:
                 "user_id": f"eval_user_{self.session_id}",
                 "thread_id": self.session_id
             }
+            headers = {"x-session-id": self.session_id}
             
         try:
-            response = requests.post(url, json=payload, timeout=900)
+            response = requests.post(url, json=payload, headers=headers, timeout=900)
             # Check if response is 500/400 and print it
             if response.status_code >= 400:
                 print(f"❌ API Error {response.status_code}: {response.text}")

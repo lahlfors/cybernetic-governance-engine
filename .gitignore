@@ -5,6 +5,7 @@ __pycache__/
 
 # Environments
 .env
+.env.tmp
 .venv/
 env/
 venv/
@@ -16,6 +17,7 @@ venv.bak/
 .build_venv/
 .manual_deploy_venv/
 .mirror_venv/
+.venv_migrate/
 source/
 deploy_*.txt
 deployment/artifacts/
@@ -116,3 +118,14 @@ tests/verify_*.py
 tests/debug_*.py
 debug_output.txt
 deployment_patch.yaml
+test_output.log
+scripts/scan_prompts.py
+scripts/migrate_more_prompts.py
+
+# Temp test and data files
+test_b64.py
+metrics.out
+existing_keys.txt
+new_keys.txt
+deployment/create_admin.sql
+deployment/k8s/langfuse-secret.yaml

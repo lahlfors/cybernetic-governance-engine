@@ -30,6 +30,11 @@ RUN uv pip install \
     httpx \
     pydantic \
     opentelemetry-api \
+    opentelemetry-sdk \
+    opentelemetry-exporter-otlp \
+    opentelemetry-instrumentation-fastapi \
+    opentelemetry-instrumentation-requests \
+    opentelemetry-instrumentation-httpx \
     python-json-logger \
     google-auth \
     google-cloud-run \

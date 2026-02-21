@@ -54,22 +54,32 @@ spec:
             secretKeyRef:
               name: advisor-secrets
               key: CLICKHOUSE_PASSWORD
-        # NEXTAUTH_URL needs to be set properly. 
-        # For internal GKE, it might not be reachable from browser if set to internal DNS.
-        # But for container-to-container checks it works.
-        # Usually NEXTAUTH_URL must be the PUBLIC URL the user visits.
-        # We will let the deployment script inject or override this if needed, 
-        # but for now we pull from secrets or env.
+        # NEXTAUTH_URL needs to be set properly to localhost for port-forwarding
         - name: NEXTAUTH_URL
+          value: "http://localhost:3000"
+        - name: AUTH_TRUST_HOST
+          value: "true"
+        - name: LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT
+          value: "https://storage.googleapis.com"
+        - name: AWS_ENDPOINT_URL_S3
+          value: "https://storage.googleapis.com"
+        - name: LANGFUSE_S3_EVENT_UPLOAD_BUCKET
           valueFrom:
             secretKeyRef:
               name: advisor-secrets
-              key: NEXTAUTH_URL
-              optional: true
-        - name: LANGFUSE_S3_ENDPOINT
-          value: "http://minio.governance-stack.svc.cluster.local:9000"
-        - name: LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE
-          value: "true"
+              key: LANGFUSE_S3_EVENT_UPLOAD_BUCKET
+        - name: LANGFUSE_S3_EVENT_UPLOAD_REGION
+          value: "auto"
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: LANGFUSE_S3_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: LANGFUSE_S3_SECRET_ACCESS_KEY
         - name: NEXT_PUBLIC_LANGFUSE_BASE_URL
           valueFrom:
             secretKeyRef:
@@ -81,12 +91,41 @@ spec:
             secretKeyRef:
               name: advisor-secrets
               key: NEXTAUTH_SECRET
+        - name: HOSTNAME
+          value: "0.0.0.0"
         - name: CLICKHOUSE_CLUSTER_ENABLED
           value: "false"
+        - name: REDIS_CONNECTION_STRING
+          value: "redis://redis:6379"
         - name: REDIS_HOST
           value: "redis"
         - name: REDIS_PORT
           value: "6379"
+        # --- Langfuse Auto-Initialization ---
+        - name: LANGFUSE_INIT_ORG_ID
+          value: "governance-org"
+        - name: LANGFUSE_INIT_ORG_NAME
+          value: "Governance AI"
+        - name: LANGFUSE_INIT_PROJECT_ID
+          value: "cli-project-id-123"
+        - name: LANGFUSE_INIT_PROJECT_PUBLIC_KEY
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: LANGFUSE_PUBLIC_KEY
+              optional: true
+        - name: LANGFUSE_INIT_PROJECT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: LANGFUSE_SECRET_KEY
+              optional: true
+        - name: LANGFUSE_INIT_PROJECT_NAME
+          value: "reliable-financial-trader"
+        - name: LANGFUSE_INIT_USER_EMAIL
+          value: "admin@governance.ai"
+        - name: LANGFUSE_INIT_USER_PASSWORD
+          value: "G0v3rn@nce!2026"
         resources:
           requests:
             cpu: "200m"

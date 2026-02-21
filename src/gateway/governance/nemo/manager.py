@@ -99,6 +99,22 @@ def create_nemo_manager(config_path: str = "config/rails") -> LLMRails:
     print(f"DEBUG: Loading NeMo config from {config_path}")
     config = RailsConfig.from_path(config_path)
 
+    # --- Langfuse Prompt Injection ---
+    try:
+        from src.gateway.governance.nemo.prompt_fetcher import fetch_managed_prompts
+        dynamic_prompts_yaml = fetch_managed_prompts()
+        if dynamic_prompts_yaml:
+            print("🚀 Dynamically overriding NeMo prompts with Langfuse Managed Prompts...")
+            # We can parse the YAML and merge it
+            import yaml
+            parsed_yaml = yaml.safe_load(dynamic_prompts_yaml)
+            if "prompts" in parsed_yaml:
+                config.prompts = parsed_yaml["prompts"]
+                print("✅ Successfully merged remote prompts into RailsConfig")
+    except Exception as e:
+        logger.error(f"Failed to load dynamic Langfuse prompts: {e}")
+        print(f"⚠️ Falling back to static prompt configs due to: {e}")
+
     # --- Deduplicate Flows (Workaround for double-loading issue) ---
     if hasattr(config, "flows"):
         unique_flows = {}
@@ -225,6 +241,7 @@ async def validate_with_nemo(user_input: str, rails: LLMRails) -> tuple[bool, st
             logger.error(f"NeMo Validation Error: {e}")
             span.record_exception(e)
             span.set_status(Status(StatusCode.ERROR))
-            return True, ""
+            # Production Rule: Fail closed on security check exception
+            return False, "Validation failed due to internal governance error."
         finally:
             streaming_handler_var.reset(token)

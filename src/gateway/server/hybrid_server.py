@@ -42,6 +42,23 @@ async def lifespan(app: FastAPI):
 # --- 2. Initialize FastAPI App ---
 app = FastAPI(title="Governed Financial Advisor Gateway (Hybrid)", lifespan=lifespan)
 
+try:
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    
+    def server_request_hook(span, scope):
+        if not span or not span.is_recording():
+            return
+        # Extract headers from ASGI scope
+        headers = dict((k.decode("utf-8").lower(), v.decode("utf-8")) for k, v in scope.get("headers", []))
+        session_id = headers.get("x-session-id")
+        if session_id:
+            span.set_attribute("langfuse.session.id", session_id)
+            
+    FastAPIInstrumentor.instrument_app(app, server_request_hook=server_request_hook)
+    logger.info("✅ FastAPI OpenTelemetry instrumentation activated with Session IDs.")
+except ImportError:
+    logger.warning("⚠️ FastAPIInstrumentor not found, skipping framework instrumentation.")
+
 # --- 3. Initialize MCP Server ---
 mcp = FastMCP("Governed Gateway")
 

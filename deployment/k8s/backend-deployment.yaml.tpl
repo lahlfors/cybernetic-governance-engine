@@ -30,6 +30,9 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: advisor-secrets
           env:
             # --- Service Configuration ---
             - name: PORT

@@ -22,7 +22,7 @@ spec:
       tolerations:
       - key: "cloud.google.com/gke-spot"
         operator: "Equal"
-        value: "true"
+#         value: "true"
         effect: "NoSchedule"
       terminationGracePeriodSeconds: 30 # Time for async traces to finish
       containers:
@@ -44,12 +44,31 @@ spec:
               name: advisor-secrets
               key: NEXTAUTH_URL
               optional: true
-        - name: LANGFUSE_S3_ENDPOINT
-          value: "http://minio.governance-stack.svc.cluster.local:9000"
-        - name: LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE
-          value: "true"
+        - name: LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT
+          value: "https://storage.googleapis.com"
+        - name: AWS_ENDPOINT_URL_S3
+          value: "https://storage.googleapis.com"
+        - name: LANGFUSE_S3_EVENT_UPLOAD_BUCKET
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: LANGFUSE_S3_EVENT_UPLOAD_BUCKET
+        - name: LANGFUSE_S3_EVENT_UPLOAD_REGION
+          value: "auto"
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: LANGFUSE_S3_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: advisor-secrets
+              key: LANGFUSE_S3_SECRET_ACCESS_KEY
         - name: CLICKHOUSE_CLUSTER_ENABLED
           value: "false"
+        - name: REDIS_CONNECTION_STRING
+          value: "redis://redis:6379"
         - name: REDIS_HOST
           value: "redis"
         - name: REDIS_PORT

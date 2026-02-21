@@ -8,6 +8,7 @@ The Langfuse v3 deployment on GKE consists of:
 
 *   **Langfuse Web**: Next.js frontend and API server (`langfuse-web`).
 *   **Langfuse Worker**: Asynchronous event processor (`langfuse-worker`).
+*   **OpenTelemetry Collector**: Receives traces from the Gateway and exports to Langfuse via OTLP (`otel-collector`).
 *   **ClickHouse**: OLAP database for high-volume trace data (Single-node statefulset).
 *   **MinIO**: S3-compatible object storage for raw event ingestion (Required for v3).
 *   **Redis**: Queue and caching (shared with other services).

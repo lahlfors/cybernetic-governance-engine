@@ -1,6 +1,6 @@
 """
 Telemetry configuration for GCP Cloud Logging and Cloud Trace.
-Refactored for Hybrid Observability (Langfuse Async + AgentSight).
+Refactored for Centralized Observability (OTLP Collector).
 """
 import contextlib
 import logging
@@ -87,9 +87,8 @@ _telemetry_configured = False
 
 def configure_telemetry():
     """
-    Configures OpenTelemetry tracing (Hybrid Mode).
-    Uses standard async BatchSpanProcessors to capture payloads for Langfuse,
-    while AgentSight handles system-level correlation via HTTP headers.
+    Configures OpenTelemetry tracing (Centralized Mode).
+    Uses standard OTLP exporting to an OpenTelemetry Collector.
     """
     global HANDLER_ADDED
     global _telemetry_configured
@@ -101,7 +100,6 @@ def configure_telemetry():
 
     try:
         if os.getenv("OTEL_TRACES_EXPORTER") == "none":
-
             logger.info("🚫 OTEL Telemetry explicitly disabled via environment variable.")
             return
 
@@ -110,12 +108,12 @@ def configure_telemetry():
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter, Compression
-
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter as GRPCSpanExporter
         from opentelemetry.sdk.resources import Resource
 
-        # Configure Resource with service.name for LangSmith Project mapping
+        # Configure Resource
         resource = Resource.create({
-            "service.name": os.getenv("LANGCHAIN_PROJECT", "financial-advisor"),
+            "service.name": os.getenv("SERVICE_NAME", "financial-advisor"),
             "service.version": os.getenv("DEPLOY_TIMESTAMP", "unknown"),
         })
 
@@ -134,42 +132,20 @@ def configure_telemetry():
         except Exception:
             pass
 
-        # 2. Cold Tier / Langfuse (Standard Async Tracing)
+        # 2. Centralized Tier / OTel Collector
         otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+        
         if otel_endpoint:
-             otel_headers = {}
-             if os.getenv("OTEL_EXPORTER_OTLP_HEADERS"):
-                  pairs = os.getenv("OTEL_EXPORTER_OTLP_HEADERS").split(",")
-                  for pair in pairs:
-                       k, v = pair.split("=", 1)
-                       otel_headers[k] = v
-
-             otlp_exporter = OTLPSpanExporter(endpoint=otel_endpoint, headers=otel_headers)
-             provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
-             logger.info(f"✅ OpenTelemetry: OTLP Exporter configured at {otel_endpoint}")
-
-        # Langfuse Integration (Via OTLP)
-        langfuse_public = os.getenv("LANGFUSE_PUBLIC_KEY")
-        langfuse_secret = os.getenv("LANGFUSE_SECRET_KEY")
-        langfuse_host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
-
-        if langfuse_public and langfuse_secret:
-            try:
-                import base64
-                credentials = f"{langfuse_public}:{langfuse_secret}".encode("utf-8")
-                auth_header = f"Basic {base64.b64encode(credentials).decode('utf-8')}"
-                
-                langfuse_otlp_endpoint = f"{langfuse_host.rstrip('/')}/api/public/otel/v1/traces"
-
-                langfuse_exporter = OTLPSpanExporter(
-                    endpoint=langfuse_otlp_endpoint,
-                    headers={"Authorization": auth_header},
-                    compression=Compression.NoCompression
-                )
-                provider.add_span_processor(BatchSpanProcessor(langfuse_exporter))
-                logger.info(f"✅ Langfuse: Async Tracing configured at {langfuse_otlp_endpoint}")
-            except Exception as e:
-                logger.warning(f"⚠️ Langfuse configuration failed: {e}")
+            if otel_endpoint.startswith("http://") or otel_endpoint.startswith("https://"):
+                # Use HTTP Exporter
+                otlp_exporter = OTLPSpanExporter(endpoint=otel_endpoint)
+                provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
+                logger.info(f"✅ OpenTelemetry: HTTP OTLP Exporter configured at {otel_endpoint}")
+            else:
+                # Use gRPC Exporter
+                otlp_exporter = GRPCSpanExporter(endpoint=otel_endpoint, insecure=True)
+                provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
+                logger.info(f"✅ OpenTelemetry: gRPC OTLP Exporter configured at {otel_endpoint}")
 
         # Instrument HTTP libraries
         try:
@@ -182,7 +158,7 @@ def configure_telemetry():
             pass
 
         _telemetry_configured = True
-        logger.info("✅ Telemetry configuration complete (Hybrid Mode).")
+        logger.info("✅ Telemetry configuration complete (Centralized Mode).")
 
     except ImportError as e:
         logger.warning(f"⚠️ Telemetry dependencies not available: {e}")
@@ -199,12 +175,10 @@ def get_tracer():
     except ImportError:
         return None
 
-
 @contextlib.contextmanager
 def genai_span(name: str, prompt: str = None, model: str = None):
     """
-    Context manager for GenAI Semantic Conventions (Hybrid).
-    Captures prompt content for Langfuse (async), while AgentSight captures raw traffic.
+    Context manager for GenAI Semantic Conventions (Centralized).
     """
     tracer = get_tracer()
     if tracer is None:
@@ -214,8 +188,6 @@ def genai_span(name: str, prompt: str = None, model: str = None):
     try:
         from opentelemetry import trace as otel_trace
         with tracer.start_as_current_span(name) as span:
-            # HYBRID: We restore payload capture here for Langfuse utility.
-            # The 'BatchSpanProcessor' ensures this is handled asynchronously.
             if prompt:
                 span.set_attribute("gen_ai.content.prompt", prompt)
 
@@ -233,9 +205,8 @@ def genai_span(name: str, prompt: str = None, model: str = None):
 
 
 def record_completion(span, completion: str):
-    """Helper to record completion metadata (Hybrid)."""
+    """Helper to record completion metadata."""
     if span and completion:
-        # HYBRID: We restore payload capture here for Langfuse utility.
         span.set_attribute("gen_ai.content.completion", completion)
 
 def record_usage(span, usage):
@@ -264,3 +235,4 @@ def record_usage(span, usage):
         span.set_attribute("gen_ai.usage.output_tokens", completion_tokens)
     if total_tokens is not None:
         span.set_attribute("gen_ai.usage.total_tokens", total_tokens)
+

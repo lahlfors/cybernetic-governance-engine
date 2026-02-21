@@ -28,6 +28,12 @@ spec:
             secretKeyRef:
               name: llm-secrets
               key: openai-api-key
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://otel-collector.governance-stack:4318/v1/traces"
+        - name: OTEL_TRACES_EXPORTER
+          value: "otlp"
+        - name: OTEL_SERVICE_NAME
+          value: "nemo-guardrails"
         resources:
           requests:
             cpu: "500m"

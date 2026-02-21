@@ -10,7 +10,7 @@ This report analyzes the feasibility and steps required to consolidate the Gover
 *   The Gateway and NeMo services are stateless and fully compatible with GKE.
 *   Refactoring is primarily a **cleanup task**: removing misleading documentation, legacy Terraform code, and "Cloud Run-isms" (like specific logging formats or port conventions) from the source.
 
-**Recommendation:** **Proceed with GKE consolidation.** It provides better support for the system's hybrid inference requirements (GPU nodes for vLLM) and internal networking (gRPC) than Cloud Run.
+**Recommendation:** **Proceed with GKE consolidation.** It provides better support for the system's hybrid inference requirements (GPU nodes for vLLM) and internal networking (gRPC) than Cloud Run. *(Update: This migration is now complete, including the Langfuse observability stack moving to GKE with an OpenTelemetry collector).*
 
 ---
 

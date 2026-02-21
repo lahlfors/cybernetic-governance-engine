@@ -105,7 +105,7 @@ The primary divergence is in the **ARPaCCino Pattern** (Module 6), where the sys
 ### Status: ✅ Fully Implemented
 
 *   **Concept:** **Production Deployment**
-    *   **Implementation:** Full Kubernetes (Knative/Cloud Run) manifests are provided for a production-grade setup.
+    *   **Implementation:** Full Kubernetes (GKE) manifests are provided for a production-grade setup.
     *   **Evidence:** `deployment/service.yaml` (Sidecar Pattern), `deployment/k8s/vllm-service.yaml`.
 *   **Concept:** **Prefill-Decode Disaggregation**
     *   **Implementation:** Configured via vLLM's chunked prefill settings.
